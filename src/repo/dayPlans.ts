@@ -1,6 +1,9 @@
-// CONTRACT STUB – implemented in AP5. Signatures are binding; bodies are placeholders.
-import type { Observable } from 'dexie';
-import type { Day, DayPlan, Id } from '../model.js';
+// DayPlan.mitTaskIds may contain ids of deleted tasks (deleteTask keeps them so that
+// "Rückgängig" restores the slot); readers skip unknown ids. Past DayPlans are never touched.
+import { liveQuery, type Observable } from 'dexie';
+import { db } from '../db.js';
+import { MAX_FOCUS, type Day, type DayPlan, type Id } from '../model.js';
+import { isDay } from '../util/date.js';
 
 export class FocusFullError extends Error {
   constructor() {
@@ -9,30 +12,55 @@ export class FocusFullError extends Error {
   }
 }
 
-/** Replaces the focus of day; throws FocusFullError for more than 3 ids (F §4.7). */
+/**
+ * Replaces the focus of day; throws FocusFullError for more than 3 ids (F §4.7).
+ * Duplicates are removed first; ids are stored as given (order = slot order).
+ */
 export function setFocus(day: Day, taskIds: Id[]): Promise<void> {
-  throw new Error(`not implemented: setFocus ${day} ${taskIds.length}`);
+  if (!isDay(day)) return Promise.reject(new RangeError(`invalid day ${day}`));
+  const ids = [...new Set(taskIds)];
+  if (ids.length > MAX_FOCUS) return Promise.reject(new FocusFullError());
+  return db.transaction('rw', db.dayPlans, async () => {
+    const plan = await db.dayPlans.get(day);
+    await db.dayPlans.put({ ...plan, id: day, mitTaskIds: ids });
+  });
 }
 
-/** Appends one task; no-op when already present; throws FocusFullError when 3 are set. */
+/**
+ * Appends one task; no-op when already present; throws FocusFullError when 3 are set.
+ * Ids of deleted tasks are dropped first, so a slot freed by a deletion can be refilled.
+ */
 export function addToFocus(day: Day, taskId: Id): Promise<void> {
-  throw new Error(`not implemented: addToFocus ${day} ${taskId}`);
+  if (!isDay(day)) return Promise.reject(new RangeError(`invalid day ${day}`));
+  return db.transaction('rw', db.dayPlans, db.tasks, async () => {
+    const plan: DayPlan = (await db.dayPlans.get(day)) ?? { id: day, mitTaskIds: [] };
+    if (plan.mitTaskIds.includes(taskId)) return;
+    const existing = await db.tasks.bulkGet(plan.mitTaskIds);
+    const ids = plan.mitTaskIds.filter((_, i) => existing[i] !== undefined);
+    if (ids.length >= MAX_FOCUS) throw new FocusFullError();
+    await db.dayPlans.put({ ...plan, mitTaskIds: [...ids, taskId] });
+  });
 }
 
 export function removeFromFocus(day: Day, taskId: Id): Promise<void> {
-  throw new Error(`not implemented: removeFromFocus ${day} ${taskId}`);
+  return db.transaction('rw', db.dayPlans, async () => {
+    const plan = await db.dayPlans.get(day);
+    if (!plan || !plan.mitTaskIds.includes(taskId)) return;
+    await db.dayPlans.put({ ...plan, mitTaskIds: plan.mitTaskIds.filter((id) => id !== taskId) });
+  });
 }
 
-export function getFocus(day: Day): Promise<Id[]> {
-  throw new Error(`not implemented: getFocus ${day}`);
+export async function getFocus(day: Day): Promise<Id[]> {
+  return (await db.dayPlans.get(day))?.mitTaskIds ?? [];
 }
 
 /** liveQuery of the DayPlan of day (undefined when none exists). */
 export function dayPlan$(day: Day): Observable<DayPlan | undefined> {
-  throw new Error(`not implemented: dayPlan$ ${day}`);
+  return liveQuery(() => db.dayPlans.get(day));
 }
 
 /** True when any DayPlan ever had a task (used for the "Erste Schritte" card). */
-export function anyFocusEver(): Promise<boolean> {
-  throw new Error('not implemented: anyFocusEver');
+export async function anyFocusEver(): Promise<boolean> {
+  const hit = await db.dayPlans.filter((p) => Array.isArray(p.mitTaskIds) && p.mitTaskIds.length > 0).first();
+  return hit !== undefined;
 }
