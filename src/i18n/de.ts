@@ -330,6 +330,7 @@ export const t = {
 
   // Agents add keys only directly below their own marker line.
   // --- additions: logic ---
+  notificationDue: '{date}, {time}',
   // --- additions: data ---
   // --- additions: garden ---
   // --- additions: habit-ui ---
