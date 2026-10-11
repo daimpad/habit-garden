@@ -327,6 +327,19 @@ export const t = {
 
   // Notifications
   notificationBody: '{context} · {due}',
+
+  // Agents add keys only directly below their own marker line.
+  // --- additions: logic ---
+  // --- additions: data ---
+  // --- additions: garden ---
+  // --- additions: habit-ui ---
+  // --- additions: basics ---
+  // --- additions: overlays ---
+  // --- additions: shell ---
+  // --- additions: heute ---
+  // --- additions: sheets ---
+  // --- additions: start-settings ---
+  // --- additions: integration ---
 } as const;
 
 export type TextKey = keyof typeof t;
