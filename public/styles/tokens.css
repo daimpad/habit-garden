@@ -1,0 +1,24 @@
+:root {
+  color-scheme: light;
+  --color-bg: #F4F6F0; --color-surface: #FFFFFF; --color-surface-2: #E9EEE4; --color-border: #D6DDD0;
+  --color-text: #22352B; --color-text-2: #4F6356; --color-text-3: #7D8C82;
+  --color-primary: #2F4F3A; --color-on-primary: #F4F6F0; --color-primary-soft: #E3EBDD;
+  --color-sage: #9CB59A; --color-sage-strong: #6F8F6C; --color-clay: #D98E73; --color-sun: #F2C14E;
+  --color-warning-text: #9A4E33; --color-danger-text: #A3463F; --color-danger-soft: #F3DCD8; --color-info: #3F6F9E;
+  --color-scrim: rgba(47,79,58,.35); --color-overlay-hover: rgba(47,79,58,.06); --color-overlay-pressed: rgba(47,79,58,.10);
+  --color-focus: #2F4F3A;
+  --heat-0: #E9EEE4; --heat-1: #D3DFCD; --heat-2: #B5C9B0; --heat-3: #8FAE8B; --heat-4: #5F8A66;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-full: 999px; --radius-arch: 48px 48px 12px 12px;
+  --duration-fast: 120ms; --duration-base: 200ms; --duration-slow: 300ms;
+  --ease-standard: cubic-bezier(.2,0,0,1); --ease-enter: cubic-bezier(0,0,0,1); --ease-exit: cubic-bezier(.3,0,1,1); --ease-grow: cubic-bezier(.2,.9,.3,1.2);
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --nav-height: 64px; --appbar-height: 56px; --touch: 48px;
+  --shadow-raised: 0 4px 12px rgba(47,79,58,.25);
+  --duration-crossfade: 120ms;
+}
+[data-theme="dark"] { /* Phase 5: Overrides nach B.1 */ }
+@media (prefers-reduced-motion: reduce) { :root { --duration-fast: 0ms; --duration-base: 0ms; --duration-slow: 0ms; } }
+/* In-app setting "Animationen: reduziert" (html[data-motion="reduced"]) behaves like the media query. */
+:root[data-motion="reduced"] { --duration-fast: 0ms; --duration-base: 0ms; --duration-slow: 0ms; }

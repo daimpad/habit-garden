@@ -1,0 +1,28 @@
+Options -Indexes
+AddType text/javascript .js .mjs
+
+RewriteEngine On
+RewriteRule (^|/)\.git(/|$) - [F]
+# Single-page routing: every path that is not a file goes to index.php.
+# Asset folders are excluded so that a missing module is a real 404.
+RewriteCond %{REQUEST_URI} !^/(app|vendor|styles|assets)/
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [L]
+
+# Only URLs that carry the build stamp (?v=xxxxxxxx) are immutable;
+# everything else (e.g. app modules imported by relative path) is revalidated.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|mjs|css|woff2|svg)$">
+    <If "%{QUERY_STRING} =~ /(^|&)v=[0-9a-f]{8}(&|$)/">
+      Header set Cache-Control "public, max-age=31536000, immutable"
+    </If>
+    <Else>
+      Header set Cache-Control "no-cache"
+    </Else>
+  </FilesMatch>
+</IfModule>
+
+<FilesMatch "\.(ts|json|md)$">
+  Require all denied
+</FilesMatch>

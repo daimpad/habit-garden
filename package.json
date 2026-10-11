@@ -1,0 +1,35 @@
+{
+  "name": "olife",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Olife – local-first Website für Selbstorganisation",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "vendor": "node scripts/vendor.mjs",
+    "sprite": "node scripts/sprite.mjs",
+    "stamp": "node scripts/stamp.mjs",
+    "build": "npm run clean && npm run vendor && npm run sprite && tsc && npm run stamp",
+    "watch": "tsc --watch",
+    "serve": "php -S localhost:8080 -t public",
+    "test": "tsc -p tsconfig.test.json && node scripts/run-tests.mjs",
+    "check": "node scripts/check-src.mjs"
+  },
+  "dependencies": {
+    "dexie": "4.4.6",
+    "dompurify": "3.4.16",
+    "markdown-it": "14.3.2"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "14.2.0",
+    "@types/node": "22.20.4",
+    "esbuild": "0.28.2",
+    "inter-ui": "4.1.1",
+    "lucide-static": "0.400.0",
+    "typescript": "5.9.3"
+  }
+}

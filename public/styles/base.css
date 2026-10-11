@@ -1,0 +1,90 @@
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+:root {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.ol-scroll-locked { overflow: hidden; }
+
+h1, h2, h3, h4, p, ul, ol { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+input, select, textarea { font-size: max(16px, 1rem); }
+a { color: var(--color-primary); }
+svg { display: block; }
+
+:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+:focus:not(:focus-visible) { outline: none; }
+
+/* Type scale (B.2); rem so that system font scaling up to 200 % applies. */
+.ol-display { font-size: 1.75rem; line-height: 2.125rem; font-weight: 600; letter-spacing: -.01em; }
+.ol-title   { font-size: 1.375rem; line-height: 1.75rem; font-weight: 600; }
+.ol-heading { font-size: 1.0625rem; line-height: 1.5rem; font-weight: 600; }
+.ol-body    { font-size: 1rem; line-height: 1.5rem; font-weight: 400; }
+.ol-body-s  { font-size: .875rem; line-height: 1.25rem; font-weight: 400; }
+.ol-label   { font-size: .8125rem; line-height: 1rem; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-2); }
+.ol-caption { font-size: .75rem; line-height: 1rem; font-weight: 400; color: var(--color-text-2); }
+.ol-mono    { font-family: var(--font-mono); font-size: .875rem; line-height: 1.25rem; }
+.ol-num     { font-variant-numeric: tabular-nums; }
+
+.ol-text-2 { color: var(--color-text-2); }
+.ol-warning { color: var(--color-warning-text); }
+.ol-danger  { color: var(--color-danger-text); }
+
+.ol-visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Icons from the Lucide sprite: <svg class="ol-icon"><use href="…#i-name"/></svg> */
+.ol-icon {
+  width: 24px; height: 24px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
+}
+.ol-icon--20 { width: 20px; height: 20px; }
+.ol-icon--32 { width: 32px; height: 32px; }
+
+/* App frame: content column, bottom navigation, left rail from 900 px. */
+#app { min-height: 100%; }
+.ol-shell { min-height: 100%; }
+.ol-view {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 var(--space-4) calc(var(--nav-height) + env(safe-area-inset-bottom) + 96px);
+}
+.ol-shell[data-overlay-screen] .ol-view { padding-bottom: calc(env(safe-area-inset-bottom) + var(--space-6)); }
+
+@media (min-width: 900px) {
+  .ol-shell { padding-left: 96px; }
+  .ol-view { padding-bottom: var(--space-6); }
+}
+
+.ol-section { margin-top: var(--space-5); }
+.ol-section__head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); min-height: 32px; margin-bottom: var(--space-2);
+}

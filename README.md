@@ -1,0 +1,88 @@
+# Olife
+
+Olife (Organize Your Life / Open Life) ist eine local-first Website für Selbstorganisation: Tagesfokus mit höchstens drei Aufgaben, Routinen als wachsende Pflanzen, Stimmung und Journal. Alle Daten liegen ausschließlich im Browser (IndexedDB). Es gibt kein Konto, keine Datenbank auf dem Server und keine Telemetrie; Export und Import (JSON) sind der einzige Transferweg.
+
+Stand: Phase 1 (Grundgerüst). PLANUNG und WISSEN sind als Screens mit Leerzustand vorhanden; die vollständigen Fassungen folgen in Phase 3 und 4.
+
+## Voraussetzungen
+
+- Node.js ≥ 22 und npm (nur für den Build)
+- PHP ≥ 8.1 (Entwicklung mit dem eingebauten Server, Betrieb mit Apache)
+
+## Build
+
+```sh
+npm install
+npm run build
+```
+
+`npm run build` führt nacheinander aus:
+
+| Schritt | Wirkung |
+|---|---|
+| `clean` | entfernt `public/app/` und `build/` |
+| `vendor` | kopiert `dexie.mjs` und `purify.mjs` nach `public/vendor/`, bündelt markdown-it einmalig mit esbuild zu einer ESM-Datei (markdown-it 14 liefert kein Browser-ESM ohne Bundler; dies ist der einzige Bundler-Einsatz und betrifft nur `vendor/`), kopiert `InterVariable.woff2` und die OFL-Lizenz |
+| `sprite` | erzeugt `public/assets/icons.svg` aus einer festen Liste von Lucide-Icons |
+| `tsc` | kompiliert `src/` zu nativen ES-Modulen in `public/app/` |
+| `stamp` | schreibt einen Hash über alle auszuliefernden Dateien nach `public/app/build.txt` |
+
+Weitere Befehle:
+
+- `npm test`: Unit-Tests (`node:test`, Zeitzone Europe/Berlin) für Wachstum, Wiederholung, Datum, Sortierschlüssel und Router
+- `npm run check`: Prüft, dass kein `any`, kein `@ts-ignore`, keine Ausrufezeichen in Oberflächentexten und keine deutschen Texte außerhalb von `src/i18n/de.ts` vorkommen
+- `npm run watch`: `tsc --watch` für die Entwicklung
+
+## Lokale Entwicklung
+
+```sh
+npm run build
+npm run serve        # php -S localhost:8080 -t public
+npm run watch        # in einem zweiten Terminal
+```
+
+Der eingebaute PHP-Server liefert für jeden Pfad ohne Datei `index.php` aus; `.htaccess` wird dabei nicht ausgewertet. Die Seite ist dann unter `http://localhost:8080/` erreichbar. `localhost` gilt als sicherer Kontext, sodass IndexedDB, `crypto.randomUUID()` und Benachrichtigungen verfügbar sind; ein Zugriff über eine LAN-IP ohne TLS ist kein sicherer Kontext.
+
+## Deployment auf Apache
+
+1. `npm ci && npm run build`
+2. Den Inhalt von `public/` in das Document Root kopieren (einschließlich `.htaccess`).
+3. Benötigt werden PHP, `mod_rewrite`, `mod_headers` und `AllowOverride All` (oder die Regeln aus `.htaccess` in der vHost-Konfiguration). Die Seite muss über HTTPS ausgeliefert werden.
+
+`index.php` setzt ausschließlich Sicherheits-Header und den Build-Stempel:
+
+- Content-Security-Policy nach Spezifikation, ergänzt um den sha256-Hash der Import Map. Die Import Map ist das einzige Inline-Skript und enthält keinen ausführbaren Code. Ohne diesen Hash blockieren Browser sie, und die Seite startet nicht (abgestimmte Abweichung von F §2.5).
+- `Strict-Transport-Security`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `Permissions-Policy`, `Cache-Control: no-cache`.
+
+Caching (abgestimmte Abweichung von F §4.3): Der Build-Stempel wird über alle Ausgabedateien gebildet und als `?v=` an Stylesheets, `main.js`, die Bibliotheken und das Icon-Sprite gehängt. `.htaccess` liefert nur Anfragen mit gültigem `?v=` als `immutable` aus; alle übrigen Dateien, etwa die per relativem Import geladenen App-Module, werden bei jedem Laden neu validiert. So erreichen Updates auch wiederkehrende Browser.
+
+## Daten und Sicherheit
+
+- Die Daten liegen unverschlüsselt in IndexedDB. Ihr Schutz entspricht dem Schutz des Browserprofils und des Geräts.
+- Safari löscht Website-Daten nach sieben Tagen ohne Besuch. Die Einstellungen weisen darauf hin, und HEUTE zeigt ab fünf Tagen ohne Export eine Karte „Daten sichern“.
+- Erinnerungen werden nur bei geöffneter Seite ausgelöst.
+
+## Lizenzen
+
+Olife steht unter der Apache License 2.0 (siehe `LICENSE`).
+
+| Komponente | Version | Lizenz | Verwendung |
+|---|---|---|---|
+| Dexie | 4.4.6 | Apache-2.0 | Laufzeit, `public/vendor/dexie.mjs` |
+| markdown-it | 14.3.2 | MIT | Laufzeit, gebündelt mit entities (BSD-2-Clause), linkify-it, mdurl, punycode.js, uc.micro (jeweils MIT) |
+| DOMPurify | 3.4.16 | MPL-2.0 oder Apache-2.0 | Laufzeit |
+| Inter | 4.1 (npm `inter-ui` 4.1.1) | SIL Open Font License 1.1 | `public/assets/fonts/InterVariable.woff2`, Lizenztext daneben als `OFL.txt` |
+| Lucide | 0.400.0 (`lucide-static`) | ISC | `public/assets/icons.svg` |
+| TypeScript, esbuild | 5.9.3, 0.28.2 | Apache-2.0, MIT | nur Build |
+
+### Herkunft der Pflanzengeometrie
+
+Die SVG-Geometrie der Pflanze (Topf, Stängel, Blätter, Knospe, Seitenzweig; Koordinaten und Formelkoeffizienten aus F §4.11) stammt aus der Vorlage „Tend – A Habit Garden“: https://miaai-lab.github.io/Claude-Opus-5.5-100-HTML-Files/046-habit-garden.html, abgerufen am 11. Oktober 2026, SHA-256 `7798e072a66a1af82ce4032f47b6322d97945b69ebf7c63402944973123de58c`. Die Seite und ihr Repository nennen keine Lizenz. Übernommen wurden ausschließlich Geometriedaten; Code, Markup-Aufbau, CSS und Texte sind eigenständig geschrieben. Die Lizenzfrage ist offen und vor einer Veröffentlichung zu klären.
+
+## Projektstruktur
+
+```
+public/            ausgelieferte Dateien (index.php, .htaccess, styles/, nach dem Build app/, vendor/, assets/)
+scripts/           Build-Skripte (vendor, sprite, stamp, clean, Tests, Quelltextprüfung)
+src/               TypeScript-Quellen: model, db, repo/, services/, components/, screens/, i18n/, util/
+docs/abnahme/      Prüfprotokolle je Phase (TSV)
+```
