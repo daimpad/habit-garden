@@ -46,6 +46,7 @@ import { areas$, createArea, LastAreaError, setAreaArchived, updateArea } from '
 import { profile$, updateSettings } from '../repo/profile.js';
 import { refresh, type Route } from '../router.js';
 import { notificationPermission, requestNotificationPermission } from '../services/reminders.js';
+import { loadExampleData } from '../services/seed.js';
 import { estimate, formatBytes, isPersisted, isSafari, requestPersist, type PersistResult } from '../services/storage-hints.js';
 import {
   deleteAllData, ImportError, importMerge, importRestore, parseImport, type ExportFile,
@@ -160,6 +161,7 @@ interface Els {
   deleteBtn: OlButton;
   notif: HTMLElement;
   notifBtn: OlButton;
+  seedBtn: OlButton;
   lead: HTMLSelectElement;
   theme: OlSegmented;
   left: OlCheckbox;
@@ -356,6 +358,10 @@ class SettingsScreen {
         <p class="ol-settings__hint">${t.infoProvenance}</p>
       </div>
       <div class="ol-settings__item">
+        <ol-button class="ol-settings__seed" variant="tonal" icon="sprout" label="${t.seedAction}"></ol-button>
+        <p class="ol-settings__hint">${t.seedHint}</p>
+      </div>
+      <div class="ol-settings__item">
         <h3 class="ol-settings__subhead">${t.infoPrivacy}</h3>
         <p class="ol-body-s">${t.infoPrivacyText}</p>
       </div>`;
@@ -384,6 +390,7 @@ class SettingsScreen {
       deleteBtn: req<OlButton>(v, '.ol-settings__delete'),
       notif: req<HTMLElement>(v, '.ol-settings__notif'),
       notifBtn: req<OlButton>(v, '.ol-settings__notif-btn'),
+      seedBtn: req<OlButton>(v, '.ol-settings__seed'),
       lead: req<HTMLSelectElement>(v, '.ol-settings__lead'),
       theme: req<OlSegmented>(v, '.ol-settings__theme'),
       left: req<OlCheckbox>(v, '.ol-settings__left'),
@@ -411,6 +418,7 @@ class SettingsScreen {
       if (file) void this.onImport(file);
     });
     els.persistBtn.addEventListener('click', () => void this.onPersist());
+    els.seedBtn.addEventListener('click', () => void this.onSeed());
     els.notifBtn.addEventListener('click', () => {
       void requestNotificationPermission().then(() => {
         if (!this.destroyed) this.renderNotif();
@@ -522,6 +530,23 @@ class SettingsScreen {
     );
     setText(this.els.persist, persisted === null ? t.persistUnsupported : persisted ? t.persistOn : t.persistOff);
     this.els.persistBtn.hidden = persisted !== false;
+  }
+
+  private async onSeed(): Promise<void> {
+    const btn = this.els.seedBtn;
+    if (btn.hasAttribute('loading')) return;
+    const confirmed = await confirmDialog({ title: t.seedConfirmTitle, body: t.seedConfirmBody, confirmLabel: t.seedAction });
+    if (!confirmed || this.destroyed) return;
+    btn.setAttribute('loading', '');
+    try {
+      const result = await loadExampleData();
+      showToast(result === 'created' ? t.seedDone : t.seedExists);
+    } catch (err) {
+      console.error(err);
+      showToast(t.toastError);
+    } finally {
+      btn.removeAttribute('loading');
+    }
   }
 
   private async onPersist(): Promise<void> {
