@@ -88,7 +88,7 @@ if (prefixed < 5) fail(`index.php: expected stylesheet and module URLs, found ${
 
 const baseMeta = '<meta name="olife-base" content="/">';
 if (!html.includes(baseMeta)) fail('index.php: <meta name="olife-base" content="/"> not found');
-html = html.replace(baseMeta, `<meta name="olife-base" content="${attr(base)}">`);
+html = html.replace(baseMeta, () => `<meta name="olife-base" content="${attr(base)}">`);
 
 const charset = /<meta charset="utf-8">\r?\n/u.exec(html);
 if (!charset) fail('index.php: <meta charset="utf-8"> not found');

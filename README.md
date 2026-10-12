@@ -31,6 +31,7 @@ Weitere Befehle:
 - `npm test`: Unit-Tests (`node:test`, Zeitzone Europe/Berlin) für Wachstum, Wiederholung, Datum, Sortierschlüssel und Router
 - `npm run check`: Prüft, dass kein `any`, kein `@ts-ignore`, keine Ausrufezeichen in Oberflächentexten und keine deutschen Texte außerhalb von `src/i18n/de.ts` vorkommen
 - `npm run watch`: `tsc --watch` für die Entwicklung
+- `npm run build:pages`: `npm run build` und danach die statische Fassung für GitHub Pages in `dist/pages/` (`scripts/pages.mjs`, siehe [Deployment auf GitHub Pages](#deployment-auf-github-pages))
 
 ## Lokale Entwicklung
 
@@ -54,6 +55,17 @@ Der eingebaute PHP-Server liefert für jeden Pfad ohne Datei `index.php` aus; `.
 - `Strict-Transport-Security`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `Permissions-Policy`, `Cache-Control: no-cache`.
 
 Caching (abgestimmte Abweichung von F §4.3): Der Build-Stempel wird über alle Ausgabedateien gebildet und als `?v=` an Stylesheets, `main.js`, die Bibliotheken und das Icon-Sprite gehängt. `.htaccess` liefert nur Anfragen mit gültigem `?v=` als `immutable` aus; alle übrigen Dateien, etwa die per relativem Import geladenen App-Module, werden bei jedem Laden neu validiert. So erreichen Updates auch wiederkehrende Browser.
+
+## Deployment auf GitHub Pages
+
+Zusätzlich lässt sich Olife als statische Projektseite auf GitHub Pages betreiben, etwa unter `https://daimpad.github.io/habit-garden/`. Die Apache-Auslieferung bleibt davon unberührt.
+
+- Workflow: `.github/workflows/static.yml` (Pages-Quelle „GitHub Actions“) läuft bei jedem Push auf `main` und manuell. Er führt `npm ci`, `npm test` und `npm run build:pages` aus und veröffentlicht `dist/pages/`.
+- Inhalt von `dist/pages/`: `app/`, `vendor/`, `styles/`, `assets/` und `licenses.txt` aus `public/` (ohne `index.php` und `.htaccess`), dazu `index.html`, eine identische `404.html` und `.nojekyll`. Das HTML wird aus `public/index.php` abgeleitet und hat denselben Aufbau.
+- Basispfad: `BASE_PATH` (Standard `/`) wird allen URLs im HTML vorangestellt, jeweils mit `?v=<Build-Stempel>`, und steht in `<meta name="olife-base">`. Der Workflow übernimmt ihn aus `base_path` von `actions/configure-pages`, für dieses Repository `/habit-garden/`. Lokal: `BASE_PATH=/habit-garden/ npm run build:pages`. Die Routen bleiben intern `/heute`, `/aufgabe/:id` usw. Nur in der Adresszeile, in Links, beim Icon-Sprite und bei `licenses.txt` steht der Basispfad davor. `index.php` setzt `/`.
+- Rückfall über `404.html`: Pages kennt keine Rewrite-Regeln und beantwortet unbekannte Pfade mit `404.html`. Weil diese Datei `index.html` entspricht, startet die App auch beim direkten Aufruf oder Neuladen einer Unterseite (z. B. `/habit-garden/aufgabe/…`) auf der richtigen Route. Der HTTP-Status ist dabei 404, was Browser in der Konsole als fehlgeschlagenen Ladevorgang vermerken.
+- Sicherheits-Header: Pages setzt keine eigenen Header. Die Content-Security-Policy steht deshalb als `<meta http-equiv="Content-Security-Policy">` direkt nach `<meta charset>`. Sie entspricht der Richtlinie aus `index.php` einschließlich des Hashes der ausgegebenen Import Map, nur ohne `frame-ancestors`, das in Meta-Tags nicht wirkt. Aus `Referrer-Policy` wird `<meta name="referrer" content="no-referrer">`. `frame-ancestors`, `Strict-Transport-Security`, `X-Content-Type-Options` und `Permissions-Policy` lassen sich auf Pages nicht setzen; die Seite kann dort also in fremde Frames eingebettet werden. HTTPS erzwingt GitHub selbst.
+- Caching: Pages liefert jede Datei mit fester Cache-Dauer (derzeit zehn Minuten) aus. Stylesheets, `main.js` und Bibliotheken wechseln mit dem Build-Stempel die URL; die per relativem Import geladenen App-Module können nach einem Deployment bis zum Ablauf dieser Frist noch aus dem Browser-Cache kommen.
 
 ## Daten und Sicherheit
 
@@ -82,7 +94,8 @@ Die SVG-Geometrie der Pflanze (Topf, Stängel, Blätter, Knospe, Seitenzweig; Ko
 
 ```
 public/            ausgelieferte Dateien (index.php, .htaccess, styles/, nach dem Build app/, vendor/, assets/)
-scripts/           Build-Skripte (vendor, sprite, stamp, clean, Tests, Quelltextprüfung)
+dist/pages/        statische Fassung für GitHub Pages (npm run build:pages, nicht versioniert)
+scripts/           Build-Skripte (vendor, sprite, stamp, clean, pages, Tests, Quelltextprüfung)
 src/               TypeScript-Quellen: model, db, repo/, services/, components/, screens/, i18n/, util/
 docs/abnahme/      Prüfprotokolle je Phase (TSV)
 ```

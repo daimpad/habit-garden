@@ -1,7 +1,7 @@
 // Bootstrap: open the DB, apply settings (data-motion, theme, FAB side), render the shell (view,
 // bottom nav, FAB, toast, particles), wire global events (ol-navigate, ol-back, delegated
-// <a href="/…"> clicks to app routes under the base path), start the router with the onboarding guard, start reminders and the
-// day watcher.
+// <a href="/…"> clicks to app routes under the base path), start the router with the onboarding
+// guard, start reminders and the day watcher.
 //
 // Details of this implementation:
 // - Screens export mount(view, route) → cleanup. The previous cleanup runs before the next mount; every
