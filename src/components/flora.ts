@@ -288,23 +288,64 @@ function plantBody(stage: Stage, flowerId: FlowerId, tint: string, width: number
   return out;
 }
 
-/** Height of a plant drawn `width` px wide (viewBox ratio 160 : 190). */
-export function plantHeight(width: number): number {
-  return Math.round(((width * 190) / 160) * 10) / 10;
+/** viewBox height of a potted plant and of a plant growing from the ground (meadow). */
+export const PLANT_VIEW_H = 190;
+export const GROUND_VIEW_H = 152;
+
+/** Height of a plant drawn `width` px wide (viewBox ratio 160 : 190, or 160 : 152 without pot). */
+export function plantHeight(width: number, ground = false): number {
+  return Math.round(((width * (ground ? GROUND_VIEW_H : PLANT_VIEW_H)) / 160) * 10) / 10;
 }
+
+// Meadow ground under a plant without pot: a soil mound with a few grass blades (viewBox 0 0 160 152).
+const GROUND = '<ellipse cx="80" cy="143" rx="40" ry="7" fill="#8A6A52" fill-opacity=".55"/>'
+  + `<path class="ol-plant__grass" d="M50 145c-2-8-1-13 3-17M58 146c0-6 2-10 6-13M104 146c1-7 4-11 8-13M112 145c2-6 1-11-2-15" fill="none" stroke="${SAGE}" stroke-width="2.4" stroke-linecap="round"/>`;
 
 /**
  * Plant in stage 0–4, viewBox 0 0 160 190; `size` is the rendered width.
  * Pot and soil stay static; everything above the soil sits in
  * g.ol-plant__wobble > g.ol-plant__grow (both with transform-origin 80px 141px).
+ * With `ground` (meadow) the pot is replaced by a soil mound and the viewBox ends at y 152.
  */
-export function plant(stage: Stage, flowerId: FlowerId, tint: string, size = 120): string {
+export function plant(stage: Stage, flowerId: FlowerId, tint: string, size = 120, ground = false): string {
   const st: Stage = stage >= 0 && stage <= 4 ? stage : 0;
   const kind = isFlowerId(flowerId) ? flowerId : 'generic';
   const w = size > 0 ? size : 120;
-  return `<svg class="ol-plant__svg" viewBox="0 0 160 190" width="${num(w)}" height="${num(plantHeight(w))}" aria-hidden="true" focusable="false">`
-    + POT
+  const viewH = ground ? GROUND_VIEW_H : PLANT_VIEW_H;
+  return `<svg class="ol-plant__svg" viewBox="0 0 160 ${viewH}" width="${num(w)}" height="${num(plantHeight(w, ground))}" aria-hidden="true" focusable="false">`
+    + (ground ? GROUND : POT)
     + `<g class="ol-plant__wobble"><g class="ol-plant__grow">${plantBody(st, kind, safeTint(tint), w)}</g></g>`
+    + '</svg>';
+}
+
+// ---------------------------------------------------------------------------
+// Butterfly (one per person in the meadow), viewBox 0 0 32 28, body on x = 16.
+
+const BUTTERFLY_BODY = '#3B2F2A';
+const WING_UPPER = 'M15.2 12.5C11 2.5 2.6 1.8 2.4 8.4C2.3 13.4 8.6 15.2 15.2 14.4Z';
+const WING_LOWER = 'M15.2 15.4C9.6 15.2 5.4 18.6 6.8 22.8C8.2 26.4 13.2 22.6 15.2 17.6Z';
+
+function wing(color: string): string {
+  return `<path d="${WING_UPPER}" fill="${color}" stroke="${BUTTERFLY_BODY}" stroke-opacity=".28" stroke-width=".7"/>`
+    + `<path d="${WING_LOWER}" fill="${color}" stroke="${BUTTERFLY_BODY}" stroke-opacity=".28" stroke-width=".7"/>`
+    + `<circle cx="7.6" cy="8" r="2.1" fill="${WHITE}" fill-opacity=".55"/>`
+    + `<circle cx="10.4" cy="20.6" r="1.2" fill="${WHITE}" fill-opacity=".5"/>`;
+}
+
+/**
+ * Butterfly glyph: two wing groups (g.ol-butterfly__wing--l / --r, transform-origin on the body)
+ * that CSS can flap, a body and antennae. `color` must be #rgb / #rrggbb (else sage).
+ */
+export function butterfly(color: string, size = 32): string {
+  const c = isTint(color) ? color : SAGE;
+  const w = size > 0 ? size : 32;
+  return `<svg class="ol-butterfly__svg" viewBox="0 0 32 28" width="${num(w)}" height="${num((w * 28) / 32)}" aria-hidden="true" focusable="false">`
+    + `<g class="ol-butterfly__wing ol-butterfly__wing--l">${wing(c)}</g>`
+    + `<g class="ol-butterfly__wing ol-butterfly__wing--r"><g transform="matrix(-1 0 0 1 32 0)">${wing(c)}</g></g>`
+    + `<path d="M15.6 8.6C14.6 5.4 13 3.6 11.2 2.8M16.4 8.6C17.4 5.4 19 3.6 20.8 2.8" fill="none" stroke="${BUTTERFLY_BODY}" stroke-width=".8" stroke-linecap="round"/>`
+    + `<circle cx="11.1" cy="2.8" r=".9" fill="${BUTTERFLY_BODY}"/><circle cx="20.9" cy="2.8" r=".9" fill="${BUTTERFLY_BODY}"/>`
+    + `<rect x="15" y="8.8" width="2" height="13.4" rx="1" fill="${BUTTERFLY_BODY}"/>`
+    + `<circle cx="16" cy="8.6" r="1.5" fill="${BUTTERFLY_BODY}"/>`
     + '</svg>';
 }
 

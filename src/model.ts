@@ -38,6 +38,15 @@ export interface Tag { path: string; parentPath: string|null; name: string; colo
 export interface MoodLog { id: Id; day: Day; value: 1|2|3|4|5; loggedAt: ISO; noteId?: Id; }
 export interface DayPlan { id: Day; mitTaskIds: Id[]; preparedAt?: ISO; }
 
+// People ("Personen"): someone to stay in touch with, at a desired rhythm in days.
+export type ContactKind = 'call'|'message'|'meeting';
+export interface Contact { id: Id; name: string; rhythmDays: number; note?: string; archived: 0|1; sortKey: SortKey; createdAt: ISO; updatedAt: ISO; }
+/** One log per person and day: id = `${contactId}:${day}`. */
+export interface ContactLog { id: `${Id}:${Day}`; contactId: Id; day: Day; kind?: ContactKind; loggedAt: ISO; }
+/** Contact rhythms in days: weekly, every two weeks, monthly, quarterly. */
+export const CONTACT_RHYTHMS: readonly number[] = [7, 14, 30, 90];
+export const DEFAULT_CONTACT_RHYTHM = 14;
+
 export type Stage = 0|1|2|3|4;
 
 export const DEFAULT_AREAS: ReadonlyArray<Pick<Area,'flower'|'name'|'tint'>> = [

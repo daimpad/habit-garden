@@ -4,15 +4,19 @@
 // records' own updatedAt (the documented exception to "updatedAt is set by repo/*").
 // Merging carries no deletions and may duplicate default areas created by two
 // separate onboardings (different ids).
+// The tables contacts and contactLogs (people, Dexie schema version 2) were added without a new
+// format version: the change is additive, so files written before simply lack them and import
+// as empty tables. Format version and profile.schemaVersion therefore stay 1.
 import { db, TABLES, type TableName } from '../db.js';
 import {
   SCHEMA_VERSION, DEFAULT_SETTINGS,
-  type Area, type Day, type DayPlan, type FirstStepId, type FlowerId, type Habit, type HabitLog,
-  type HabitSchedule, type ISO, type MoodLog, type Note, type Profile, type Project, type Recurrence,
+  type Area, type Contact, type ContactLog, type Day, type DayPlan, type FirstStepId, type FlowerId, type Habit,
+  type HabitLog, type HabitSchedule, type ISO, type MoodLog, type Note, type Profile, type Project, type Recurrence,
   type Reminder, type Tag, type Task,
 } from '../model.js';
 import { defaultProfile, updateProfile } from '../repo/profile.js';
 import { ensureTags, normalizeTagPath, tagChain } from '../repo/tags.js';
+import { CONTACT_KINDS } from './contacts.js';
 import { compareIso, deriveDueDay, isDay, isoAt, nowIso, today } from '../util/date.js';
 
 export interface ExportFile {
@@ -33,6 +37,7 @@ export class ImportError extends Error {
 export interface ImportTables {
   profile: Profile[]; areas: Area[]; projects: Project[]; tasks: Task[]; habits: Habit[];
   habitLogs: HabitLog[]; notes: Note[]; tags: Tag[]; moodLogs: MoodLog[]; dayPlans: DayPlan[];
+  contacts: Contact[]; contactLogs: ContactLog[];
 }
 
 /** A file that passed parseImport: same shape, typed and sanitized tables. */
@@ -43,7 +48,7 @@ export interface ValidatedExport extends ExportFile {
 // ---------------------------------------------------------------------------
 // Export
 
-/** Snapshot of all ten tables (one read transaction, so the snapshot is consistent). */
+/** Snapshot of all tables (one read transaction, so the snapshot is consistent). */
 export function buildExport(): Promise<ExportFile> {
   return db.transaction('r', [...TABLES], async () => {
     const tables = {} as Record<TableName, unknown[]>;
@@ -52,12 +57,12 @@ export function buildExport(): Promise<ExportFile> {
   });
 }
 
-/** "olife-backup-JJJJ-MM-TT.json" for the given (default: current) day. */
+/** "habit-garden-backup-JJJJ-MM-TT.json" for the given (default: current) day. */
 export function exportFileName(day: Day = today()): string {
-  return `olife-backup-${day}.json`;
+  return `habit-garden-backup-${day}.json`;
 }
 
-/** Downloads olife-backup-JJJJ-MM-TT.json via <a download>; sets profile.lastExportAt. */
+/** Downloads habit-garden-backup-JJJJ-MM-TT.json via <a download>; sets profile.lastExportAt. */
 export async function exportJson(): Promise<void> {
   const file = await buildExport();
   const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
@@ -95,6 +100,8 @@ const FLOWERS: readonly FlowerId[] = [
   'bellis', 'calendula', 'helianthus', 'centaurea', 'passiflora', 'matricaria', 'leucanthemum', 'generic',
 ];
 const FIRST_STEPS: readonly FirstStepId[] = ['focus', 'habit', 'note'];
+/** Tables added after the first files were written; a file without them imports them as empty. */
+const OPTIONAL_TABLES: ReadonlySet<TableName> = new Set<TableName>(['contacts', 'contactLogs']);
 
 function fail(path: string, problem: string): never {
   throw new ImportError(`${path}: ${problem}`);
@@ -434,6 +441,34 @@ function validateDayPlan(value: unknown, path: string): DayPlan {
   return plan;
 }
 
+function validateContact(value: unknown, path: string): Contact {
+  const r = asRecord(value, path);
+  const contact: Contact = {
+    id: id(r, 'id', path),
+    name: str(r, 'name', path, SHORT, false),
+    rhythmDays: int(r, 'rhythmDays', path, 1, 365),
+    archived: bit(r, 'archived', path),
+    sortKey: sortKey(r, 'sortKey', path),
+    createdAt: iso(r, 'createdAt', path),
+    updatedAt: iso(r, 'updatedAt', path),
+  };
+  // An empty note is no note (repo/contacts never stores one).
+  const note = optStr(r, 'note', path, LONG);
+  if (note !== undefined && note.trim() !== '') contact.note = note;
+  return contact;
+}
+
+function validateContactLog(value: unknown, path: string): ContactLog {
+  const r = asRecord(value, path);
+  const contactId = id(r, 'contactId', path);
+  const d = day(r, 'day', path);
+  const logId = `${contactId}:${d}` as const;
+  if (r.id !== logId) fail(`${path}.id`, 'expected contactId:day');
+  const log: ContactLog = { id: logId, contactId, day: d, loggedAt: iso(r, 'loggedAt', path) };
+  if (present(r.kind)) log.kind = oneOf(r, 'kind', CONTACT_KINDS, path);
+  return log;
+}
+
 function rows<T>(value: unknown, name: TableName, check: (v: unknown, path: string) => T, key: (row: T) => string): T[] {
   if (!Array.isArray(value)) fail(`tables.${name}`, 'expected an array');
   const seen = new Set<string>();
@@ -455,7 +490,10 @@ export function validateExport(input: unknown): ValidatedExport {
   if (r.version !== 1) fail('version', `unsupported version ${r.version}`);
   const exportedAt = iso(r, 'exportedAt', 'file');
   const t = asRecord(r.tables, 'tables');
-  for (const name of TABLES) if (!Array.isArray(t[name])) fail(`tables.${name}`, 'missing or not an array');
+  for (const name of TABLES) {
+    if (t[name] === undefined && OPTIONAL_TABLES.has(name)) continue;
+    if (!Array.isArray(t[name])) fail(`tables.${name}`, 'missing or not an array');
+  }
   const tables: ImportTables = {
     profile: rows(t.profile, 'profile', validateProfile, (p) => p.key),
     areas: rows(t.areas, 'areas', validateArea, (a) => a.id),
@@ -467,6 +505,8 @@ export function validateExport(input: unknown): ValidatedExport {
     tags: rows(t.tags, 'tags', validateTag, (x) => x.path),
     moodLogs: rows(t.moodLogs, 'moodLogs', validateMoodLog, (m) => m.id),
     dayPlans: rows(t.dayPlans, 'dayPlans', validateDayPlan, (p) => p.id),
+    contacts: rows(t.contacts ?? [], 'contacts', validateContact, (c) => c.id),
+    contactLogs: rows(t.contactLogs ?? [], 'contactLogs', validateContactLog, (l) => l.id),
   };
   return { format: 'olife', version: 1, exportedAt, tables };
 }
@@ -475,7 +515,9 @@ export function validateExport(input: unknown): ValidatedExport {
  * Parses and validates a file (format, version, all tables are arrays,
  * every record has its key field with the right type). Throws ImportError.
  * Every record is checked field by field (types, enums, day keys, ISO
- * timestamps, colours, HabitLog id = habitId:day, ≤ 3 focus ids, normalized tags).
+ * timestamps, colours, HabitLog id = habitId:day, ContactLog id = contactId:day,
+ * rhythmDays 1–365, ≤ 3 focus ids, normalized tags). contacts and contactLogs may be
+ * missing (files from before people existed); they then import as empty tables.
  */
 export function parseImport(text: string): ExportFile {
   let data: unknown;
@@ -521,7 +563,9 @@ function laterIso(a: ISO | undefined, b: ISO | undefined): ISO | undefined {
  * (ties keep local); HabitLogs are united, 'done' beats 'skipped' (same status:
  * newer loggedAt); logs of unknown habits are dropped; tags united by path;
  * moodLogs: newer loggedAt wins per day; dayPlans: local wins (an imported plan
- * keeps only known task ids, at most 3); profile: local wins with
+ * keeps only known task ids, at most 3); contacts: newer updatedAt wins; contactLogs
+ * are united (logs of unknown people are dropped; same person and day: newer
+ * loggedAt wins); profile: local wins with
  * lastExportAt = max (file profile only when none exists locally).
  * The profile is not counted in the result.
  */
@@ -533,6 +577,7 @@ export function importMerge(file: ExportFile): Promise<MergeResult> {
     await db.projects.bulkPut(newer(data.projects, await db.projects.bulkGet(ids(data.projects)), result));
     await db.tasks.bulkPut(newer(data.tasks, await db.tasks.bulkGet(ids(data.tasks)), result));
     await db.habits.bulkPut(newer(data.habits, await db.habits.bulkGet(ids(data.habits)), result));
+    await db.contacts.bulkPut(newer(data.contacts, await db.contacts.bulkGet(ids(data.contacts)), result));
     const notes = newer(data.notes, await db.notes.bulkGet(ids(data.notes)), result);
     await db.notes.bulkPut(notes);
 
@@ -565,6 +610,25 @@ export function importMerge(file: ExportFile): Promise<MergeResult> {
       }
     });
     await db.habitLogs.bulkPut(putLogs);
+
+    // ContactLogs: union; one log per person and day, newer loggedAt wins.
+    const contactIds = new Set((await db.contacts.toCollection().primaryKeys()).map(String));
+    const contactLogs = data.contactLogs.filter((l) => contactIds.has(l.contactId));
+    const localContactLogs = await db.contactLogs.bulkGet(contactLogs.map((l) => l.id));
+    const putContactLogs: ContactLog[] = [];
+    contactLogs.forEach((log, i) => {
+      const mine = localContactLogs[i];
+      if (!mine) {
+        putContactLogs.push(log);
+        result.created++;
+      } else if (compareIso(log.loggedAt, mine.loggedAt) > 0) {
+        putContactLogs.push(log);
+        result.updated++;
+      } else {
+        result.unchanged++;
+      }
+    });
+    await db.contactLogs.bulkPut(putContactLogs);
 
     // MoodLogs: one per day, newer loggedAt wins.
     const incomingByDay = new Map<Day, MoodLog>();
@@ -632,6 +696,8 @@ export function importRestore(file: ExportFile): Promise<number> {
     await db.tags.bulkPut(data.tags);
     await db.moodLogs.bulkPut(data.moodLogs);
     await db.dayPlans.bulkPut(data.dayPlans);
+    await db.contacts.bulkPut(data.contacts);
+    await db.contactLogs.bulkPut(data.contactLogs);
     await ensureTags([...data.notes.flatMap((n) => n.tagPaths), ...data.tags.map((x) => x.path)]);
     const profile = structuredClone(data.profile[0] ?? defaultProfile());
     profile.onboardingDone = data.areas.some((a) => a.archived === 0) ? 1 : 0;

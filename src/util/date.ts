@@ -142,6 +142,7 @@ const fmtLong = new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeri
 const fmtShort = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' });
 const fmtFull = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long', year: 'numeric' });
 const fmtWeekdayShort = new Intl.DateTimeFormat('de-DE', { weekday: 'short' });
+const fmtWeekdayLong = new Intl.DateTimeFormat('de-DE', { weekday: 'long' });
 
 /** "Sonntag, 11. Oktober" */
 export function formatDayLong(day: Day): string {
@@ -156,6 +157,11 @@ export function formatDayShort(day: Day): string {
 /** "11. Oktober 2026" */
 export function formatDayFull(day: Day): string {
   return fmtFull.format(parseDay(day));
+}
+
+/** "Sonntag" */
+export function formatWeekdayLong(day: Day): string {
+  return fmtWeekdayLong.format(parseDay(day));
 }
 
 /** "So" */

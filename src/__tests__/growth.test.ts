@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { Day, Habit, HabitLog, HabitSchedule } from '../model.js';
 import {
-  bestStreak, isScheduledOn, stageAt, stageFor, stageForCount, streak, weekProgress,
+  bestStreak, isScheduledOn, nextStage, stageAt, stageFor, stageForCount, streak, weekProgress,
 } from '../services/growth.js';
 import { addDays } from '../util/date.js';
 
@@ -255,4 +255,28 @@ test('stageForCount thresholds (B.5)', () => {
   assert.deepEqual(days, [0, 1, 1, 2, 2, 3, 3, 4, 4]);
   const weeks = [0, 1, 2, 3, 4, 10].map((n) => stageForCount('weeks', n));
   assert.deepEqual(weeks, [0, 1, 2, 3, 4, 4]);
+});
+
+describe('nextStage ("Noch n Tage bis …" on the garden cards)', () => {
+  const day: Day = '2026-10-12';
+  test('seed without any done log: one day until Spross', () => {
+    assert.deepEqual(nextStage(daily, [], day), { stage: 0, next: 1, remaining: 1, unit: 'days' });
+  });
+  test('streak 1 up to yesterday: two days until Blätter (today counts as one of them)', () => {
+    assert.deepEqual(nextStage(daily, [log('2026-10-11')], day), { stage: 1, next: 2, remaining: 2, unit: 'days' });
+  });
+  test('streak 13 including today: one day until Blüte', () => {
+    assert.deepEqual(nextStage(daily, run('2026-09-30', day), day), { stage: 3, next: 4, remaining: 1, unit: 'days' });
+  });
+  test('broken streak keeps stage 1 and counts from zero', () => {
+    assert.deepEqual(nextStage(daily, run('2026-09-01', '2026-09-20'), day), { stage: 1, next: 2, remaining: 3, unit: 'days' });
+  });
+  test('full bloom has no next stage', () => {
+    assert.deepEqual(nextStage(daily, run('2026-09-20', day), day), { stage: 4, next: null, remaining: 0, unit: 'days' });
+  });
+  test('timesPerWeek counts fulfilled weeks', () => {
+    // Weeks of 2026-09-28 and 2026-10-05 fulfilled (3 logs each): streak 2 → stage 2, one week until Knospe.
+    const logs = ['2026-09-28', '2026-09-30', '2026-10-02', '2026-10-05', '2026-10-07', '2026-10-09'].map((d) => log(d));
+    assert.deepEqual(nextStage(thrice, logs, day), { stage: 2, next: 3, remaining: 1, unit: 'weeks' });
+  });
 });

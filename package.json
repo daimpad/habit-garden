@@ -1,9 +1,9 @@
 {
-  "name": "olife",
+  "name": "habit-garden",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Olife – local-first Website für Selbstorganisation",
+  "description": "Habit Garden – local-first Website für Selbstorganisation",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22"

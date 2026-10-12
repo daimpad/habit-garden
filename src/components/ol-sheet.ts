@@ -8,6 +8,8 @@
 // History (A.1: Back closes sheets first):
 //   history="push" (default): open() pushes a history entry {olSheet: id} with the same URL; a popstate
 //   that removes it closes the sheet (reason 'history'); closing by UI pops the entry (history.back()).
+//   Entries carry {olStack: ids of all layers up to this one}: closing a layer above (menu, dialog,
+//   another sheet) lands on an entry that still lists this sheet, so it stays open.
 //   history="none": the router owns the entry (overlay routes /aufgabe/:id, /gewohnheit/:id).
 // After the closing animation the element removes itself from the DOM.
 //
@@ -178,6 +180,21 @@ let backPending: { done: Promise<void> } | null = null;
 /** True when a history state is the entry {olSheet: id} of a sheet or dialog. */
 export function isOwnEntry(state: unknown, id: string): boolean {
   return typeof state === 'object' && state !== null && (state as Record<string, unknown>)['olSheet'] === id;
+}
+
+/**
+ * Ids of the stacked sheets/dialogs whose entries lie at or below a history state ({olStack}). A layer
+ * whose id is listed is still open underneath: going back from a layer above it must not close it.
+ */
+export function entryStack(state: unknown): string[] {
+  const stack = typeof state === 'object' && state !== null ? (state as Record<string, unknown>)['olStack'] : undefined;
+  return Array.isArray(stack) ? stack.filter((x): x is string => typeof x === 'string') : [];
+}
+
+/** The history state for a new layer `id` on top of `prev` (keeps router fields, extends the stack). */
+export function layerState(prev: unknown, id: string): Record<string, unknown> {
+  const base = typeof prev === 'object' && prev !== null ? prev as Record<string, unknown> : {};
+  return { ...base, olSheet: id, olStack: [...entryStack(prev), id] };
 }
 
 /**
@@ -445,12 +462,11 @@ export class OlSheet extends HTMLElement {
   private pushEntry(): void {
     const push = (): void => {
       if (this.phase !== 'open') return;
-      const prev: unknown = history.state;
-      const base = typeof prev === 'object' && prev !== null ? prev : {};
-      history.pushState({ ...base, olSheet: this.sheetId }, '');
+      history.pushState(layerState(history.state, this.sheetId), '');
       this.hasEntry = true;
       const onPop = (event: PopStateEvent): void => {
-        if (isOwnEntry(event.state, this.sheetId)) return;
+        // Own entry, or a layer above this sheet was closed (its entry is still below the new state).
+        if (isOwnEntry(event.state, this.sheetId) || entryStack(event.state).includes(this.sheetId)) return;
         this.hasEntry = false;
         this.close('history');
       };

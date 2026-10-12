@@ -300,6 +300,24 @@ ol-habit-toggle[state="done"][today-done] .ol-habit-toggle__check {
 /* today's log on a ring that is not filled */
 ol-habit-toggle[today-done]:not([state="done"]) .ol-habit-toggle__dot { opacity: 1; transform: scale(1); }
 
+/* Pill with caption (garden cards): ring + "Heute gießen", "Gegossen" once today's log exists. */
+ol-habit-toggle[caption] {
+  display: inline-flex; gap: var(--space-2); width: auto; min-width: 0; padding: 0 var(--space-4) 0 var(--space-3);
+  border: 1.5px solid var(--color-primary); color: var(--color-primary);
+  font-weight: 600; font-size: .9375rem; line-height: 1.25rem; white-space: nowrap;
+}
+ol-habit-toggle[caption] .ol-habit-toggle__svg { width: 24px; height: 24px; }
+.ol-habit-toggle__caption { display: inline-grid; }
+.ol-habit-toggle__todo, .ol-habit-toggle__done { grid-area: 1 / 1; }
+.ol-habit-toggle__done { visibility: hidden; }
+ol-habit-toggle[caption][state="done"]:not([progress]), ol-habit-toggle[caption][today-done] {
+  border-color: var(--color-sage-strong); background-color: var(--color-primary-soft);
+}
+ol-habit-toggle[caption][state="done"]:not([progress]) .ol-habit-toggle__todo,
+ol-habit-toggle[caption][today-done] .ol-habit-toggle__todo { visibility: hidden; }
+ol-habit-toggle[caption][state="done"]:not([progress]) .ol-habit-toggle__done,
+ol-habit-toggle[caption][today-done] .ol-habit-toggle__done { visibility: visible; }
+
 /* Reduced motion (system or in-app): crossfades instead of scale and stroke drawing. */
 @media (prefers-reduced-motion: reduce) {
   .ol-habit-toggle__fill, .ol-habit-toggle__dot { transform: none; opacity: 0; transition: opacity var(--duration-crossfade) linear; }
@@ -371,23 +389,24 @@ ol-particles, ol-particles[popover] {
 /* === /ol-particles === */
 
 /* === ol-heatmap === */
-/* Cells stay 12 px (approved decision 4): the only documented exception to the 48 px touch target;
+/* Cells are 12 px (approved decision 4; garden cards draw them a little larger through --ol-heat-cell):
+   the only documented exception to the 48 px touch target;
    the grid has a full keyboard alternative and every toggle offers "Rückgängig" in a toast. */
 ol-heatmap { display: block; }
 .ol-heatmap__grid {
   display: grid; grid-auto-flow: column;
-  grid-template-rows: repeat(7, 12px); grid-template-columns: auto; grid-auto-columns: 12px;
+  grid-template-rows: repeat(7, var(--ol-heat-cell, 12px)); grid-template-columns: auto; grid-auto-columns: var(--ol-heat-cell, 12px);
   gap: 3px; width: max-content; max-width: 100%;
   padding: var(--space-1); border-radius: var(--radius-sm);
 }
 .ol-heatmap__weekday {
   padding-right: var(--space-1);
-  font-size: .6875rem; line-height: 12px; font-weight: 500; color: var(--color-text-2);
+  font-size: .6875rem; line-height: var(--ol-heat-cell, 12px); font-weight: 500; color: var(--color-text-2);
 }
 .ol-heatmap__cell {
   --ol-heat-inset: inset 0 0 0 0 transparent;
   --ol-heat-ring: 0 0 0 0 transparent;
-  width: 12px; height: 12px; border-radius: 2px;
+  width: var(--ol-heat-cell, 12px); height: var(--ol-heat-cell, 12px); border-radius: var(--ol-heat-radius, 2px);
   background-color: var(--heat-0);
   box-shadow: var(--ol-heat-inset), var(--ol-heat-ring);
   cursor: pointer;

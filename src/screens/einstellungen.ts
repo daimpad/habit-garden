@@ -8,7 +8,7 @@
 //   arrived, so later content does not push the target away.
 // - Daten: export with the plaintext hint next to the button and, before the download, the same notice in a
 //   non-destructive dialog (S25, D.4.1; export-flow exportWithNotice);
-//   import → validation (ImportError → "kein gültiger Olife-Export") → mode dialog (Zusammenführen /
+//   import → validation (ImportError → "kein gültiger Habit-Garden-Export") → mode dialog (Zusammenführen /
 //   Wiederherstellen) → restore needs a destructive confirmation with Abbrechen focused, then the route
 //   is re-dispatched. "Alle Daten löschen" needs two destructive confirmations, deletes the database and
 //   the UI preferences in localStorage, then location.replace('/start') under the base path (S40).

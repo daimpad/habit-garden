@@ -44,7 +44,7 @@ await build({
 await copyFile(nm('inter-ui/variable/InterVariable.woff2'), out('assets/fonts/InterVariable.woff2'));
 await copyFile(nm('inter-ui/LICENSE.txt'), out('assets/fonts/OFL.txt'));
 
-// Licence texts of everything delivered (S39): Olife itself, the runtime libraries
+// Licence texts of everything delivered (S39): Habit Garden itself, the runtime libraries
 // (markdown-it with the packages bundled into it), the font and the icons.
 const LICENSES = [
   { pkg: null, files: ['LICENSE'] },
@@ -64,7 +64,7 @@ const sections = [];
 for (const { pkg, files } of LICENSES) {
   const dir = pkg === null ? root : nm(pkg);
   const meta = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'));
-  const name = pkg === null ? 'Olife' : meta.name;
+  const name = pkg === null ? 'Habit Garden' : meta.name;
   const texts = [];
   for (const file of files) texts.push((await readFile(join(dir, file), 'utf8')).trim());
   const rule = '='.repeat(72);

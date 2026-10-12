@@ -18,13 +18,21 @@
 //   runs on the first render after page load only.
 // - The missed-reminders toast ("Fällig heute", S13/D.5.3) reveals that section once the data is
 //   complete: the list expands, scrolls into view and its heading takes focus.
+// - Habit Garden redesign (decision of 12.10.2026): a hero with date, greeting by time of day, watering
+//   progress, landscape and the meadow of all areas (screens/garden.ts) replaces the app bar; routines are
+//   large cards (plant in an arch, stage, "Noch n Tage bis …", streak, "Heute gießen", 12-week heatmap);
+//   "Melde dich bei" suggests up to three people whose contact rhythm is due (services/contacts.ts).
+//   Order: hero, first steps, backup, routines, people, focus, mood, due today.
+// - Heatmap cells on a card toggle past days like the habit sheet (toast with Rückgängig); today's cell
+//   runs the same flow as the card's toggle.
 // TODO(phase-3): swipe left on a focus row removes it from the focus (A.3); Phase 1 uses the task sheet.
 // TODO(phase-2): evening card "Morgen vorbereiten" above Fällig heute (H7 [Ext]).
-// TODO(phase-5): tapping the date opens the calendar sheet (H8), header landscape (H11), review card (H9).
+// TODO(phase-5): tapping the date opens the calendar sheet (H8), review card (H9).
 import { liveQuery, type Observable, type Subscription } from 'dexie';
-import { petalColor } from '../components/flora.js';
+import { butterfly, flower, petalColor } from '../components/flora.js';
 import type { CheckboxChange } from '../components/ol-checkbox.js';
 import type { HabitToggleChange } from '../components/ol-habit-toggle.js';
+import type { OlHeatmap, ToggleDayDetail } from '../components/ol-heatmap.js';
 import { particles } from '../components/ol-particles.js';
 import type { OlPlant } from '../components/ol-plant.js';
 import { onModalChange, topModal, type OlSheet } from '../components/ol-sheet.js';
@@ -32,10 +40,11 @@ import { showToast } from '../components/ol-toast.js';
 import { fmt, stageName, t } from '../i18n/de.js';
 import {
   DEFAULT_SETTINGS, GENERIC_TINT, MAX_FOCUS,
-  type Area, type Day, type FirstStepId, type FlowerId, type Habit, type HabitLog, type Id, type MoodLog,
-  type Profile, type Task,
+  type Area, type Contact, type ContactLog, type Day, type FirstStepId, type FlowerId, type Habit, type HabitLog,
+  type Id, type MoodLog, type Profile, type Task,
 } from '../model.js';
 import { areas$ } from '../repo/areas.js';
+import { contactLogs$, contacts$, logContact, undoLogContact } from '../repo/contacts.js';
 import { anyFocusEver, getFocus } from '../repo/dayPlans.js';
 import { habitLogId, logsByHabit$, toggleLog, type ToggleResult } from '../repo/habitLogs.js';
 import { habits$ } from '../repo/habits.js';
@@ -44,15 +53,24 @@ import { noteCount$ } from '../repo/notes.js';
 import { profile$, updateProfile } from '../repo/profile.js';
 import { compareDue, completeTask, dueOn, getTask, reopenTask } from '../repo/tasks.js';
 import type { Route } from '../router.js';
-import { isScheduledOn, stageFor, streak, weekProgress } from '../services/growth.js';
+import { butterflyColor, contactStatuses, lastContactText, rhythmLabel, suggestions, type ContactStatus } from '../services/contacts.js';
+import { bestStreak, isScheduledOn, nextStage, stageFor, streak, weekProgress, type NextStage } from '../services/growth.js';
 import { backupCardState } from '../services/storage-hints.js';
 import { takeRevealDue } from '../services/reminders.js';
-import { currentHour, formatDayLong, formatDayShort, formatTime, now, nowIso, today } from '../util/date.js';
-import { emit, h, HAPTIC, icon, motionReduced, raw, render, vibrate, type SafeHtml } from '../util/dom.js';
+import {
+  currentHour, formatDayFull, formatDayLong, formatDayShort, formatTime, formatWeekdayLong, now, nowIso, today,
+} from '../util/date.js';
+import { emit, h, HAPTIC, icon, motionReduced, raw, render, setVar, vibrate, type SafeHtml } from '../util/dom.js';
 import { exportWithNotice } from './export-flow.js';
+import {
+  applySky, dayPhase, greetingLine, greetingMarkup, hillsMarkup, liftButterfly, meadowPlant, skyMarkup, sunPosition, syncMeadow,
+  type MeadowGroup, type MeadowPerson,
+} from './garden.js';
 import { openCapture, type CaptureType } from './sheets/capture.js';
 import { openFocusPick } from './sheets/focus-pick.js';
+import { openHabitEditor, rhythmText } from './sheets/habit.js';
 import { openJournal } from './sheets/journal.js';
+import { openPeopleSheet, openPersonSheet } from './sheets/people.js';
 
 type Period = Habit['period'];
 type MoodValue = 1 | 2 | 3 | 4 | 5;
@@ -72,6 +90,12 @@ const EXPECT_TIMEOUT_MS = 2000;
 /** A confirm dialog has finished closing (fade 150 ms) and handed focus back by then. */
 const DIALOG_SETTLE_MS = 400;
 const REVEAL_TIMEOUT_MS = 800;
+const HEAT_WEEKS = 12;
+const PEOPLE_MAX = 3;
+/** Flower of the area whose meadow group hosts the butterflies ("Beziehungen"). */
+const PEOPLE_FLOWER: FlowerId = 'helianthus';
+const PEOPLE_GROUP = 'people';
+const NO_AREA_GROUP = 'none';
 const RING_R = 11.5;
 const RING_C = 2 * Math.PI * RING_R;
 const EASE_ENTER = 'cubic-bezier(0,0,0,1)';
@@ -114,6 +138,20 @@ interface Opener { list: HTMLElement | null; index: number; inRoutines: boolean 
 
 interface Els {
   root: HTMLElement;
+  hero: HTMLElement;
+  greeting: HTMLElement;
+  greetLine: HTMLElement;
+  progress: HTMLElement;
+  progressFill: HTMLElement;
+  progressCount: HTMLElement;
+  meadow: HTMLElement;
+  gardenAdd: HTMLElement;
+  people: HTMLElement;
+  peopleHeading: HTMLElement;
+  peopleEmpty: HTMLElement;
+  peopleEmptyText: HTMLElement;
+  peopleAdd: HTMLElement;
+  peopleList: HTMLElement;
   first: HTMLElement;
   steps: HTMLElement;
   backup: HTMLElement;
@@ -321,6 +359,24 @@ function todayStatus(logs: readonly HabitLog[], day: Day): HabitLog['status'] | 
   return status;
 }
 
+/** "17 Tage", "1 Tag", "3 Wochen" for a streak value in the habit's unit. */
+function countText(habit: Habit, n: number): string {
+  if (habit.schedule.kind === 'timesPerWeek') return n === 1 ? t.streakWeeksOne : fmt(t.streakWeeks, { n });
+  return n === 1 ? t.dayCountOne : fmt(t.dayCount, { n });
+}
+
+/** "Noch 2 Tage bis Blätter" (daily every day), "Noch 2× gießen bis …" (other rhythms), weeks for timesPerWeek. */
+function nextText(habit: Habit, next: NextStage): string {
+  if (next.next === null) return t.cardFullBloom;
+  const stage = stageName(next.next);
+  const n = next.remaining;
+  if (next.unit === 'weeks') return n === 1 ? fmt(t.cardNextWeekOne, { stage }) : fmt(t.cardNextWeeks, { n, stage });
+  if (habit.schedule.kind === 'daily' && habit.schedule.interval <= 1) {
+    return n === 1 ? fmt(t.cardNextDayOne, { stage }) : fmt(t.cardNextDays, { n, stage });
+  }
+  return n === 1 ? fmt(t.cardNextTimesOne, { stage }) : fmt(t.cardNextTimes, { n, stage });
+}
+
 /** The logs of a habit after toggling day to done/undone (immutable copy for growth.ts). */
 function withDay(logs: readonly HabitLog[], habit: Habit, day: Day, done: boolean): HabitLog[] {
   const next = logs.filter((log) => log.day !== day);
@@ -376,6 +432,10 @@ class HeuteScreen {
   private mood: MoodLog | undefined;
   private moodLoaded = false;
   private due: Task[] | null = null;
+  private contacts: Contact[] | null = null;
+  private contactLogs: ContactLog[] | null = null;
+  /** People just marked "Kontaktiert" whose log has not reached the snapshot yet. */
+  private readonly contactedNow = new Set<Id>();
   private anyFocus: boolean | null = null;
   private noteCount: number | null = null;
 
@@ -409,6 +469,7 @@ class HeuteScreen {
     const day = this.day;
     this.watch(profile$(), (profile) => {
       this.profile = profile;
+      this.renderHero();
       this.renderFirstSteps();
       this.renderBackup();
       this.renderRoutines();
@@ -445,6 +506,19 @@ class HeuteScreen {
     this.watch(dueOn(day), (list) => {
       this.due = list;
       this.renderDue();
+    });
+    this.watch(contacts$(), (list) => {
+      this.contacts = list;
+      this.renderPeople();
+      this.renderRoutines();
+    });
+    this.watch(contactLogs$(), (list) => {
+      this.contactLogs = list;
+      for (const id of [...this.contactedNow]) {
+        if (list.some((log) => log.contactId === id && log.day === day)) this.contactedNow.delete(id);
+      }
+      this.renderPeople();
+      this.renderRoutines();
     });
     this.watch(liveQuery(() => anyFocusEver()), (any) => {
       this.anyFocus = any;
@@ -532,6 +606,7 @@ class HeuteScreen {
     const n = now();
     const next = new Date(n.getFullYear(), n.getMonth(), n.getDate(), n.getHours() + 1, 0, 1);
     this.later(() => {
+      this.renderHero();
       this.renderRoutines();
       this.armHourTimer();
     }, Math.max(1000, next.getTime() - n.getTime()));
@@ -595,6 +670,35 @@ class HeuteScreen {
     if (id) this.navigate(row, `/gewohnheit/${encodeURIComponent(id)}`);
   }
 
+  private editHabit(row: HTMLElement): void {
+    const id = row.dataset['id'];
+    if (!id) return;
+    this.rememberOpener();
+    try {
+      openHabitEditor(id);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  private openPeople(): void {
+    this.rememberOpener();
+    try {
+      openPeopleSheet();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  private openPerson(id?: Id): void {
+    this.rememberOpener();
+    try {
+      openPersonSheet(id);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   private capture(type: CaptureType): void {
     this.rememberOpener();
     try {
@@ -642,13 +746,32 @@ class HeuteScreen {
           <h2 class="ol-label" id="heute-r-${period}">${PERIOD_HEADINGS[period]}</h2>
           <span class="ol-heute__counter ol-caption ol-num"></span>
         </div>
-        <ol-card class="ol-heute__card"><ul class="ol-heute__list"></ul></ol-card>
+        <ul class="ol-heute__list ol-garden-grid"></ul>
       </section>`;
     render(view, h`
-      <ol-app-bar display heading="${formatDayLong(this.day)}">
-        <ol-icon-button slot="actions" class="ol-heute__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
-      </ol-app-bar>
       <div class="ol-heute" data-loading>
+        <header class="ol-hero">
+          ${skyMarkup()}
+          <div class="ol-hero__content">
+            <div class="ol-hero__top">
+              <span class="ol-hero__brand"><span class="ol-hero__brand-mark" aria-hidden="true">${icon('sprout', 20)}</span><span class="ol-hero__brand-name">${t.appName}</span></span>
+              <ol-icon-button class="ol-heute__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
+            </div>
+            <h1 class="ol-hero__title">
+              <span class="ol-hero__date">${formatWeekdayLong(this.day)}, <span class="ol-hero__date-accent">${formatDayFull(this.day)}</span></span>
+              <span class="ol-hero__greeting"></span>
+            </h1>
+            <p class="ol-hero__line"></p>
+            <div class="ol-hero__progress" hidden>
+              <span class="ol-hero__bar" aria-hidden="true"><span class="ol-hero__bar-fill"></span></span>
+              <span class="ol-hero__progress-text"><strong class="ol-hero__progress-count ol-num"></strong> ${t.heroProgressText}</span>
+            </div>
+          </div>
+          <div class="ol-hero__land">
+            ${hillsMarkup()}
+            <ul class="ol-meadow" aria-label="${t.meadowLabel}"></ul>
+          </div>
+        </header>
         <section class="ol-section ol-heute__first" aria-labelledby="heute-first" hidden>
           <div class="ol-section__head"><h2 class="ol-label" id="heute-first">${t.sectionFirstSteps}</h2></div>
           <ul class="ol-heute__steps"></ul>
@@ -667,6 +790,27 @@ class HeuteScreen {
             <ol-button class="ol-heute__backup-settings" variant="ghost" label="${t.backupCardSettings}"></ol-button>
           </div>
         </ol-card>
+        <div class="ol-heute__routines">
+          <section class="ol-section ol-heute__routine-empty" aria-labelledby="heute-r-empty" hidden>
+            <div class="ol-section__head"><h2 class="ol-label" id="heute-r-empty" tabindex="-1">${t.sectionRoutines}</h2></div>
+            <ol-card class="ol-heute__card"><ol-empty-state compact icon="sprout"></ol-empty-state></ol-card>
+          </section>
+          ${PERIODS.map(routineSection)}
+        </div>
+        <button type="button" class="ol-garden-add" hidden>${icon('plus')}<span>${t.gardenAdd}</span></button>
+        <section class="ol-section ol-heute__people" aria-labelledby="heute-people">
+          <div class="ol-section__head">
+            <h2 class="ol-label" id="heute-people" tabindex="-1">${t.sectionPeopleDue}</h2>
+            <ol-button class="ol-heute__people-all" variant="ghost" size="sm" icon="users" label="${t.heutePeopleAll}"></ol-button>
+          </div>
+          <ol-card class="ol-heute__card">
+            <div class="ol-heute__people-empty" hidden>
+              <p class="ol-body-s ol-text-2"></p>
+              <ol-button class="ol-heute__people-add" variant="tonal" size="sm" icon="user-plus" label="${t.heutePeopleAdd}"></ol-button>
+            </div>
+            <ul class="ol-heute__list ol-heute__people-list"></ul>
+          </ol-card>
+        </section>
         <section class="ol-section ol-heute__focus" aria-labelledby="heute-focus">
           <div class="ol-section__head">
             <h2 class="ol-label" id="heute-focus" tabindex="-1">${t.sectionFocus}</h2>
@@ -685,13 +829,6 @@ class HeuteScreen {
             <button type="button" class="ol-heute__slot" hidden>${icon('plus')}<span>${t.focusSlotEmpty}</span></button>
           </ol-card>
         </section>
-        <div class="ol-heute__routines">
-          <section class="ol-section ol-heute__routine-empty" aria-labelledby="heute-r-empty" hidden>
-            <div class="ol-section__head"><h2 class="ol-label" id="heute-r-empty" tabindex="-1">${t.sectionRoutines}</h2></div>
-            <ol-card class="ol-heute__card"><ol-empty-state compact icon="sprout"></ol-empty-state></ol-card>
-          </section>
-          ${PERIODS.map(routineSection)}
-        </div>
         <section class="ol-section ol-heute__mood-section" aria-labelledby="heute-mood">
           <div class="ol-section__head">
             <h2 class="ol-label" id="heute-mood" tabindex="-1">${t.sectionMood}</h2>
@@ -726,11 +863,28 @@ class HeuteScreen {
       };
     }
     const backup = req<HTMLElement>(view, '.ol-heute__backup');
+    const hero = req<HTMLElement>(view, '.ol-hero');
+    const people = req<HTMLElement>(view, '.ol-heute__people');
+    const peopleEmpty = req<HTMLElement>(people, '.ol-heute__people-empty');
     const ring = req<HTMLElement>(view, '.ol-heute__ring');
     const routineEmpty = req<HTMLElement>(view, '.ol-heute__routine-empty');
     const due = req<HTMLElement>(view, '.ol-heute__due');
     return {
       root: req<HTMLElement>(view, '.ol-heute'),
+      hero,
+      greeting: req<HTMLElement>(hero, '.ol-hero__greeting'),
+      greetLine: req<HTMLElement>(hero, '.ol-hero__line'),
+      progress: req<HTMLElement>(hero, '.ol-hero__progress'),
+      progressFill: req<HTMLElement>(hero, '.ol-hero__bar-fill'),
+      progressCount: req<HTMLElement>(hero, '.ol-hero__progress-count'),
+      meadow: req<HTMLElement>(hero, '.ol-meadow'),
+      gardenAdd: req<HTMLElement>(view, '.ol-garden-add'),
+      people,
+      peopleHeading: req<HTMLElement>(people, '#heute-people'),
+      peopleEmpty,
+      peopleEmptyText: req<HTMLElement>(peopleEmpty, 'p'),
+      peopleAdd: req<HTMLElement>(peopleEmpty, '.ol-heute__people-add'),
+      peopleList: req<HTMLElement>(people, '.ol-heute__people-list'),
       first: req<HTMLElement>(view, '.ol-heute__first'),
       steps: req<HTMLElement>(view, '.ol-heute__steps'),
       backup,
@@ -814,11 +968,42 @@ class HeuteScreen {
     });
     els.routines.addEventListener('click', (event) => {
       const target = event.target instanceof Element ? event.target : null;
-      const row = target?.closest('.ol-heute__title') ? target.closest<HTMLElement>('li[data-id]') : null;
-      if (row) this.openHabit(row);
+      const row = target?.closest<HTMLElement>('li[data-id]');
+      if (!target || !row) return;
+      if (target.closest('.ol-heute__title')) this.openHabit(row);
+      else if (target.closest('.ol-garden-card__edit')) this.editHabit(row);
     });
-    for (const period of PERIODS) this.detach.push(attachLongPress(els.routine[period].list, (row) => this.openHabit(row)));
+    els.routines.addEventListener('ol-toggle-day', (event) => {
+      const day = event instanceof CustomEvent ? (event.detail as ToggleDayDetail | null)?.day : undefined;
+      const row = event.target instanceof Element ? event.target.closest<HTMLElement>('li[data-id]') : null;
+      if (day && row) this.onHeatmapDay(row, day);
+    });
     els.routineEmptyState.addEventListener('ol-action', () => this.capture('habit'));
+    els.gardenAdd.addEventListener('click', () => this.capture('habit'));
+
+    // Wiese: a plant opens its routine, a butterfly its person.
+    els.meadow.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const plant = target?.closest<HTMLElement>('button.ol-meadow__plant');
+      const flyer = target?.closest<HTMLElement>('.ol-meadow__butterfly');
+      const id = (plant ?? flyer)?.closest<HTMLElement>('li[data-id]')?.dataset['id'];
+      if (!id) return;
+      this.rememberOpener();
+      if (plant) emit(plant, 'ol-navigate', { path: `/gewohnheit/${encodeURIComponent(id)}` });
+      else this.openPerson(id);
+    });
+
+    // Melde dich bei
+    req<HTMLElement>(this.view, '.ol-heute__people-all').addEventListener('click', () => this.openPeople());
+    els.peopleAdd.addEventListener('click', () => this.openPerson());
+    els.peopleList.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const row = target?.closest<HTMLElement>('li[data-id]');
+      const id = row?.dataset['id'];
+      if (!target || !row || !id) return;
+      if (target.closest('.ol-heute__contacted')) void this.onContacted(row, id);
+      else if (target.closest('.ol-heute__title')) this.openPerson(id);
+    });
 
     // Stimmung
     els.moods.addEventListener('click', (event) => {
@@ -856,7 +1041,8 @@ class HeuteScreen {
 
   private dataReady(): boolean {
     return this.profile !== null && this.areasLoaded && this.focus !== null && this.habits !== null
-      && this.logs !== null && this.moodLoaded && this.due !== null && this.anyFocus !== null && this.noteCount !== null;
+      && this.logs !== null && this.moodLoaded && this.due !== null && this.anyFocus !== null && this.noteCount !== null
+      && this.contacts !== null && this.contactLogs !== null;
   }
 
   private maybeReveal(): void {
@@ -1124,13 +1310,37 @@ class HeuteScreen {
     return area ? { flower: area.flower, tint: area.tint } : { flower: 'generic', tint: GENERIC_TINT };
   }
 
-  private createHabitRow(): HTMLElement {
+  private createHabitCard(): HTMLElement {
     const li = document.createElement('li');
-    li.className = 'ol-heute__row ol-heute__habit';
-    render(li, h`<ol-plant class="ol-heute__plant" size="32"></ol-plant>
-      <button type="button" class="ol-heute__title"></button>
-      <span class="ol-heute__streak"><span class="ol-heute__streak-icon">${icon('flame', 20)}</span><span class="ol-heute__streak-n ol-num" aria-hidden="true"></span><span class="ol-heute__streak-sr ol-visually-hidden"></span></span>
-      <ol-habit-toggle></ol-habit-toggle>`);
+    li.className = 'ol-garden-card';
+    const legend = [0, 1, 2, 3, 4].map((level) => h`<span class="ol-garden-card__swatch l${level}"></span>`);
+    render(li, h`<div class="ol-garden-card__head">
+        <span class="ol-garden-card__icon" aria-hidden="true"></span>
+        <div class="ol-garden-card__titles">
+          <button type="button" class="ol-heute__title ol-garden-card__name"></button>
+          <span class="ol-garden-card__sub ol-caption"></span>
+        </div>
+        <ol-icon-button class="ol-garden-card__edit" icon="pencil"></ol-icon-button>
+      </div>
+      <div class="ol-garden-card__arch">
+        <ol-plant class="ol-heute__plant" size="150"></ol-plant>
+        <span class="ol-garden-card__stage"></span>
+        <span class="ol-garden-card__next"></span>
+      </div>
+      <div class="ol-garden-card__foot">
+        <p class="ol-garden-card__streak">
+          <span class="ol-garden-card__streak-n ol-num"></span>
+          <span class="ol-garden-card__streak-text"><span class="ol-garden-card__streak-unit"></span><span class="ol-garden-card__hint"></span></span>
+        </p>
+        <ol-habit-toggle caption="${t.cardWater}" caption-done="${t.cardWatered}"></ol-habit-toggle>
+      </div>
+      <div class="ol-garden-card__heat">
+        <ol-heatmap weeks="${HEAT_WEEKS}"></ol-heatmap>
+        <div class="ol-garden-card__legend ol-caption" aria-hidden="true">
+          <span>${fmt(t.heatmapWeeksLabel, { n: HEAT_WEEKS })}</span>
+          <span class="ol-garden-card__scale">${t.heatmapLess}${legend}${t.heatmapMore}</span>
+        </div>
+      </div>`);
     return li;
   }
 
@@ -1150,7 +1360,7 @@ class HeuteScreen {
         list,
         items,
         (hb) => hb.id,
-        () => this.createHabitRow(),
+        () => this.createHabitCard(),
         (row, hb) => this.updateHabitRow(row, hb, logs.get(hb.id) ?? []),
         () => this.els.moodHeading,
       );
@@ -1166,9 +1376,108 @@ class HeuteScreen {
     const empty = this.els.routineEmpty;
     if (shown.length > 0 && !empty.hidden && empty.contains(document.activeElement)) this.els.moodHeading.focus({ preventScroll: true });
     empty.hidden = shown.length > 0;
+    this.els.gardenAdd.hidden = shown.length === 0;
     const state = this.els.routineEmptyState;
     setAttr(state, 'message', active.length === 0 ? t.emptyRoutines : t.emptyRoutinesToday);
     setAttr(state, 'action', active.length === 0 ? t.actionCreateHabit : '');
+
+    const watered = shown.filter((hb) => this.habitDoneToday(hb, logs.get(hb.id) ?? [])).length;
+    this.renderProgress(watered, shown.length);
+    this.renderMeadow(active, logs);
+  }
+
+  // --- Hero (greeting, landscape, progress) and meadow ---
+
+  private renderHero(): void {
+    const settings = this.profile?.settings ?? DEFAULT_SETTINGS;
+    const n = now();
+    const hour = currentHour();
+    const phase = dayPhase(hour, settings);
+    applySky(this.els.hero, phase, sunPosition(hour, n.getMinutes(), settings));
+    const greeting = this.els.greeting;
+    if (greeting.dataset['phase'] !== phase) {
+      greeting.dataset['phase'] = phase;
+      render(greeting, greetingMarkup(phase));
+    }
+    this.renderGreetingLine();
+  }
+
+  private renderGreetingLine(): void {
+    const phase = this.els.greeting.dataset['phase'];
+    const allDone = this.els.hero.hasAttribute('data-all-watered');
+    const line = allDone ? t.heroAllWatered
+      : phase === 'morning' || phase === 'day' || phase === 'evening' || phase === 'night' ? greetingLine(phase) : '';
+    setText(this.els.greetLine, line);
+  }
+
+  private renderProgress(done: number, n: number): void {
+    const els = this.els;
+    els.progress.hidden = n === 0;
+    els.hero.toggleAttribute('data-all-watered', n > 0 && done >= n);
+    this.renderGreetingLine();
+    if (n === 0) return;
+    setText(els.progressCount, fmt(t.heroProgressCount, { done, n }));
+    setAttr(els.progress, 'aria-label', fmt(t.heroProgressAria, { done, n }));
+    setVar(els.progressFill, '--progress', (Math.min(1, done / n)).toFixed(3));
+  }
+
+  /** Meadow groups: active areas in order (plus archived ones that still hold routines), routines without area last. */
+  private meadowGroups(active: readonly Habit[], logs: Map<Id, HabitLog[]>): MeadowGroup[] {
+    const day = this.day;
+    const byArea = new Map<string, Habit[]>();
+    for (const habit of active) {
+      const key = habit.areaId && this.areas.has(habit.areaId) ? habit.areaId : NO_AREA_GROUP;
+      const list = byArea.get(key) ?? [];
+      list.push(habit);
+      byArea.set(key, list);
+    }
+    const plantOf = (habit: Habit): MeadowGroup['plants'][number] => {
+      const own = logs.get(habit.id) ?? [];
+      return {
+        habit,
+        stage: stageFor(habit, own, day),
+        streak: streak(habit, own, day),
+        weeks: habit.schedule.kind === 'timesPerWeek',
+      };
+    };
+    const groups: MeadowGroup[] = [];
+    for (const area of this.areas.values()) {
+      const habits = byArea.get(area.id) ?? [];
+      if (area.archived === 1 && habits.length === 0) continue;
+      groups.push({ key: area.id, name: area.name, flower: area.flower, tint: area.tint, plants: habits.map(plantOf), people: [] });
+    }
+    const loose = byArea.get(NO_AREA_GROUP);
+    if (loose) groups.push({ key: NO_AREA_GROUP, name: t.noArea, flower: 'generic', tint: GENERIC_TINT, plants: loose.map(plantOf), people: [] });
+
+    const people = this.meadowPeople();
+    if (people.length > 0) {
+      const host = groups.find((g) => this.areas.get(g.key)?.flower === PEOPLE_FLOWER && this.areas.get(g.key)?.archived === 0);
+      if (host) host.people = people;
+      else groups.push({ key: PEOPLE_GROUP, name: t.meadowPeople, flower: PEOPLE_FLOWER, tint: GENERIC_TINT, plants: [], people });
+    }
+    return groups;
+  }
+
+  private meadowPeople(): MeadowPerson[] {
+    const contacts = this.contacts;
+    const logs = this.contactLogs;
+    if (!contacts || !logs) return [];
+    return contactStatuses(contacts, logs, this.day).map((status) => {
+      const fresh = !status.due || this.contactedNow.has(status.contact.id);
+      return {
+        id: status.contact.id,
+        name: status.contact.name,
+        color: butterflyColor(status.contact),
+        state: fresh ? 'fresh' : 'due',
+        last: lastContactText(status),
+      };
+    });
+  }
+
+  private renderMeadow(active: readonly Habit[], logs: Map<Id, HabitLog[]>): void {
+    if (!this.contacts || !this.contactLogs) return;
+    syncMeadow(this.els.meadow, this.meadowGroups(active, logs),
+      (id) => this.pendingHabits.has(id) || this.expectLog.has(id));
   }
 
   private orderRoutines(): void {
@@ -1205,51 +1514,79 @@ class HeuteScreen {
     this.applyHabitState(row, habit, logs, true);
   }
 
-  /** Writes plant, streak and toggle of a row from `logs`; the plant stage only when `stage` is set. */
+  /** Writes a card from `logs`: head, plant (stage only when `stage` is set), stage badge, streak, toggle, heatmap. */
   private applyHabitState(row: HTMLElement, habit: Habit, logs: readonly HabitLog[], stage: boolean): void {
     const day = this.day;
-    const { flower, tint } = this.flowerOf(habit);
+    const { flower: flowerId, tint } = this.flowerOf(habit);
     const count = streak(habit, logs, day);
+    const weekly = habit.schedule.kind === 'timesPerWeek';
+    setVar(row, '--tint', tint);
+
+    const glyph = row.querySelector<HTMLElement>('.ol-garden-card__icon');
+    if (glyph && glyph.dataset['flower'] !== flowerId) {
+      glyph.dataset['flower'] = flowerId;
+      render(glyph, raw(flower(flowerId, 22)));
+    }
+    const title = row.querySelector('.ol-heute__title');
+    if (title) {
+      setText(title, habit.name);
+      setAttr(title, 'aria-label', fmt(t.habitOpenAria, { name: habit.name }));
+    }
+    const sub = row.querySelector('.ol-garden-card__sub');
+    if (sub) setText(sub, fmt(t.cardSub, { rhythm: rhythmText(habit.schedule), best: countText(habit, bestStreak(habit, logs, day)) }));
+    const edit = row.querySelector('.ol-garden-card__edit');
+    if (edit) setAttr(edit, 'label', fmt(t.cardEditAria, { name: habit.name }));
+
     const plant = row.querySelector<OlPlant>('ol-plant');
     if (plant) {
-      setAttr(plant, 'flower', flower);
+      setAttr(plant, 'flower', flowerId);
       setAttr(plant, 'tint', tint);
       if (stage) setAttr(plant, 'stage', String(stageFor(habit, logs, day)));
       setAttr(plant, 'streak', String(count));
-      if (habit.schedule.kind === 'timesPerWeek') setAttr(plant, 'streak-unit', 'weeks');
+      if (weekly) setAttr(plant, 'streak-unit', 'weeks');
       else plant.removeAttribute('streak-unit');
     }
+    const next = nextStage(habit, logs, day);
+    const badge = row.querySelector('.ol-garden-card__stage');
+    if (badge) setText(badge, stageName(next.stage));
+    const nextEl = row.querySelector('.ol-garden-card__next');
+    if (nextEl) setText(nextEl, nextText(habit, next));
 
     const status = todayStatus(logs, day);
-    const weekly = habit.schedule.kind === 'timesPerWeek';
+    const progress = weekProgress(habit, logs, day);
+    const target = Math.max(1, progress.target);
+    const weekDone = Math.min(progress.done, target);
+    const number = row.querySelector('.ol-garden-card__streak-n');
+    if (number) setText(number, String(count));
+    const unit = row.querySelector('.ol-garden-card__streak-unit');
+    if (unit) {
+      setText(unit, weekly
+        ? (count === 1 ? t.cardStreakWeekOne : t.cardStreakWeeks)
+        : (count === 1 ? t.cardStreakDayOne : t.cardStreakDays));
+    }
+    const hint = row.querySelector('.ol-garden-card__hint');
+    if (hint) {
+      setText(hint, weekly ? fmt(t.habitWeekProgressAria, { done: weekDone, target })
+        : status === 'done' ? t.cardHintDone : count > 0 ? t.cardHintKeep : t.cardHintStart);
+    }
+
     const toggle = row.querySelector<HTMLElement>('ol-habit-toggle');
-    const streakEl = row.querySelector<HTMLElement>('.ol-heute__streak');
-    const streakN = row.querySelector<HTMLElement>('.ol-heute__streak-n');
-    const streakSr = row.querySelector<HTMLElement>('.ol-heute__streak-sr');
-    streakEl?.toggleAttribute('data-week', weekly);
-    if (weekly) {
-      const progress = weekProgress(habit, logs, day);
-      const target = Math.max(1, progress.target);
-      const done = Math.min(progress.done, target);
-      if (streakN) setText(streakN, fmt(t.habitWeekProgress, { done, target }));
-      if (streakSr) setText(streakSr, fmt(t.habitWeekProgressAria, { done, target }));
-      if (toggle) {
-        setAttr(toggle, 'progress', (done / target).toFixed(3));
+    if (toggle) {
+      if (weekly) {
+        setAttr(toggle, 'progress', (weekDone / target).toFixed(3));
         setAttr(toggle, 'state', progress.done >= target ? 'done' : progress.done > 0 ? 'partial' : 'pending');
         toggle.toggleAttribute('today-done', status === 'done');
-        setAttr(toggle, 'label', fmt(t.habitToggleWeekAria, { name: habit.name, done, target }));
-      }
-    } else {
-      if (streakN) setText(streakN, String(count));
-      if (streakSr) setText(streakSr, fmt(t.habitStreakAria, { n: count }));
-      if (toggle) {
+        setAttr(toggle, 'label', fmt(t.habitToggleWeekAria, { name: habit.name, done: weekDone, target }));
+      } else {
         toggle.removeAttribute('progress');
         toggle.removeAttribute('today-done');
         setAttr(toggle, 'state', status === 'done' ? 'done' : status === 'skipped' ? 'skipped' : 'pending');
         setAttr(toggle, 'label', fmt(t.habitToggleAria, { name: habit.name }));
       }
+      toggle.toggleAttribute('disabled', this.pendingHabits.has(habit.id));
     }
-    toggle?.toggleAttribute('disabled', this.pendingHabits.has(habit.id));
+    row.toggleAttribute('data-watered', status === 'done');
+    row.querySelector<OlHeatmap>('ol-heatmap')?.setData(habit, logs, day);
   }
 
   private async onHabitToggle(row: HTMLElement, toggle: HTMLElement, requested: boolean): Promise<void> {
@@ -1294,6 +1631,7 @@ class HeuteScreen {
     const plant = row.querySelector<OlPlant>('ol-plant');
     if (!plant) return;
     const { before, after, done } = result;
+    this.animateMeadowPlant(habit.id, result);
     if (!done) {
       // Rücknahme: no particles; a lower stage crossfades.
       if (plant.stage !== after) void plant.crossfadeTo(after);
@@ -1314,7 +1652,7 @@ class HeuteScreen {
       confirm = true;
     }
     if (habit.schedule.kind !== 'timesPerWeek' && MILESTONES.includes(streak(habit, logs, this.day))) {
-      const number = row.querySelector('.ol-heute__streak-n');
+      const number = row.querySelector('.ol-garden-card__streak-n');
       if (number) {
         const box = number.getBoundingClientRect();
         particles().sparks(box.left + box.width / 2, box.top + box.height / 2);
@@ -1322,6 +1660,125 @@ class HeuteScreen {
       confirm = true;
     }
     if (confirm) vibrate(HAPTIC.confirm);
+  }
+
+  /** The meadow plant follows the card: grows with it, wobbles on watering, crossfades on undo. */
+  private animateMeadowPlant(id: Id, result: ToggleResult): void {
+    const plant = meadowPlant(this.els.meadow, id);
+    if (!plant) return;
+    if (!result.done) {
+      if (plant.stage !== result.after) void plant.crossfadeTo(result.after);
+      return;
+    }
+    if (plant.stage !== result.after) plant.setAttribute('stage', String(result.after));
+    if (result.after > result.before) void plant.grow();
+    void plant.wobble();
+  }
+
+  /** A heatmap cell on a card: today runs the card's toggle flow, past days toggle with a toast (like the habit sheet). */
+  private onHeatmapDay(row: HTMLElement, day: Day): void {
+    const id = row.dataset['id'];
+    const habit = this.habits?.find((hb) => hb.id === id);
+    if (!id || !habit) return;
+    if (day === this.day) {
+      const toggle = row.querySelector<HTMLElement>('ol-habit-toggle');
+      if (toggle) void this.onHabitToggle(row, toggle, true);
+      return;
+    }
+    const run = (restoreStartDay?: Day, offerUndo = true): void => {
+      toggleLog(id, day, restoreStartDay === undefined ? {} : { restoreStartDay }).then((result) => {
+        if (this.destroyed) return;
+        const date = formatDayLong(day);
+        const message = fmt(result.done ? t.toastDayDone : t.toastDayReset, { date });
+        showToast(message, offerUndo ? { action: { label: t.actionUndo, onAction: () => run(result.startDayBefore, false) } } : {});
+      }, () => showToast(t.toastError));
+    };
+    run();
+  }
+
+  // --- Melde dich bei (people whose contact rhythm is due) ---
+
+  private renderPeople(): void {
+    const contacts = this.contacts;
+    const logs = this.contactLogs;
+    if (!contacts || !logs) return;
+    const els = this.els;
+    const active = contacts.filter((c) => c.archived === 0);
+    const list = suggestions(active, logs, this.day, PEOPLE_MAX).filter((st) => !this.contactedNow.has(st.contact.id));
+    syncKeyed(
+      els.peopleList,
+      list,
+      (st) => st.contact.id,
+      () => this.createPersonRow(),
+      (row, st) => this.updatePersonRow(row, st),
+      () => els.peopleHeading,
+    );
+    const empty = list.length === 0;
+    els.peopleEmpty.hidden = !empty;
+    els.peopleAdd.hidden = active.length > 0;
+    setText(els.peopleEmptyText, active.length === 0 ? t.heutePeopleEmpty : t.heutePeopleInRhythm);
+  }
+
+  private createPersonRow(): HTMLElement {
+    const li = document.createElement('li');
+    li.className = 'ol-heute__row ol-heute__person';
+    render(li, h`<span class="ol-heute__person-glyph" aria-hidden="true"></span>
+      <span class="ol-heute__person-text">
+        <button type="button" class="ol-heute__title"></button>
+        <span class="ol-heute__meta ol-caption"></span>
+      </span>
+      <ol-button class="ol-heute__contacted" variant="tonal" size="sm" icon="check" label="${t.heuteContacted}"></ol-button>`);
+    return li;
+  }
+
+  private updatePersonRow(row: HTMLElement, status: ContactStatus): void {
+    const { contact } = status;
+    const color = butterflyColor(contact);
+    const glyph = row.querySelector<HTMLElement>('.ol-heute__person-glyph');
+    if (glyph && glyph.dataset['color'] !== color) {
+      glyph.dataset['color'] = color;
+      render(glyph, raw(butterfly(color, 28)));
+    }
+    const title = row.querySelector('.ol-heute__title');
+    if (title) {
+      setText(title, contact.name);
+      setAttr(title, 'aria-label', fmt(t.heuteContactOpenAria, { name: contact.name }));
+    }
+    const meta = row.querySelector('.ol-heute__meta');
+    if (meta) setText(meta, `${lastContactText(status)} · ${rhythmLabel(contact.rhythmDays)}`);
+    const button = row.querySelector('.ol-heute__contacted');
+    if (button) setAttr(button, 'aria-label', fmt(t.heuteContactedAria, { name: contact.name }));
+  }
+
+  /** "Kontaktiert": logs today, the row leaves, the butterfly takes off; the toast offers Rückgängig. */
+  private async onContacted(row: HTMLElement, id: Id): Promise<void> {
+    const contact = this.contacts?.find((c) => c.id === id);
+    if (!contact || this.contactedNow.has(id)) return;
+    this.contactedNow.add(id);
+    if (row.contains(document.activeElement)) moveFocusFrom(row, () => this.els.peopleHeading);
+    this.renderPeople();
+    this.renderRoutines();
+    liftButterfly(this.els.meadow, id);
+    vibrate(HAPTIC.tick);
+    try {
+      const result = await logContact(id, this.day);
+      if (this.destroyed) return;
+      showToast(fmt(t.heuteContactLogged, { name: contact.name }), {
+        action: {
+          label: t.actionUndo,
+          onAction: () => {
+            this.contactedNow.delete(id);
+            void undoLogContact(result).catch(() => showToast(t.toastError));
+          },
+        },
+      });
+    } catch {
+      this.contactedNow.delete(id);
+      if (this.destroyed) return;
+      showToast(t.toastError);
+      this.renderPeople();
+      this.renderRoutines();
+    }
   }
 
   // --- Stimmung (H4, S21) ---
