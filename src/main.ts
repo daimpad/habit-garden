@@ -1,6 +1,6 @@
 // Bootstrap: open the DB, apply settings (data-motion, theme, FAB side), render the shell (view,
 // bottom nav, FAB, toast, particles), wire global events (ol-navigate, ol-back, delegated
-// <a href="/…"> clicks), start the router with the onboarding guard, start reminders and the
+// <a href="/…"> clicks to app routes under the base path), start the router with the onboarding guard, start reminders and the
 // day watcher.
 //
 // Details of this implementation:
@@ -54,6 +54,7 @@ import { openTaskSheet } from './screens/sheets/task.js';
 import * as startScreen from './screens/start.js';
 import * as wissenScreen from './screens/wissen.js';
 import { startReminders } from './services/reminders.js';
+import { appPath } from './util/base.js';
 import { onDayChange } from './util/date.js';
 import { h, motionReduced, render } from './util/dom.js';
 
@@ -477,7 +478,10 @@ function onBackEvent(event: Event): void {
   back();
 }
 
-/** Delegated in-app links: <a href="/…"> without target/download/modifier keys/middle click. */
+/**
+ * Delegated in-app links: <a href="/…"> without target/download/modifier keys/middle click. The href
+ * carries the base path (util/base.ts); it is stripped, and only app routes are intercepted.
+ */
 function onLinkClick(event: MouseEvent): void {
   if (event.defaultPrevented || event.button !== 0) return;
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -489,10 +493,11 @@ function onLinkClick(event: MouseEvent): void {
   if (linkTarget && linkTarget !== '_self') return;
   const href = link.getAttribute('href') ?? '';
   if (href.startsWith('//')) return;
-  // Only app routes; files such as /assets/… stay with the browser.
-  if (href !== '/' && !href.startsWith('/?') && !parseRoute(href)) return;
+  const path = appPath(href);
+  // Only app routes under the base; files such as assets/… or licenses.txt stay with the browser.
+  if (path === null || (path !== '/' && !path.startsWith('/?') && !parseRoute(path))) return;
   event.preventDefault();
-  navigate(href);
+  navigate(path);
 }
 
 // ---------------------------------------------------------------------------
