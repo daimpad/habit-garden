@@ -231,8 +231,9 @@ async function notify(task: Task): Promise<void> {
 /**
  * Before the first reminder is created: hint dialog "Erinnerungen werden nur
  * bei geöffneter Seite ausgelöst", then Notification.requestPermission() (only
- * when the permission is 'default'). Resolves when done; the caller saves the
- * reminder regardless of the outcome (D.5).
+ * when the permission is 'default'). Resolves once the dialog is answered (the
+ * permission prompt is not waited for); the caller saves the reminder regardless
+ * of the outcome (D.5).
  */
 export async function ensureReminderPermission(): Promise<void> {
   let first = false;
@@ -246,7 +247,10 @@ export async function ensureReminderPermission(): Promise<void> {
   // Requested right after the confirm click (no await in between) so the user activation still counts.
   if (!confirmed || notificationPermission() !== 'default') return;
   try {
-    await Notification.requestPermission();
+    // Not awaited: the reminder is saved at once, whatever the user answers and even while the
+    // browser prompt is still open or ignored (D.5). Old Safari returns no promise.
+    const request: unknown = Notification.requestPermission();
+    if (request instanceof Promise) request.catch((err: unknown) => console.error(err));
   } catch (err) {
     console.error(err);
   }

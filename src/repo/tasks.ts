@@ -2,7 +2,7 @@
 // booleans are 0|1; all writes go through this module.
 // A date-only task stores dueAt = local midnight of its day (isoAt(day)) with dueHasTime 0.
 // Inbox view for captured tasks without date/project: TODO(phase-3).
-import { liveQuery, type Observable } from 'dexie';
+import Dexie, { liveQuery, type Observable } from 'dexie';
 import { db } from '../db.js';
 import type { Day, Id, ISO, Reminder, Task } from '../model.js';
 import { matches } from '../services/search.js';
@@ -26,45 +26,56 @@ function applyPatch(task: Task, patch: Partial<Task>): Task {
   return next as unknown as Task;
 }
 
-/** Restores the due invariants: dueDay from dueAt; date-only → dueAt at local midnight. */
-function normalizeDue(task: Task): Task {
-  if (task.dueAt) {
-    const day = deriveDueDay(task.dueAt);
-    if (day === undefined) return task;
-    task.dueDay = day;
-    task.dueHasTime = task.dueHasTime === 1 ? 1 : 0;
-    if (task.dueHasTime === 0) task.dueAt = isoAt(day);
-  } else {
-    delete task.dueAt;
-    delete task.dueDay;
-    task.dueHasTime = 0;
-  }
+function clearDue(task: Task): Task {
+  delete task.dueAt;
+  delete task.dueDay;
+  task.dueHasTime = 0;
   return task;
 }
 
 /**
- * Completes the due fields of a patch/input: dueDay without dueAt sets dueAt from
- * that day (keeping an existing time); dueAt without dueHasTime infers it
- * (a time other than local midnight means "timed").
+ * Settles the due fields of `task` (already patched) after a change that touches
+ * dueAt, dueDay or dueHasTime; other writes leave them alone, so dueDay is never
+ * re-derived later (e.g. after a time-zone change).
+ * - dueAt set: dueDay = deriveDueDay(dueAt); dueHasTime given or inferred
+ *   (a time other than local midnight means "timed"); date-only → dueAt = isoAt(dueDay).
+ * - dueDay without dueAt: dueAt = that day at the previous time (timed) or at midnight.
+ * - dueHasTime 0 alone: dueAt moves to the midnight of dueDay. A time requires a date.
  */
-function prepareDue(base: Task | undefined, change: Partial<Task>): Partial<Task> {
+function settleDue(task: Task, change: Partial<Task>, before?: Task): Task {
   if ('dueAt' in change) {
-    if (change.dueAt && change.dueHasTime === undefined) {
-      return { ...change, dueHasTime: timeOfIso(change.dueAt) === '00:00' ? 0 : 1 };
-    }
-    return change;
+    if (!change.dueAt) return clearDue(task);
+    if (Number.isNaN(Date.parse(change.dueAt))) throw new RangeError(`invalid dueAt ${change.dueAt}`);
+    const day = deriveDueDay(change.dueAt);
+    if (day === undefined) return clearDue(task);
+    const timed = change.dueHasTime ?? (timeOfIso(change.dueAt) === '00:00' ? 0 : 1);
+    task.dueDay = day;
+    task.dueHasTime = timed === 1 ? 1 : 0;
+    task.dueAt = task.dueHasTime === 1 ? new Date(change.dueAt).toISOString() : isoAt(day);
+    return task;
   }
-  if (!('dueDay' in change)) return change;
-  if (!change.dueDay) return { ...change, dueAt: undefined };
-  const keepTime = (change.dueHasTime ?? base?.dueHasTime) === 1 && base?.dueAt !== undefined;
-  return { ...change, dueAt: isoAt(change.dueDay, keepTime && base?.dueAt ? timeOfIso(base.dueAt) : undefined) };
+  if ('dueDay' in change) {
+    if (!change.dueDay) return clearDue(task);
+    const previous = before?.dueAt;
+    const timed = (change.dueHasTime ?? before?.dueHasTime) === 1 && previous !== undefined;
+    task.dueDay = change.dueDay;
+    task.dueHasTime = timed ? 1 : 0;
+    task.dueAt = isoAt(change.dueDay, timed && previous ? timeOfIso(previous) : undefined);
+    return task;
+  }
+  if ('dueHasTime' in change) {
+    if (!task.dueDay) return clearDue(task);
+    task.dueHasTime = task.dueHasTime === 1 ? 1 : 0;
+    if (task.dueHasTime === 0) task.dueAt = isoAt(task.dueDay);
+  }
+  return task;
 }
 
 async function nextTaskSortKey(areaId: Id): Promise<string> {
   let max: string | null = null;
   await db.tasks
     .where('[areaId+status]')
-    .between([areaId, ''], [areaId, '￿'])
+    .between([areaId, Dexie.minKey], [areaId, Dexie.maxKey], true, true)
     .each((t) => {
       if (max === null || t.sortKey > max) max = t.sortKey;
     });
@@ -89,7 +100,8 @@ export function createTask(input: TaskInput): Promise<Task> {
       createdAt: stamp,
       updatedAt: stamp,
     };
-    const task = normalizeDue(applyPatch(base, prepareDue(undefined, { ...input, title: input.title.trim() })));
+    const change: Partial<Task> = { ...input, title: input.title.trim() };
+    const task = settleDue(applyPatch(base, change), change);
     if (!task.sortKey) task.sortKey = await nextTaskSortKey(task.areaId);
     task.updatedAt = stamp;
     if (task.status === 'done' && !task.completedAt) task.completedAt = stamp;
@@ -114,7 +126,7 @@ function mutate(id: Id, fn: (task: Task) => Task): Promise<Task> {
 /** Patches a task; recomputes dueDay when dueAt changes; sets updatedAt. */
 export async function updateTask(id: Id, patch: Partial<Task>): Promise<void> {
   await mutate(id, (task) => {
-    const next = normalizeDue(applyPatch(task, prepareDue(task, patch)));
+    const next = settleDue(applyPatch(task, patch), patch, task);
     if (typeof patch.title === 'string') next.title = patch.title.trim();
     return next;
   });
@@ -125,6 +137,7 @@ export async function completeTask(id: Id): Promise<void> {
   await mutate(id, (task) => {
     task.status = 'done';
     task.completedAt = nowIso();
+    // TODO(phase-2): when task.recurrence is set, create the next instance (services/recurrence).
     return task;
   });
 }
