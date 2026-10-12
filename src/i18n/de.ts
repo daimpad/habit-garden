@@ -378,6 +378,12 @@ export const t = {
   infoLicensesLink: 'Vollständige Lizenztexte',
   backupCardSettings: 'Einstellungen › Daten',
   emptyFocusPickSearch: 'Keine offene Aufgabe passt zur Suche. „Neu anlegen“ legt eine Aufgabe mit diesem Titel an.',
+  bytesValue: '{value} {unit}',
+  unitBytes: 'B',
+  unitKilobytes: 'kB',
+  unitMegabytes: 'MB',
+  unitGigabytes: 'GB',
+  unitTerabytes: 'TB',
 } as const;
 
 export type TextKey = keyof typeof t;

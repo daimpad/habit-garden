@@ -101,10 +101,24 @@ class StartScreen {
     setVar(this.customItem, '--tint', GENERIC_TINT);
     this.bind();
     this.syncIndicator();
+    this.watchActionBar(req<HTMLElement>(view, '.ol-start__actions'));
   }
 
   destroy(): void {
     this.destroyed = true;
+    this.barObserver?.disconnect();
+    document.documentElement.style.removeProperty('--ol-start-actions');
+  }
+
+  private barObserver: ResizeObserver | null = null;
+
+  /** Focused cards stay clear of the sticky action bar, whose height grows with text zoom (WCAG 2.4.11). */
+  private watchActionBar(bar: HTMLElement): void {
+    if (typeof ResizeObserver !== 'function') return;
+    this.barObserver = new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--ol-start-actions', `${Math.ceil(bar.getBoundingClientRect().height) + 16}px`);
+    });
+    this.barObserver.observe(bar);
   }
 
   private markup(): SafeHtml {

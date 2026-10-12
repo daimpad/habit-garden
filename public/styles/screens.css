@@ -131,7 +131,8 @@
 .ol-start__next { margin-left: auto; min-width: min(100%, 9rem); }
 /* Focused cards stay clear of the sticky action bar (buttons + a possible error line). */
 :root:has(.ol-start__actions) {
-  scroll-padding-bottom: calc(var(--space-3) + 48px + var(--space-4) * 2 + 28px + env(safe-area-inset-bottom));
+  /* --ol-start-actions: measured bar height (start.ts), so 200 % text cannot hide a focused card. */
+  scroll-padding-bottom: max(calc(var(--space-3) + 48px + var(--space-4) * 2 + 28px + env(safe-area-inset-bottom)), var(--ol-start-actions, 0px));
 }
 
 @media (prefers-reduced-motion: reduce) {

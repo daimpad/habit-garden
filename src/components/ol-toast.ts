@@ -257,8 +257,10 @@ export class OlToast extends HTMLElement {
     if (!box || box.hidden || !this.current || !dialog) {
       this.style.removeProperty('--ol-toast-bottom');
       this.releaseSpace();
+      this.reservePageSpace(!dialog && !!box && !box.hidden && this.current !== null);
       return;
     }
+    this.reservePageSpace(false);
     // Layout values (no transforms): the sheet is anchored to the bottom, above the keyboard inset.
     const kb = parseFloat(dialog.style.getPropertyValue('--ol-kb')) || 0;
     const panelTop = window.innerHeight - kb - dialog.offsetHeight;
@@ -279,6 +281,27 @@ export class OlToast extends HTMLElement {
       dialog.setAttribute('data-toast-space', '');
       const active = document.activeElement;
       if (active instanceof HTMLElement && body.contains(active)) active.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  /**
+   * Outside sheets: reserves the toast's height as scroll padding of the page (--ol-toast-page, base.css),
+   * so a focused control never ends up behind a visible toast (WCAG 2.4.11, e.g. sticky reminders).
+   */
+  private reservePageSpace(on: boolean): void {
+    const root = document.documentElement;
+    const box = this.boxEl;
+    if (!on || !box) {
+      root.style.removeProperty('--ol-toast-page');
+      return;
+    }
+    // +24: margin plus the 16 px the entering animation may still be offset by.
+    const space = Math.max(0, Math.round(window.innerHeight - box.getBoundingClientRect().top + 24));
+    const had = root.style.getPropertyValue('--ol-toast-page') !== '';
+    root.style.setProperty('--ol-toast-page', `${space}px`);
+    if (!had) {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active !== document.body && !this.contains(active)) active.scrollIntoView({ block: 'nearest' });
     }
   }
 

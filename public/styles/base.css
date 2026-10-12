@@ -82,10 +82,12 @@ svg { display: block; }
   .ol-shell { padding-left: 96px; }
   .ol-view { padding-bottom: var(--space-6); }
 }
-/* WCAG 2.4.11: a focused control must not end up behind the fixed bottom nav (and the FAB above it). */
+/* WCAG 2.4.11: a focused control must not end up behind the fixed bottom nav (and the FAB above it)
+   or behind a visible toast (--ol-toast-page is set by ol-toast while it shows outside a sheet). */
+:root { scroll-padding-bottom: var(--ol-toast-page, 0px); }
 @media (max-width: 899px) {
   :root:has(ol-bottom-nav:not([hidden])) {
-    scroll-padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 56px + var(--space-4) * 2);
+    scroll-padding-bottom: max(calc(var(--nav-height) + env(safe-area-inset-bottom) + 56px + var(--space-4) * 2), var(--ol-toast-page, 0px));
   }
 }
 

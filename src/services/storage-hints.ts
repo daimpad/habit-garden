@@ -1,4 +1,5 @@
 // Storage persistence, quota, Safari detection and the "Daten sichern" card logic (F §4.14).
+import { fmt, t } from '../i18n/de.js';
 import type { Profile } from '../model.js';
 import { dayKey, dayOfIso, diffDays } from '../util/date.js';
 
@@ -81,7 +82,7 @@ export function backupCardState(profile: Profile, now: Date): { show: boolean; d
   return { show: baseline >= BACKUP_CARD_DAYS && !dismissed, days };
 }
 
-const UNITS = ['B', 'kB', 'MB', 'GB', 'TB'] as const;
+const UNITS = [t.unitBytes, t.unitKilobytes, t.unitMegabytes, t.unitGigabytes, t.unitTerabytes] as const;
 
 /** Formats bytes for the settings ("12,3 MB"; decimal units, German decimal comma). */
 export function formatBytes(bytes: number): string {
@@ -93,5 +94,5 @@ export function formatBytes(bytes: number): string {
     unit++;
   }
   const text = new Intl.NumberFormat('de-DE', { maximumFractionDigits: unit === 0 ? 0 : 1 }).format(value);
-  return `${text} ${UNITS[unit] ?? 'B'}`;
+  return fmt(t.bytesValue, { value: text, unit: UNITS[unit] ?? t.unitBytes });
 }
