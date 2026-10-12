@@ -139,6 +139,8 @@ class TaskSheet {
   private task: Task | null = null;
   private areas: Area[] = [];
   private focusIds: Id[] = [];
+  /** A focus add/remove is being written: further clicks are ignored until it settles. */
+  private focusBusy = false;
   private leadMinutes = 10;
   private filled = false;
   private gone = false;
@@ -462,17 +464,18 @@ class TaskSheet {
       ? activeEl.closest<HTMLElement>('[data-reminder]')?.dataset['reminder'] ?? null
       : null;
     const before = focusedId ? [...list.querySelectorAll<HTMLElement>('[data-reminder]')].map((el) => el.dataset['reminder']) : [];
-    const textId = (id: string): string => `${list.id || (list.id = uid('task-reminder-list'))}-${id}`;
+    // DOM ids come from the list position; reminder ids (possibly imported) stay in data-reminder only.
+    const textId = (index: number): string => `${list.id || (list.id = uid('task-reminder-list'))}-r${index}`;
     render(
       list,
-      h`${items.map((item) => h`<li class="ol-task-sheet__reminder">
+      h`${items.map((item, index) => h`<li class="ol-task-sheet__reminder">
   <span class="ol-task-sheet__reminder-icon">${icon('bell', 20)}</span>
-  <span class="ol-task-sheet__reminder-text ol-num" id="${textId(item.id)}">${item.text}</span>
-  <ol-icon-button icon="x" label="${t.reminderRemoveAria}" data-reminder="${item.id}"></ol-icon-button>
+  <span class="ol-task-sheet__reminder-text ol-num" id="${textId(index)}">${item.text}</span>
+  <ol-icon-button icon="x" label="${t.reminderRemoveAria}" data-reminder="${item.id}" data-index="${String(index)}"></ol-icon-button>
 </li>`)}`,
     );
     for (const btn of list.querySelectorAll<HTMLElement>('ol-icon-button[data-reminder]')) {
-      btn.querySelector('button')?.setAttribute('aria-describedby', textId(btn.dataset['reminder'] ?? ''));
+      btn.querySelector('button')?.setAttribute('aria-describedby', textId(Number(btn.dataset['index'])));
     }
     list.hidden = items.length === 0;
     if (focusedId === null) return;
@@ -525,7 +528,11 @@ class TaskSheet {
       return;
     }
     completeTask(id).then(
-      () => showToast(t.toastDone, { action: { label: t.actionUndo, onAction: () => void reopenTask(id).catch(failed) } }),
+      () => {
+        // Unchecked again while the write ran: no "Erledigt" toast for an open task.
+        if (!this.check.checked) return;
+        showToast(t.toastDone, { action: { label: t.actionUndo, onAction: () => void reopenTask(id).catch(failed) } });
+      },
       failed,
     );
   };
@@ -658,12 +665,32 @@ class TaskSheet {
   };
 
   private readonly onFocusClick = (): void => {
+    if (this.focusBusy) return;
     const day = today();
-    const inFocus = this.focusIds.includes(this.taskId);
+    const previous = this.focusIds;
+    const inFocus = previous.includes(this.taskId);
     const op = inFocus ? removeFromFocus(day, this.taskId) : addToFocus(day, this.taskId);
+    this.focusBusy = true;
+    this.focusBtn.setAttribute('loading', '');
+    // Optimistic: the label is right at once; the next liveQuery emission confirms it.
+    const optimistic = inFocus ? previous.filter((id) => id !== this.taskId) : [...previous, this.taskId];
+    this.focusIds = optimistic;
+    this.syncFocus();
+    const settle = (): void => {
+      this.focusBusy = false;
+      this.focusBtn.removeAttribute('loading');
+    };
     op.then(
-      () => showToast(inFocus ? t.toastFocusRemoved : t.toastFocusAdded),
+      () => {
+        settle();
+        showToast(inFocus ? t.toastFocusRemoved : t.toastFocusAdded);
+      },
       (err: unknown) => {
+        settle();
+        if (this.focusIds === optimistic) {
+          this.focusIds = previous;
+          this.syncFocus();
+        }
         if (err instanceof FocusFullError) showToast(t.toastFocusFull);
         else failed(err);
       },

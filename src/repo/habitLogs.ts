@@ -6,7 +6,11 @@ import type { Day, HabitLog, Id, Stage } from '../model.js';
 import { stageFor } from '../services/growth.js';
 import { isDay, nowIso, today } from '../util/date.js';
 
-export interface ToggleResult { before: Stage; after: Stage; done: boolean }
+/**
+ * startDayBefore: set when the toggle moved habit.startDay (a done log written before the
+ * start day, S35); it holds the previous start day so an undo can restore it.
+ */
+export interface ToggleResult { before: Stage; after: Stage; done: boolean; startDayBefore?: Day }
 
 export function habitLogId(habitId: Id, day: Day): HabitLog['id'] {
   return `${habitId}:${day}`;
@@ -20,11 +24,15 @@ const byDay = (a: HabitLog, b: HabitLog): number => (a.day < b.day ? -1 : a.day 
  * before and after the change (today = the real current day, also when a
  * past day is toggled from the heatmap). Runs in one rw transaction.
  * Days after today are rejected (RangeError).
+ * A done log before habit.startDay moves startDay to that day (S35; result.startDayBefore holds
+ * the old value). Removing the log of day restores opts.restoreStartDay when startDay is still day.
  */
-export function toggleLog(habitId: Id, day: Day): Promise<ToggleResult> {
+export function toggleLog(habitId: Id, day: Day, opts: { restoreStartDay?: Day } = {}): Promise<ToggleResult> {
   const current = today();
   if (!isDay(day)) return Promise.reject(new RangeError(`invalid day ${day}`));
   if (day > current) return Promise.reject(new RangeError(`cannot log a future day ${day}`));
+  const restore = opts.restoreStartDay;
+  if (restore !== undefined && !isDay(restore)) return Promise.reject(new RangeError(`invalid day ${restore}`));
   return db.transaction('rw', db.habits, db.habitLogs, async () => {
     const habit = await db.habits.get(habitId);
     if (!habit) throw new Error(`unknown habit ${habitId}`);
@@ -35,19 +43,29 @@ export function toggleLog(habitId: Id, day: Day): Promise<ToggleResult> {
     const existing = logs.find((l) => l.id === id);
     let next: HabitLog[];
     let done: boolean;
+    let nextHabit = habit;
+    let startDayBefore: Day | undefined;
     if (existing?.status === 'done') {
       await db.habitLogs.delete(id);
       next = logs.filter((l) => l.id !== id);
       done = false;
+      if (restore !== undefined && habit.startDay === day && restore > day) {
+        nextHabit = { ...habit, startDay: restore, updatedAt: nowIso() };
+      }
     } else {
       const log: HabitLog = { id, habitId, day, status: 'done', loggedAt: nowIso() };
       if (existing?.value !== undefined) log.value = existing.value;
       await db.habitLogs.put(log);
       next = [...logs.filter((l) => l.id !== id), log].sort(byDay);
       done = true;
+      if (day < habit.startDay) {
+        startDayBefore = habit.startDay;
+        nextHabit = { ...habit, startDay: day, updatedAt: nowIso() };
+      }
     }
-    const after = stageFor(habit, next, current);
-    return { before, after, done };
+    if (nextHabit !== habit) await db.habits.put(nextHabit);
+    const after = stageFor(nextHabit, next, current);
+    return startDayBefore === undefined ? { before, after, done } : { before, after, done, startDayBefore };
   });
 }
 

@@ -14,9 +14,14 @@ export function isFlowerId(value: unknown): value is FlowerId {
   return typeof value === 'string' && (FLOWER_IDS as readonly string[]).includes(value);
 }
 
+/** True for #rgb / #rrggbb, the only tint values markup and CSS custom properties accept. */
+export function isTint(value: unknown): value is string {
+  return typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/iu.test(value);
+}
+
 /** Accepts #rgb / #rrggbb only, so the value can go into a fill attribute safely. */
 export function safeTint(tint: string | null | undefined): string {
-  return typeof tint === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/iu.test(tint) ? tint : GENERIC_TINT;
+  return isTint(tint) ? tint : GENERIC_TINT;
 }
 
 // Fallback values of the tokens that the classes apply.

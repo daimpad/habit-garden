@@ -244,8 +244,9 @@ function validateProfile(value: unknown, path: string): Profile {
   const sp = `${path}.settings`;
   const settings: Profile['settings'] = { ...DEFAULT_SETTINGS };
   if (present(s.theme)) settings.theme = oneOf(s, 'theme', ['light', 'dark', 'system'] as const, sp);
-  if (present(s.dayStartHour)) settings.dayStartHour = int(s, 'dayStartHour', sp, 0, 23);
-  if (present(s.eveningHour)) settings.eveningHour = int(s, 'eveningHour', sp, 0, 23);
+  // S18: 0 ≤ dayStartHour < 12 ≤ eveningHour ≤ 23.
+  if (present(s.dayStartHour)) settings.dayStartHour = int(s, 'dayStartHour', sp, 0, 11);
+  if (present(s.eveningHour)) settings.eveningHour = int(s, 'eveningHour', sp, 12, 23);
   if (present(s.leftHanded)) {
     if (typeof s.leftHanded !== 'boolean') fail(`${sp}.leftHanded`, 'expected a boolean');
     settings.leftHanded = s.leftHanded;

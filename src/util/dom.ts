@@ -3,6 +3,7 @@
 // for trusted generator output such as flora SVG, or icon()).
 // Never put style="" into markup: the CSP (style-src 'self') blocks it.
 // Dynamic values go through el.style.setProperty('--x', value).
+import { appUrl } from './base.js';
 
 const ESCAPES: Record<string, string> = {
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;',
@@ -71,9 +72,9 @@ export function buildHash(): string {
 
 let spriteUrl: string | null = null;
 
-/** Lucide icon from the self-hosted sprite. */
+/** Lucide icon from the self-hosted sprite (under the base path, util/base.ts). */
 export function icon(name: string, size: 20 | 24 | 32 = 24): SafeHtml {
-  spriteUrl ??= `/assets/icons.svg?v=${encodeURIComponent(buildHash())}`;
+  spriteUrl ??= `${appUrl('/assets/icons.svg')}?v=${encodeURIComponent(buildHash())}`;
   const cls = size === 24 ? 'ol-icon' : `ol-icon ol-icon--${size}`;
   return h`<svg class="${cls}" aria-hidden="true" focusable="false"><use href="${spriteUrl}#i-${name}"></use></svg>`;
 }

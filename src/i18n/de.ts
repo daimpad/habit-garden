@@ -30,12 +30,9 @@ export const t = {
   actionMore: 'Weitere Aktionen',
   actionEdit: 'Bearbeiten',
   actionArchive: 'Archivieren',
-  actionUnarchive: 'Reaktivieren',
-  actionRename: 'Umbenennen',
   actionNext: 'Weiter',
   actionSkip: 'Überspringen',
   actionFinish: 'Fertig',
-  actionDismiss: 'Ausblenden',
   actionShowMore: 'Mehr anzeigen',
   actionShowLess: 'Weniger anzeigen',
   actionExpandList: 'Alle anzeigen',
@@ -43,7 +40,6 @@ export const t = {
   actionAddToFocus: 'In den Fokus',
   actionRemoveFromFocus: 'Aus dem Fokus nehmen',
   actionPlusHour: '+1 h',
-  actionOpen: 'Öffnen',
   actionAddNote: '+ Notiz',
   actionCreateHabit: 'Routine anlegen',
 
@@ -61,7 +57,6 @@ export const t = {
   emptyRoutines: 'Noch keine Routine',
   emptyWissen: 'Erste Notiz anlegen – Markdown, Tags wie #bereich/thema',
   emptyPlanung: 'Neue Aufgaben legst du mit + an; mit Datum erscheinen sie in Heute unter „Fällig heute“.',
-  emptyFocusPick: 'Keine passenden offenen Aufgaben',
 
   // Growth stages
   stage0: 'Samen',
@@ -91,7 +86,6 @@ export const t = {
   toastImportInvalid: 'Die Datei ist kein gültiger Olife-Export.',
   toastImportFailed: 'Der Import ist fehlgeschlagen; die bisherigen Daten sind unverändert.',
   toastRemindersMissed: '{n} verpasste Erinnerungen',
-  toastRemindersMissedOne: '1 verpasste Erinnerung',
   toastReminderSnoozed: 'Erinnerung um {time}',
   toastError: 'Die Änderung konnte nicht gespeichert werden.',
 
@@ -104,7 +98,6 @@ export const t = {
   focusSearchLabel: 'Aufgaben durchsuchen',
   focusLimitHint: 'Der Fokus umfasst höchstens drei Aufgaben.',
   focusSlotEmpty: 'Fokus wählen',
-  focusRowAria: '{title}, Bereich {area}',
 
   // Routines / habits
   habitStreakAria: 'Streak {n}',
@@ -156,7 +149,7 @@ export const t = {
   // Journal
   journalSheetTitle: 'Journal',
   journalFieldLabel: 'Notiz zum Tag (Markdown)',
-  journalNoteTitle: 'Journal {date}',
+  journalNoteTitle: '{date} Journal',
 
   // Capture
   captureTitle: 'Neu anlegen',
@@ -191,12 +184,10 @@ export const t = {
   reminderModeAbsolute: 'Zeitpunkt',
   reminderOffsetLabel: 'Minuten vorher',
   reminderAtLabel: 'Datum und Uhrzeit',
-  reminderHintTitle: 'Erinnerungen',
   reminderHint: 'Erinnerungen werden nur bei geöffneter Seite ausgelöst',
   reminderHintBody: 'Ist die Seite geschlossen, erscheinen fällige Erinnerungen gesammelt beim nächsten Öffnen. Anschließend fragt der Browser, ob Olife Systembenachrichtigungen zeigen darf.',
   confirmDeleteTask: 'Die Aufgabe wird gelöscht.',
   overdueLabel: 'Überfällig',
-  dueTodayLabel: 'Heute',
   noArea: 'Ohne Bereich',
   fieldName: 'Name',
   fieldRhythm: 'Rhythmus',
@@ -250,7 +241,6 @@ export const t = {
   firstStepFocus: 'Fokus wählen: bis zu drei Aufgaben für heute',
   firstStepHabit: 'Routine anlegen: eine Gewohnheit, die wachsen soll',
   firstStepNote: 'Notiz schreiben: einen Gedanken festhalten',
-  firstStepDismissAria: 'Karte ausblenden',
 
   // Backup card
   backupCardTitle: 'Daten sichern',
@@ -275,7 +265,7 @@ export const t = {
   importMergeHint: 'Neuere Einträge aus der Datei ersetzen ältere; alles andere bleibt erhalten.',
   importRestoreHint: 'Alle aktuellen Daten werden gelöscht und durch die Datei ersetzt.',
   confirmRestoreTitle: 'Alle aktuellen Daten ersetzen?',
-  confirmRestoreBody: 'Alle Aufgaben, Routinen, Notizen und Einstellungen in diesem Browser werden durch den Inhalt der Datei ersetzt.',
+  confirmRestoreBody: 'Alle Aufgaben, Routinen, Notizen und Einstellungen in diesem Browser werden gelöscht und durch den Inhalt der Datei ersetzt.',
   storageUsage: 'Belegt: {used} von {quota}',
   storageUnknown: 'Der Speicherplatz ist nicht bekannt.',
   persistStatus: 'Dauerhafte Speicherung',
@@ -315,7 +305,7 @@ export const t = {
   infoPrivacy: 'Datenschutz',
   infoPrivacyText: 'Olife sendet keine Daten an einen Server. Alle Einträge bleiben in diesem Browser.',
   licenseDexie: 'Dexie – Apache License 2.0',
-  licenseMarkdownIt: 'markdown-it – MIT License (gebündelt mit entities, linkify-it, mdurl, punycode.js, uc.micro)',
+  licenseMarkdownIt: 'markdown-it – MIT License (gebündelt mit entities unter BSD-2-Clause sowie linkify-it, mdurl, punycode.js und uc.micro unter MIT)',
   licenseDompurify: 'DOMPurify – Mozilla Public License 2.0 oder Apache License 2.0',
   licenseInter: 'Inter – SIL Open Font License 1.1',
   licenseLucide: 'Lucide – ISC License',
@@ -347,7 +337,7 @@ export const t = {
   emptyRoutinesToday: 'Heute steht keine Routine an.',
   routinesDoneAria: '{done} von {n} heute erledigt',
   habitToggleWeekAria: '{name}: heute erledigt, {done} von {target} in dieser Woche',
-  moodChoiceAria: '{n} von 5: {label}',
+  moodChoiceAria: 'Stimmung {n} von 5',
   moodLoggedAtAria: 'Eingetragen um {time}',
   dueCount: '({n})',
   firstStepNoteAction: 'Notiz schreiben',
@@ -375,9 +365,25 @@ export const t = {
   toastAreaArchived: 'Bereich archiviert',
   toastAreaUnarchived: 'Bereich reaktiviert',
   infoProvenance: 'Pflanzengeometrie nach der Vorlage „Tend – A Habit Garden“',
-  wissenNoteSavedOne: '1 Notiz ist gespeichert. Neue Notizen legst du mit + an; alle sind im JSON-Export enthalten.',
-  wissenNotesSaved: '{n} Notizen sind gespeichert. Neue Notizen legst du mit + an; alle sind im JSON-Export enthalten.',
+  wissenNoteSavedOne: '1 Notiz ist gespeichert und im JSON-Export enthalten; neue Notizen legst du mit + an.',
+  wissenNotesSaved: '{n} Notizen sind gespeichert und im JSON-Export enthalten; neue Notizen legst du mit + an.',
   // --- additions: integration ---
+  toastDayDoneStage: '{date}: als erledigt markiert, Stufe {stage} erreicht',
+  streakWeeksOne: '1 Woche',
+  streakWeeks: '{n} Wochen',
+  habitPlantAriaWeeks: 'Stufe {stage}, Streak {weeks}',
+  emptyFocusPickNone: 'Keine offene Aufgabe steht zur Auswahl. Gib oben einen Titel ein und wähle „Neu anlegen“.',
+  exportConfirmTitle: 'Daten exportieren?',
+  storageLabel: 'Speicherplatz',
+  infoLicensesLink: 'Vollständige Lizenztexte',
+  backupCardSettings: 'Einstellungen › Daten',
+  emptyFocusPickSearch: 'Keine offene Aufgabe passt zur Suche. „Neu anlegen“ legt eine Aufgabe mit diesem Titel an.',
+  bytesValue: '{value} {unit}',
+  unitBytes: 'B',
+  unitKilobytes: 'kB',
+  unitMegabytes: 'MB',
+  unitGigabytes: 'GB',
+  unitTerabytes: 'TB',
 } as const;
 
 export type TextKey = keyof typeof t;

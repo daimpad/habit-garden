@@ -15,8 +15,15 @@
 // - Clicking an action dismisses the toast first, emits ol-action (detail { label, index }), then calls
 //   onAction (so a toast shown by the action is not dismissed with this one).
 // - While a sheet or dialog is open the element moves into the topmost modal <dialog>, so it stays
-//   visible, announced and operable (content outside a modal dialog is inert); in a sheet it sits
-//   8 px above the sheet footer, otherwise 16 px above the bottom edge.
+//   visible, announced and operable (content outside a modal dialog is inert).
+// - In a sheet it sits 8 px above the panel's top edge when there is room for it, so it covers none of
+//   the sheet's controls; otherwise (full-height sheet) 8 px above the footer, and the sheet body gets
+//   bottom padding / scroll padding of the toast's height while it is visible (the focused field is
+//   scrolled clear of it). Re-placed on detent changes and size changes of the sheet.
+// - A sheet or dialog that opens over a visible (non-sticky) toast ends that toast instead of taking
+//   it along, and the queue continues (S12: sticky reminder toasts move along and stay).
+// - The hover pause starts on a real mouse movement over the toast, not when the toast appears under
+//   a resting pointer.
 // - Reflected attributes: state="visible|leaving" (absent when idle), sticky.
 import { t } from '../i18n/de.js';
 import { emit, h, icon, motionReduced, render } from '../util/dom.js';
@@ -57,10 +64,32 @@ export class OlToast extends HTMLElement {
   private anim: Animation | null = null;
   private focusOrigin: HTMLElement | null = null;
   private unsubscribe: (() => void) | null = null;
+  /** Modal dialogs that were open when the visible entry was displayed. */
+  private modalsAtDisplay = new Set<HTMLDialogElement>();
+  /** Sheet dialog that currently reserves space for the toast (data-toast-space). */
+  private spaceHost: HTMLDialogElement | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private observed: HTMLDialogElement | null = null;
+  /** Mouse position when it entered the toast; the hover pause starts once it moves from there. */
+  private pointerAt: { x: number; y: number } | null = null;
 
   connectedCallback(): void {
     this.build();
-    this.unsubscribe ??= onModalChange(() => this.rehome());
+    this.unsubscribe ??= onModalChange(this.onModalChange);
+    document.addEventListener('ol-detent-change', this.onLayoutChange);
+    window.addEventListener('resize', this.onLayoutChange);
+  }
+
+  disconnectedCallback(): void {
+    // ol-toast moves between <body> and dialogs; only a real removal stops the observers.
+    if (this.isConnected) return;
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    document.removeEventListener('ol-detent-change', this.onLayoutChange);
+    window.removeEventListener('resize', this.onLayoutChange);
+    this.resizeObserver?.disconnect();
+    this.observed = null;
+    this.releaseSpace();
   }
 
   show(message: string, opts: ToastOptions = {}): void {
@@ -113,6 +142,7 @@ export class OlToast extends HTMLElement {
     this.actionsEl = this.querySelector<HTMLElement>('.ol-toast__actions');
     this.actionsEl?.addEventListener('click', this.onActionClick);
     this.addEventListener('pointerenter', this.onPointerEnter);
+    this.addEventListener('pointermove', this.onPointerMove);
     this.addEventListener('pointerleave', this.onPointerLeave);
     this.addEventListener('pointerdown', this.onPointerDown);
     this.addEventListener('pointerup', this.onPointerUp);
@@ -138,6 +168,7 @@ export class OlToast extends HTMLElement {
     const wasVisible = !box.hidden && this.getAttribute('state') === 'visible';
     const hadFocus = this.contains(document.activeElement);
     this.current = entry;
+    this.modalsAtDisplay = new Set([...document.querySelectorAll<HTMLDialogElement>('dialog[open]')]);
     this.rehome();
     msg.textContent = entry.message;
     render(
@@ -153,6 +184,7 @@ export class OlToast extends HTMLElement {
     // Holds that no longer apply (focused button replaced, pointer gone) are dropped.
     if (!this.contains(document.activeElement)) this.holds.delete('focus');
     if (!box.matches(':hover')) this.holds.delete('hover');
+    this.place();
     this.anim?.cancel();
     const reduced = motionReduced();
     if ((replacing && wasVisible) || reduced) {
@@ -188,6 +220,7 @@ export class OlToast extends HTMLElement {
       if (this.actionsEl) this.actionsEl.textContent = '';
       this.removeAttribute('state');
       this.removeAttribute('sticky');
+      this.releaseSpace();
       this.rehome();
     }, () => undefined);
   }
@@ -199,11 +232,115 @@ export class OlToast extends HTMLElement {
     // In a sheet the toast sits above the footer (primary button stays reachable).
     const footer = target.querySelector<HTMLElement>(':scope > .ol-sheet__footer');
     this.style.setProperty('--ol-toast-above', `${footer ? footer.offsetHeight : 0}px`);
-    if (this.parentElement === target) return;
-    const hadFocus = this.contains(document.activeElement);
-    target.append(this);
-    if (!hadFocus) this.holds.delete('focus');
+    if (this.parentElement !== target) {
+      const hadFocus = this.contains(document.activeElement);
+      target.append(this);
+      if (!hadFocus) this.holds.delete('focus');
+    }
+    this.place();
   }
+
+  /** The sheet dialog the toast lives in, if any. */
+  private sheetDialog(): HTMLDialogElement | null {
+    const parent = this.parentElement;
+    return parent instanceof HTMLDialogElement && parent.classList.contains('ol-sheet__dialog') ? parent : null;
+  }
+
+  /**
+   * Positions a visible toast inside a sheet: above the panel when there is room, else above the
+   * footer with space reserved at the end of the sheet body.
+   */
+  private place(): void {
+    const box = this.boxEl;
+    const dialog = this.sheetDialog();
+    this.observe(dialog);
+    if (!box || box.hidden || !this.current || !dialog) {
+      this.style.removeProperty('--ol-toast-bottom');
+      this.releaseSpace();
+      this.reservePageSpace(!dialog && !!box && !box.hidden && this.current !== null);
+      return;
+    }
+    this.reservePageSpace(false);
+    // Layout values (no transforms): the sheet is anchored to the bottom, above the keyboard inset.
+    const kb = parseFloat(dialog.style.getPropertyValue('--ol-kb')) || 0;
+    const panelTop = window.innerHeight - kb - dialog.offsetHeight;
+    const height = box.offsetHeight;
+    if (panelTop >= height + 16) {
+      this.style.setProperty('--ol-toast-bottom', `${Math.round(kb + dialog.offsetHeight + 8)}px`);
+      this.releaseSpace();
+      return;
+    }
+    this.style.removeProperty('--ol-toast-bottom');
+    const body = dialog.querySelector<HTMLElement>(':scope > .ol-sheet__body');
+    if (!body) return;
+    const space = Math.max(0, Math.round(body.getBoundingClientRect().bottom - box.getBoundingClientRect().top + 8));
+    if (this.spaceHost && this.spaceHost !== dialog) this.releaseSpace();
+    this.spaceHost = dialog;
+    dialog.style.setProperty('--ol-toast-space', `${space}px`);
+    if (!dialog.hasAttribute('data-toast-space')) {
+      dialog.setAttribute('data-toast-space', '');
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && body.contains(active)) active.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  /**
+   * Outside sheets: reserves the toast's height as scroll padding of the page (--ol-toast-page, base.css),
+   * so a focused control never ends up behind a visible toast (WCAG 2.4.11, e.g. sticky reminders).
+   */
+  private reservePageSpace(on: boolean): void {
+    const root = document.documentElement;
+    const box = this.boxEl;
+    if (!on || !box) {
+      root.style.removeProperty('--ol-toast-page');
+      return;
+    }
+    // +24: margin plus the 16 px the entering animation may still be offset by.
+    const space = Math.max(0, Math.round(window.innerHeight - box.getBoundingClientRect().top + 24));
+    const had = root.style.getPropertyValue('--ol-toast-page') !== '';
+    root.style.setProperty('--ol-toast-page', `${space}px`);
+    if (!had) {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active !== document.body && !this.contains(active)) active.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  private releaseSpace(): void {
+    const host = this.spaceHost;
+    this.spaceHost = null;
+    if (!host) return;
+    host.removeAttribute('data-toast-space');
+    host.style.removeProperty('--ol-toast-space');
+  }
+
+  /** Watches the size of the sheet the toast is in (fit sheets grow, detents animate). */
+  private observe(dialog: HTMLDialogElement | null): void {
+    if (dialog === this.observed) return;
+    this.resizeObserver?.disconnect();
+    this.observed = dialog;
+    if (!dialog || typeof ResizeObserver !== 'function') return;
+    this.resizeObserver ??= new ResizeObserver(() => this.place());
+    this.resizeObserver.observe(dialog);
+  }
+
+  private readonly onLayoutChange = (): void => {
+    this.place();
+  };
+
+  private readonly onModalChange = (): void => {
+    const top = topModal();
+    const entry = this.current;
+    // A sheet or dialog opened over a visible toast: the toast ends instead of covering the new content.
+    if (entry && !entry.sticky && top && !this.modalsAtDisplay.has(top) && this.getAttribute('state') === 'visible') {
+      this.dismiss();
+      return;
+    }
+    // A leaving toast fades out where it is (hide() re-homes it afterwards), unless its dialog closes.
+    const parent = this.parentElement;
+    const parentClosing = parent instanceof HTMLDialogElement && parent.dataset['closing'] !== undefined;
+    if (!entry && this.getAttribute('state') === 'leaving' && !parentClosing) return;
+    this.rehome();
+  };
 
   private timeLeft(): number {
     if (!this.current) return 0;
@@ -275,11 +412,21 @@ export class OlToast extends HTMLElement {
   };
 
   private readonly onPointerEnter = (event: PointerEvent): void => {
-    if (event.pointerType === 'mouse') this.hold('hover');
+    if (event.pointerType === 'mouse') this.pointerAt = { x: event.clientX, y: event.clientY };
+  };
+
+  /** A toast that appears under a resting mouse does not pause; moving the mouse over it does. */
+  private readonly onPointerMove = (event: PointerEvent): void => {
+    if (event.pointerType !== 'mouse' || this.holds.has('hover')) return;
+    const at = this.pointerAt;
+    if (at && at.x === event.clientX && at.y === event.clientY) return;
+    this.hold('hover');
   };
 
   private readonly onPointerLeave = (event: PointerEvent): void => {
-    if (event.pointerType === 'mouse') this.release('hover');
+    if (event.pointerType !== 'mouse') return;
+    this.pointerAt = null;
+    this.release('hover');
   };
 
   private readonly onPointerDown = (event: PointerEvent): void => {

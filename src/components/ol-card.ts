@@ -10,6 +10,8 @@
 // - `elevated` adds var(--shadow-raised) without the border; B.0 reserves shadows for lifted states
 //   (e.g. a dragged card, TODO(phase-3) Kanban).
 // - Children with slot="header" / slot="footer" get spacing from the stylesheet (B.3 slots).
+// - `tint` is applied only when it is #rgb / #rrggbb (flora isTint), like ol-plant and ol-chip.
+import { isTint } from './flora.js';
 
 export class OlCard extends HTMLElement {
   static observedAttributes = ['tint', 'interactive', 'elevated'];
@@ -36,7 +38,7 @@ export class OlCard extends HTMLElement {
 
   private sync(): void {
     const tint = this.getAttribute('tint')?.trim();
-    if (tint) {
+    if (isTint(tint)) {
       if (this.style.getPropertyValue('--tint') !== tint) this.style.setProperty('--tint', tint);
     } else if (this.style.getPropertyValue('--tint')) {
       this.style.removeProperty('--tint');

@@ -6,6 +6,8 @@
 //   each card is a <button role="checkbox"> (Space/Enter/click). "Weiter" needs at least one selection;
 //   a selected custom card needs a name (1–40 characters, typing a name selects the card).
 //   "Überspringen" discards the selection, so completeOnboarding([]) creates only "Wohnen & Alltag" (AC3).
+//   The "mindestens einen Bereich" error sits in the sticky action bar above the buttons (always in
+//   view) and focus moves to the first card.
 // - Step 3: entering it requests navigator.storage.persist() from the click that entered it (a browser
 //   prompt still has user activation) and shows the outcome in neutral words, the export hint, the
 //   Safari hint (Safari only) and the incognito sentence.
@@ -99,10 +101,24 @@ class StartScreen {
     setVar(this.customItem, '--tint', GENERIC_TINT);
     this.bind();
     this.syncIndicator();
+    this.watchActionBar(req<HTMLElement>(view, '.ol-start__actions'));
   }
 
   destroy(): void {
     this.destroyed = true;
+    this.barObserver?.disconnect();
+    document.documentElement.style.removeProperty('--ol-start-actions');
+  }
+
+  private barObserver: ResizeObserver | null = null;
+
+  /** Focused cards stay clear of the sticky action bar, whose height grows with text zoom (WCAG 2.4.11). */
+  private watchActionBar(bar: HTMLElement): void {
+    if (typeof ResizeObserver !== 'function') return;
+    this.barObserver = new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--ol-start-actions', `${Math.ceil(bar.getBoundingClientRect().height) + 16}px`);
+    });
+    this.barObserver.observe(bar);
   }
 
   private markup(): SafeHtml {
@@ -125,7 +141,7 @@ class StartScreen {
 
         <section class="ol-start__step" data-step="1" aria-labelledby="start-h1">
           <div class="ol-start__hero" aria-hidden="true">
-            <ol-plant stage="4" flower="${HERO?.flower ?? 'generic'}" tint="${HERO?.tint ?? GENERIC_TINT}" size="96"></ol-plant>
+            <ol-plant stage="4" flower="${HERO?.flower ?? 'generic'}" tint="${HERO?.tint ?? GENERIC_TINT}" size="120"></ol-plant>
           </div>
           <h1 class="ol-display ol-start__title" id="start-h1" tabindex="-1" aria-describedby="start-dots">${t.onb1Title}</h1>
           <ul class="ol-start__principles">
@@ -148,7 +164,6 @@ class StartScreen {
               </li>
             </ul>
           </div>
-          <p class="ol-start__error" aria-live="polite"></p>
         </section>
 
         <section class="ol-start__step" data-step="3" aria-labelledby="start-h3" hidden>
@@ -166,6 +181,7 @@ class StartScreen {
         </section>
 
         <div class="ol-start__actions">
+          <p class="ol-start__error" aria-live="polite"></p>
           <ol-button class="ol-start__skip" variant="ghost" label="${t.actionSkip}"></ol-button>
           <ol-button class="ol-start__next" variant="filled" label="${t.actionNext}"></ol-button>
         </div>
@@ -227,6 +243,7 @@ class StartScreen {
   private validateAreas(): boolean {
     if (this.selected.size === 0) {
       this.showAreaError(t.onbAreaRequired);
+      this.cards[0]?.focus();
       return false;
     }
     if (this.selected.has(CUSTOM) && this.customName() === '') {
@@ -283,6 +300,7 @@ class StartScreen {
     this.step = step;
     from.hidden = true;
     to.hidden = false;
+    this.showAreaError('');
     this.syncIndicator();
     // Called from the click handler, so a permission prompt still has user activation.
     if (step === 3) this.askPersist();

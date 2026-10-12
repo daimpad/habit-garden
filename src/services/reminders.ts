@@ -2,6 +2,8 @@
 // page is open: one setTimeout to the next fire time (capped at 2^31−1 ms, re-armed when it
 // expires), recomputed on every data change, visibilitychange and focus. A fired reminder is
 // dismissed (dismissedAt) so it never fires twice; done tasks never remind.
+// Several missed reminders give one toast whose action "Fällig heute" opens HEUTE and reveals that
+// section (S13, D.5.3): it sets a short-lived flag (takeRevealDue) and emits `ol-reveal-due`.
 import { confirmDialog } from '../components/ol-dialog.js';
 import { showToast } from '../components/ol-toast.js';
 import { db } from '../db.js';
@@ -49,6 +51,27 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 const handled = new Set<string>();
 
 const keyOf = (task: Task, reminder: Reminder): string => `${task.id}:${reminder.id}`;
+
+/** How long a "Fällig heute" request waits for HEUTE to mount and load. */
+const REVEAL_WINDOW_MS = 10_000;
+let revealDueAt: number | null = null;
+
+/**
+ * True once after the missed-reminders toast asked HEUTE to reveal "Fällig heute" (within a
+ * short window); HEUTE calls it after its first complete render and on `ol-reveal-due`.
+ */
+export function takeRevealDue(): boolean {
+  const at = revealDueAt;
+  if (at === null) return false;
+  revealDueAt = null;
+  return performance.now() - at <= REVEAL_WINDOW_MS;
+}
+
+function revealDueToday(): void {
+  revealDueAt = performance.now();
+  navigateTo('/heute');
+  emit(document, 'ol-reveal-due');
+}
 
 /**
  * Starts the scheduler (F §4.14): one setTimeout to the next due reminder
@@ -122,7 +145,7 @@ function deliver(due: Due[], atStartup: boolean, nowMs: number): void {
   if (missed.length > 1) {
     for (const d of missed) dismissReminder(d.task.id, d.reminder.id).catch((err: unknown) => console.error(err));
     showToast(fmt(t.toastRemindersMissed, { n: missed.length }), {
-      actions: [{ label: t.actionOpen, onAction: () => navigateTo('/heute') }],
+      actions: [{ label: t.sectionDueToday, onAction: revealDueToday }],
       duration: STICKY_MS,
     });
   } else {
@@ -220,7 +243,7 @@ async function notify(task: Task): Promise<void> {
     const notification = new Notification(task.title, { body, tag: task.id });
     notification.onclick = () => {
       window.focus();
-      navigateTo(`/aufgabe/${task.id}`);
+      navigateTo(`/aufgabe/${encodeURIComponent(task.id)}`);
       notification.close();
     };
   } catch {
@@ -230,8 +253,8 @@ async function notify(task: Task): Promise<void> {
 
 /**
  * Before the first reminder is created: hint dialog "Erinnerungen werden nur
- * bei geöffneter Seite ausgelöst", then Notification.requestPermission() (only
- * when the permission is 'default'). Resolves once the dialog is answered (the
+ * bei geöffneter Seite ausgelöst" (it mentions the browser prompt only when one
+ * follows), then Notification.requestPermission() (only when the permission is 'default'). Resolves once the dialog is answered (the
  * permission prompt is not waited for); the caller saves the reminder regardless
  * of the outcome (D.5).
  */
@@ -243,7 +266,9 @@ export async function ensureReminderPermission(): Promise<void> {
     console.error(err);
   }
   if (!first) return;
-  const confirmed = await confirmDialog({ title: t.reminderHint, body: t.reminderHintBody, confirmLabel: t.actionNext });
+  // The sentence about the browser prompt only when a prompt follows (permission 'default').
+  const body = notificationPermission() === 'default' ? t.reminderHintBody : t.reminderHintClosed;
+  const confirmed = await confirmDialog({ title: t.reminderHint, body, confirmLabel: t.actionNext });
   // Requested right after the confirm click (no await in between) so the user activation still counts.
   if (!confirmed || notificationPermission() !== 'default') return;
   try {

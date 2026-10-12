@@ -6,9 +6,9 @@
 // - The title field is focused synchronously inside open(), so iOS opens the keyboard from the FAB tap.
 // - Task: first active area (or opts.areaId), no date, projectId null (D4). The task is reached in
 //   Phase 1 through the focus picker's "Ohne Datum" group; the Inbox view is TODO(phase-3).
-// - Habit: daily (interval 1), period 'any', startDay today, area opts.areaId or the first active area;
-//   the toast offers "Bearbeiten" (habit editor).
-// - Note: kind 'note' with the title and an empty body; the notes list in WISSEN is TODO(phase-4).
+// - Habit: daily (interval 1), period 'any', startDay today, no area unless opts.areaId is given
+//   (S17: generic flower); the toast offers "Bearbeiten" (habit editor).
+// - Note: kind 'note' whose body is the title as well (D8); the notes list in WISSEN is TODO(phase-4).
 // - Quick syntax (A.2 G2: "!", "@projekt", "#tag", dates): TODO(phase-2).
 import '../../components/ol-button.js';
 import '../../components/ol-chip.js';
@@ -84,14 +84,13 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
         sheet.close('action');
         showToast(t.toastTaskCreated);
       } else if (type === 'habit') {
-        const areaId = await defaultAreaId(opts.areaId);
         const habit = await createHabit({
-          name: title, schedule: { kind: 'daily', interval: 1 }, period: 'any', ...(areaId ? { areaId } : {}),
+          name: title, schedule: { kind: 'daily', interval: 1 }, period: 'any', ...(opts.areaId ? { areaId: opts.areaId } : {}),
         });
         sheet.close('action');
         showToast(t.toastHabitCreated, { action: { label: t.actionEdit, onAction: () => void openHabitEditor(habit.id) } });
       } else {
-        await createNote({ title, body: '' });
+        await createNote({ title, body: title });
         sheet.close('action');
         showToast(t.toastNoteCreated);
       }

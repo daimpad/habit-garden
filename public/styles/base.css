@@ -1,6 +1,6 @@
 @font-face {
   font-family: "Inter";
-  src: url("/assets/fonts/InterVariable.woff2") format("woff2");
+  src: url("../assets/fonts/InterVariable.woff2") format("woff2");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
@@ -81,6 +81,14 @@ svg { display: block; }
 @media (min-width: 900px) {
   .ol-shell { padding-left: 96px; }
   .ol-view { padding-bottom: var(--space-6); }
+}
+/* WCAG 2.4.11: a focused control must not end up behind the fixed bottom nav (and the FAB above it)
+   or behind a visible toast (--ol-toast-page is set by ol-toast while it shows outside a sheet). */
+:root { scroll-padding-bottom: var(--ol-toast-page, 0px); }
+@media (max-width: 899px) {
+  :root:has(ol-bottom-nav:not([hidden])) {
+    scroll-padding-bottom: max(calc(var(--nav-height) + env(safe-area-inset-bottom) + 56px + var(--space-4) * 2), var(--ol-toast-page, 0px));
+  }
 }
 
 .ol-section { margin-top: var(--space-5); }

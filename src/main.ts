@@ -1,6 +1,6 @@
 // Bootstrap: open the DB, apply settings (data-motion, theme, FAB side), render the shell (view,
 // bottom nav, FAB, toast, particles), wire global events (ol-navigate, ol-back, delegated
-// <a href="/…"> clicks), start the router with the onboarding guard, start reminders and the
+// <a href="/…"> clicks to app routes under the base path), start the router with the onboarding guard, start reminders and the
 // day watcher.
 //
 // Details of this implementation:
@@ -13,6 +13,8 @@
 // - Tab state: the scroll position of each base path is kept in memory and restored on tab switch,
 //   history pop and refresh; other navigations start at the top. Focus moves to the screen's <h1>.
 // - Calls into screen and sheet modules are guarded, so a failing screen leaves the shell usable.
+// - Navigation order (B.4): from 900 px the nav is the left rail and comes first in the DOM (and so in
+//   the tab order); below it follows #view and the FAB as the bottom bar.
 import './components/ol-app-bar.js';
 import './components/ol-bottom-nav.js';
 import './components/ol-button.js';
@@ -52,6 +54,7 @@ import { openTaskSheet } from './screens/sheets/task.js';
 import * as startScreen from './screens/start.js';
 import * as wissenScreen from './screens/wissen.js';
 import { startReminders } from './services/reminders.js';
+import { appPath } from './util/base.js';
 import { onDayChange } from './util/date.js';
 import { h, motionReduced, render } from './util/dom.js';
 
@@ -104,6 +107,28 @@ function renderError(app: HTMLElement, message: string): void {
     app,
     h`<div class="ol-shell" data-overlay-screen><main id="view" class="ol-view" tabindex="-1"><div class="ol-shell__error" role="alert"><h1 class="ol-title">${t.appName}</h1><p class="ol-body">${message}</p></div></main></div>`,
   );
+}
+
+const RAIL_QUERY = '(min-width: 900px)';
+
+/** Puts the nav where it is seen: before #view as the rail (≥ 900 px), after the FAB as the bottom bar. */
+function placeNav(rail: boolean): void {
+  if (!shell) return;
+  const { root, view, nav } = shell;
+  const active = document.activeElement;
+  const focused = active instanceof HTMLElement && nav.contains(active) ? active : null;
+  if (rail) {
+    if (nav.nextElementSibling !== view) root.insertBefore(nav, view);
+  } else if (root.lastElementChild !== nav) {
+    root.append(nav);
+  }
+  if (focused && focused.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+}
+
+function watchNavPlacement(): void {
+  const mql = window.matchMedia(RAIL_QUERY);
+  placeNav(mql.matches);
+  mql.addEventListener('change', (event) => placeNav(event.matches));
 }
 
 /** Exactly one instance at <body> (ol-toast may move itself into an open dialog). */
@@ -453,7 +478,10 @@ function onBackEvent(event: Event): void {
   back();
 }
 
-/** Delegated in-app links: <a href="/…"> without target/download/modifier keys/middle click. */
+/**
+ * Delegated in-app links: <a href="/…"> without target/download/modifier keys/middle click. The href
+ * carries the base path (util/base.ts); it is stripped, and only app routes are intercepted.
+ */
 function onLinkClick(event: MouseEvent): void {
   if (event.defaultPrevented || event.button !== 0) return;
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -465,10 +493,11 @@ function onLinkClick(event: MouseEvent): void {
   if (linkTarget && linkTarget !== '_self') return;
   const href = link.getAttribute('href') ?? '';
   if (href.startsWith('//')) return;
-  // Only app routes; files such as /assets/… stay with the browser.
-  if (href !== '/' && !href.startsWith('/?') && !parseRoute(href)) return;
+  const path = appPath(href);
+  // Only app routes under the base; files such as assets/… or licenses.txt stay with the browser.
+  if (path === null || (path !== '/' && !path.startsWith('/?') && !parseRoute(path))) return;
   event.preventDefault();
-  navigate(href);
+  navigate(path);
 }
 
 // ---------------------------------------------------------------------------
@@ -484,12 +513,18 @@ async function boot(): Promise<void> {
   const app = document.getElementById('app');
   if (!app) return;
   let profile: Profile;
+  // Another tab with an older connection blocks the upgrade: say so until the open succeeds
+  // (renderShell then replaces the message).
+  const onBlocked = (): void => renderError(app, t.errorBlocked);
+  db.on.blocked.subscribe(onBlocked);
   try {
     await db.open();
     profile = await getProfile();
   } catch (err) {
     renderError(app, isVersionError(err) ? t.errorBlocked : t.errorStorage);
     return;
+  } finally {
+    db.on.blocked.unsubscribe(onBlocked);
   }
   try {
     history.scrollRestoration = 'manual';
@@ -498,6 +533,7 @@ async function boot(): Promise<void> {
   }
   shell = renderShell(app);
   if (!shell) return;
+  watchNavPlacement();
   ensureSingleton('ol-toast');
   ensureSingleton('ol-particles');
   applySettings(profile.settings);

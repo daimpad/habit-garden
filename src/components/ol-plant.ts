@@ -1,5 +1,6 @@
-// <ol-plant stage="0..4" flower="bellis" tint="#7FA36F" size="32|120" streak="12"></ol-plant>
-// role="img", aria-label = fmt(t.habitPlantAria, { stage: stageName, n: streak }).
+// <ol-plant stage="0..4" flower="bellis" tint="#7FA36F" size="32|120" streak="12" [streak-unit="weeks"]></ol-plant>
+// role="img", aria-label = fmt(t.habitPlantAria, { stage: stageName, n: streak }); with streak-unit="weeks"
+// (timesPerWeek habits) the streak is read in weeks (t.habitPlantAriaWeeks).
 // `size` is the width in px (height = size · 190/160). Changing `stage` re-renders the SVG
 // (no animation by itself); callers set the new stage first, then call grow()/wobble().
 import { GENERIC_TINT, type Stage } from '../model.js';
@@ -33,7 +34,7 @@ function crossfadeMs(): number {
 }
 
 export class OlPlant extends HTMLElement {
-  static observedAttributes = ['stage', 'flower', 'tint', 'size', 'streak'];
+  static observedAttributes = ['stage', 'flower', 'tint', 'size', 'streak', 'streak-unit'];
 
   #key = '';
   #prevGrow: SVGGElement | null = null;
@@ -49,8 +50,8 @@ export class OlPlant extends HTMLElement {
 
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
     if (oldValue === newValue || !this.isConnected) return;
-    if (name !== 'streak') this.#render();
-    if (name === 'stage' || name === 'streak') this.#syncLabel();
+    if (name !== 'streak' && name !== 'streak-unit') this.#render();
+    if (name === 'stage' || name === 'streak' || name === 'streak-unit') this.#syncLabel();
   }
 
   get stage(): Stage {
@@ -135,7 +136,13 @@ export class OlPlant extends HTMLElement {
 
   #syncLabel(): void {
     const streak = Math.max(0, Math.trunc(Number(this.getAttribute('streak')) || 0));
-    this.setAttribute('aria-label', fmt(t.habitPlantAria, { stage: stageName(this.stage), n: streak }));
+    const stage = stageName(this.stage);
+    if (this.getAttribute('streak-unit') === 'weeks') {
+      const weeks = streak === 1 ? t.streakWeeksOne : fmt(t.streakWeeks, { n: streak });
+      this.setAttribute('aria-label', fmt(t.habitPlantAriaWeeks, { stage, weeks }));
+    } else {
+      this.setAttribute('aria-label', fmt(t.habitPlantAria, { stage, n: streak }));
+    }
   }
 
   /** Fades the previous drawing (if it was replaced just now) out and the current one in. */

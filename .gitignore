@@ -4,6 +4,7 @@ public/app/
 public/vendor/
 public/assets/icons.svg
 public/assets/fonts/
+public/licenses.txt
 build/
 dist/
 test-results/

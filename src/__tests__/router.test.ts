@@ -57,6 +57,13 @@ describe('parseRoute: params', () => {
     assert.equal(route.path, '/aufgabe/a%20b');
   });
 
+  test('ids with reserved characters round-trip through encodeURIComponent', () => {
+    const href = `/aufgabe/${encodeURIComponent('a/b?c#d%')}`;
+    const route = parsed(href);
+    assert.equal(route.params['taskId'], 'a/b?c#d%');
+    assert.equal(routeHref(route), href);
+  });
+
   test('routes without params have an empty params object', () => {
     assert.deepEqual(parsed('/heute').params, {});
     assert.deepEqual(parsed('/planung/inbox').params, {});

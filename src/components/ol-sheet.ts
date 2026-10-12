@@ -175,7 +175,8 @@ function currentTranslateY(el: Element): number {
 
 let backPending: { done: Promise<void> } | null = null;
 
-function isOwnEntry(state: unknown, id: string): boolean {
+/** True when a history state is the entry {olSheet: id} of a sheet or dialog. */
+export function isOwnEntry(state: unknown, id: string): boolean {
   return typeof state === 'object' && state !== null && (state as Record<string, unknown>)['olSheet'] === id;
 }
 
@@ -189,7 +190,7 @@ export function historySettled(): Promise<void> {
 }
 
 /** history.back() and a promise for the resulting popstate (a later push must wait for it). */
-function goBack(): void {
+export function goBack(): void {
   let resolveDone: () => void = () => undefined;
   const token = { done: new Promise<void>((resolve) => { resolveDone = resolve; }) };
   const finish = (): void => {
@@ -382,12 +383,11 @@ export class OlSheet extends HTMLElement {
     dialog.addEventListener('pointerdown', this.onDialogPointerDown);
     dialog.addEventListener('click', this.onDialogClick);
     dialog.addEventListener('click', this.onClickCapture, true);
+    // A drag starts on the handle or header; its moves and the release are followed on window, so a
+    // fast mouse that leaves the zone before the slop is passed (no implicit capture) still drags.
     for (const zone of [this.gripEl, this.headerEl]) {
       if (!zone) continue;
       zone.addEventListener('pointerdown', this.onDragStart);
-      zone.addEventListener('pointermove', this.onDragMove);
-      zone.addEventListener('pointerup', this.onDragEnd);
-      zone.addEventListener('pointercancel', this.onDragCancel);
       zone.addEventListener('lostpointercapture', this.onLostCapture);
     }
     this.gripEl?.addEventListener('click', this.onGripClick);
@@ -468,7 +468,7 @@ export class OlSheet extends HTMLElement {
     const dialog = this.dialogEl;
     this.phase = 'closing';
     this.reason = reason;
-    this.drag = null;
+    this.endDrag();
     this.removeAttribute('dragging');
     this.setAttribute('dismissing', '');
     this.removeAttribute('visible');
@@ -480,7 +480,15 @@ export class OlSheet extends HTMLElement {
     this.runCleanups();
     if (this.hasEntry) {
       this.hasEntry = false;
-      if (reason !== 'history' && isOwnEntry(history.state, this.sheetId)) goBack();
+      if (reason !== 'history') {
+        // A dialog closed just before may still be going back from its own entry to this one.
+        const id = this.sheetId;
+        const pop = (): void => {
+          if (isOwnEntry(history.state, id)) goBack();
+        };
+        if (backPending) void backPending.done.then(pop);
+        else pop();
+      }
     }
     emit(this, 'ol-dismiss', { reason });
   }
@@ -598,7 +606,18 @@ export class OlSheet extends HTMLElement {
       samples: [{ t: event.timeStamp, y: event.clientY }],
       source: event.currentTarget,
     };
+    window.addEventListener('pointermove', this.onDragMove);
+    window.addEventListener('pointerup', this.onDragEnd);
+    window.addEventListener('pointercancel', this.onDragCancel);
   };
+
+  /** Ends tracking of the current pointer (drag finished, cancelled or sheet closing). */
+  private endDrag(): void {
+    this.drag = null;
+    window.removeEventListener('pointermove', this.onDragMove);
+    window.removeEventListener('pointerup', this.onDragEnd);
+    window.removeEventListener('pointercancel', this.onDragCancel);
+  }
 
   private readonly onDragMove = (event: PointerEvent): void => {
     const drag = this.drag;
@@ -646,7 +665,7 @@ export class OlSheet extends HTMLElement {
     const drag = this.drag;
     const dialog = this.dialogEl;
     if (!drag || event.pointerId !== drag.pointerId) return;
-    this.drag = null;
+    this.endDrag();
     if (!drag.active || !dialog) return;
     this.suppressClick = true;
     window.setTimeout(() => {
@@ -681,7 +700,7 @@ export class OlSheet extends HTMLElement {
   private readonly onDragCancel = (event: PointerEvent): void => {
     const drag = this.drag;
     if (!drag || event.pointerId !== drag.pointerId) return;
-    this.drag = null;
+    this.endDrag();
     if (!drag.active || !this.dialogEl) return;
     this.removeAttribute('dragging');
     this.dialogEl.style.removeProperty('height');
