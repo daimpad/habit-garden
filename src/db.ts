@@ -25,11 +25,38 @@ export const TABLES = [
 ] as const;
 export type TableName = typeof TABLES[number];
 
+let reloadPlanned = false;
+
+/** Reloads the page now when it is hidden, otherwise at the next visibility change or interaction. */
+function planReload(): void {
+  if (reloadPlanned || typeof window === 'undefined' || typeof document === 'undefined') return;
+  reloadPlanned = true;
+  if (document.hidden) {
+    window.location.reload();
+    return;
+  }
+  // The triggering interaction must not reach the app any more: its connection is closed.
+  const swallow = (event: Event): void => {
+    event.stopImmediatePropagation();
+    event.preventDefault();
+  };
+  const reload = (event: Event): void => {
+    if (event.type !== 'visibilitychange' && event.type !== 'focus') swallow(event);
+    window.location.reload();
+  };
+  for (const type of ['pointerdown', 'keydown', 'click'] as const) window.addEventListener(type, reload, { capture: true });
+  window.addEventListener('focus', reload);
+  document.addEventListener('visibilitychange', reload);
+}
+
 /**
- * Another tab opened a newer schema version: close this connection so the
- * other tab can upgrade; the page is reloaded on next interaction.
+ * Another tab deletes the database ("Alle Daten löschen", restore) or opens a newer schema
+ * version: close this connection so the other tab can proceed, and reload this page (when it is
+ * hidden at once, else on the next interaction) so it shows the new state instead of stale data.
+ * return false keeps Dexie from reopening the connection on its own.
  */
 db.on('versionchange', () => {
   db.close();
+  planReload();
   return false;
 });

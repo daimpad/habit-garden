@@ -6,7 +6,8 @@
 //   place, so focus, an open rename field and component state survive (S7).
 // - /einstellungen/:section scrolls to that section (and focuses its heading) once profile and areas have
 //   arrived, so later content does not push the target away.
-// - Daten: export with the plaintext hint next to the button (S25 places the notice inline, no dialog);
+// - Daten: export with the plaintext hint next to the button and, before the download, the same notice in a
+//   non-destructive dialog (S25, D.4.1; export-flow exportWithNotice);
 //   import → validation (ImportError → "kein gültiger Olife-Export") → mode dialog (Zusammenführen /
 //   Wiederherstellen) → restore needs a destructive confirmation with Abbrechen focused, then the route
 //   is re-dispatched. "Alle Daten löschen" needs two destructive confirmations, deletes the database and
@@ -37,6 +38,7 @@ import type { ChipChange } from '../components/ol-chip.js';
 import { choiceDialog, confirmDialog } from '../components/ol-dialog.js';
 import type { OlInput } from '../components/ol-input.js';
 import type { OlSegmented, SegmentedChange } from '../components/ol-segmented.js';
+import { historySettled } from '../components/ol-sheet.js';
 import { showToast } from '../components/ol-toast.js';
 import { flowerName, fmt, t } from '../i18n/de.js';
 import { DEFAULT_AREAS, GENERIC_TINT, type Area, type FlowerId, type Id, type Profile } from '../model.js';
@@ -46,10 +48,11 @@ import { refresh, type Route } from '../router.js';
 import { notificationPermission } from '../services/reminders.js';
 import { estimate, formatBytes, isPersisted, isSafari, requestPersist, type PersistResult } from '../services/storage-hints.js';
 import {
-  deleteAllData, exportJson, ImportError, importMerge, importRestore, parseImport, type ExportFile,
+  deleteAllData, ImportError, importMerge, importRestore, parseImport, type ExportFile,
 } from '../services/transfer.js';
 import { dayOfIso, formatDayFull, formatTime } from '../util/date.js';
 import { buildHash, h, icon, render, setVar, type SafeHtml } from '../util/dom.js';
+import { exportWithNotice } from './export-flow.js';
 
 export const APP_VERSION = '0.1.0';
 
@@ -57,7 +60,9 @@ const SECTIONS = ['daten', 'benachrichtigungen', 'darstellung', 'bereiche', 'inf
 type SectionId = typeof SECTIONS[number];
 
 const LEAD_MINUTES: readonly number[] = [0, 5, 10, 15, 30, 60];
-const HOURS: readonly number[] = Array.from({ length: 24 }, (_, i) => i);
+/** S18: 0 ≤ dayStartHour < 12 ≤ eveningHour ≤ 23 (12 is the fixed noon of the routine order). */
+const MORNING_HOURS: readonly number[] = Array.from({ length: 12 }, (_, i) => i);
+const EVENING_HOURS: readonly number[] = Array.from({ length: 12 }, (_, i) => i + 12);
 const NAME_MAX = 40;
 const SCROLL_FALLBACK_MS = 600;
 
@@ -270,8 +275,8 @@ class SettingsScreen {
         <p class="ol-settings__hint">${t.importNewDeviceHint}</p>
       </div>
       <div class="ol-settings__item">
-        <p class="ol-settings__line">${icon('hard-drive', 20)}<span class="ol-settings__storage"></span></p>
         <dl class="ol-settings__facts">
+          <div class="ol-settings__fact"><dt>${t.storageLabel}</dt><dd class="ol-settings__storage"></dd></div>
           <div class="ol-settings__fact"><dt>${t.persistStatus}</dt><dd class="ol-settings__persist"></dd></div>
         </dl>
         <ol-button class="ol-settings__persist-btn" variant="tonal" size="sm" icon="shield" label="${t.persistAction}" hidden></ol-button>
@@ -321,8 +326,8 @@ class SettingsScreen {
         </ol-segmented>
       </div>
       <div class="ol-settings__item ol-settings__pair">
-        ${selectField('ol-settings__day-start', 'settings-day-start', t.dayStartHour, options(HOURS, hour))}
-        ${selectField('ol-settings__evening', 'settings-evening', t.eveningHour, options(HOURS, hour))}
+        ${selectField('ol-settings__day-start', 'settings-day-start', t.dayStartHour, options(MORNING_HOURS, hour))}
+        ${selectField('ol-settings__evening', 'settings-evening', t.eveningHour, options(EVENING_HOURS, hour))}
       </div>`;
     const bereiche = h`
       <ul class="ol-settings__areas"></ul>
@@ -342,6 +347,7 @@ class SettingsScreen {
       <div class="ol-settings__item">
         <h3 class="ol-settings__subhead">${t.infoLicenses}</h3>
         <ul class="ol-settings__licenses">${LICENSES.map((line) => h`<li>${line}</li>`)}</ul>
+        <a class="ol-settings__link" href="/licenses.txt">${t.infoLicensesLink}</a>
         <p class="ol-settings__hint">${t.infoProvenance}</p>
       </div>
       <div class="ol-settings__item">
@@ -521,17 +527,8 @@ class SettingsScreen {
   private async onExport(): Promise<void> {
     const btn = this.els.exportBtn;
     if (btn.hasAttribute('loading')) return;
-    btn.setAttribute('loading', '');
-    try {
-      await exportJson();
-      showToast(t.toastExported);
-    } catch (err) {
-      console.error(err);
-      showToast(t.toastError);
-    } finally {
-      btn.removeAttribute('loading');
-    }
-    if (!this.destroyed) void this.renderStorage();
+    const exported = await exportWithNotice(btn);
+    if (exported && !this.destroyed) void this.renderStorage();
   }
 
   private async onImport(file: File): Promise<void> {
@@ -569,6 +566,8 @@ class SettingsScreen {
         const n = await importRestore(data);
         showToast(fmt(t.toastImportRestored, { n }));
         // Re-dispatch the route: the screen mounts fresh (the guard sends an empty restore to /start).
+        // The confirm dialog's history entry is popped first.
+        await historySettled();
         refresh();
       });
     }
@@ -615,6 +614,8 @@ class SettingsScreen {
     } catch {
       // Storage blocked: nothing stored there.
     }
+    // The dialogs' history entries are popped before the page is replaced.
+    await historySettled();
     location.replace('/start');
   }
 

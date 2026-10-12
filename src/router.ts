@@ -306,14 +306,18 @@ function parentHref(route: Route): string {
 
 /** history.back() when there is in-app history, otherwise navigate to the current tab root (replace). */
 export function back(): void {
-  const state = readState();
-  if (state.idx > 0 || state.sheet) {
-    history.back();
-    return;
-  }
-  const route = current();
-  const target = parentHref(route);
-  if (target !== routeHref(route)) navigate(target, { replace: true });
+  // A sheet or dialog that just closed may still be going back from its own entry: read the
+  // history state only after that popstate has landed.
+  void settle().then(() => {
+    const state = readState();
+    if (state.idx > 0 || state.sheet) {
+      history.back();
+      return;
+    }
+    const route = current();
+    const target = parentHref(route);
+    if (target !== routeHref(route)) navigate(target, { replace: true });
+  });
 }
 
 /** Subscribes to route changes (called with the new route); returns an unsubscribe function. */

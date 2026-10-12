@@ -39,7 +39,7 @@
 /* Step 1: arch window with a flowering plant, three principles, device note. */
 .ol-start__hero {
   align-self: center; display: flex; align-items: flex-end; justify-content: center;
-  width: 136px; height: 152px; padding-bottom: var(--space-3);
+  width: 152px; height: 172px; padding-bottom: var(--space-3);
   border-radius: var(--radius-arch);
   background-color: color-mix(in srgb, var(--color-sage) 14%, var(--color-surface));
 }
@@ -90,8 +90,9 @@
 .ol-start__card[aria-checked="true"] .ol-start__check {
   border-color: var(--color-primary); background-color: var(--color-primary); color: var(--color-on-primary);
 }
-.ol-start__card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: var(--space-1); }
-.ol-start__name { font-weight: 600; line-height: 1.375rem; overflow-wrap: break-word; hyphens: auto; }
+.ol-start__card-text { display: flex; flex-direction: column; align-self: stretch; gap: 2px; min-width: 0; padding-right: var(--space-1); }
+/* At 200 % text a long area name must stay inside its card (no clipped text). */
+.ol-start__name { font-weight: 600; line-height: 1.375rem; overflow-wrap: anywhere; hyphens: auto; }
 .ol-start__desc { color: var(--color-text-2); font-size: .8125rem; line-height: 1.125rem; }
 
 /* "Eigener Bereich": full-width card; the toggle and the name field share the card frame. */
@@ -110,8 +111,8 @@
   border-color: transparent; box-shadow: none; background-color: transparent;
 }
 .ol-start__custom-name { padding: 0 var(--space-3); }
-.ol-start__error { color: var(--color-danger-text); font-size: .875rem; line-height: 1.25rem; }
-.ol-start__error:empty { margin-top: calc(var(--space-4) * -1); }
+.ol-start__error { flex: 1 0 100%; color: var(--color-danger-text); font-size: .875rem; line-height: 1.25rem; }
+.ol-start__error:empty { display: none; }
 
 /* Step 3: storage status (neutral for every outcome). */
 .ol-start__status {
@@ -128,6 +129,10 @@
   background-color: var(--color-bg);
 }
 .ol-start__next { margin-left: auto; min-width: min(100%, 9rem); }
+/* Focused cards stay clear of the sticky action bar (buttons + a possible error line). */
+:root:has(.ol-start__actions) {
+  scroll-padding-bottom: calc(var(--space-3) + 48px + var(--space-4) * 2 + 28px + env(safe-area-inset-bottom));
+}
 
 @media (prefers-reduced-motion: reduce) {
   .ol-start__dot, .ol-start__card, .ol-start__check, .ol-start__custom { transition: none; }
@@ -157,13 +162,25 @@
   border: 0; border-radius: var(--radius-sm); background-color: transparent; color: var(--color-text);
   font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color var(--duration-fast) linear, opacity var(--duration-base) linear;
+  transition: background-color var(--duration-fast) linear, color var(--duration-base) linear;
 }
 @media (hover: hover) {
   .ol-heute__title:hover { background-color: var(--color-overlay-hover); }
 }
 .ol-heute__title:active { background-color: var(--color-overlay-pressed); }
-.ol-heute__task[data-done] .ol-heute__title { text-decoration: line-through; opacity: .5; }
+/* S29: completed titles are struck through in text-2 (contrast ≥ 4.5:1), not faded. */
+.ol-heute__task[data-done] .ol-heute__title { text-decoration: line-through; color: var(--color-text-2); }
+/* Focus and Fällig rows: with large text (or a very narrow list) the area label moves below the title
+   instead of squeezing both into broken words; 18.5rem scales with the text size (≈ 296 px at 100 %). */
+.ol-heute__focus-list, .ol-heute__due-list { container-type: inline-size; }
+@container (max-width: 18.5rem) {
+  .ol-heute__task { flex-wrap: wrap; }
+  .ol-heute__task > .ol-heute__title { flex: 1 1 calc(100% - 52px); }
+  .ol-heute__task > .ol-heute__meta {
+    flex: 1 1 100%; max-width: none; margin-top: calc(var(--space-2) * -1);
+    padding: 0 var(--space-2) var(--space-2) calc(48px + var(--space-1) + var(--space-2)); text-align: left;
+  }
+}
 .ol-heute__meta {
   flex: 0 1 auto; max-width: 38%; padding-right: var(--space-2);
   color: var(--color-text-2); text-align: right; overflow-wrap: break-word; hyphens: auto;
@@ -191,7 +208,7 @@
 .ol-heute__backup-head { display: flex; align-items: flex-start; gap: var(--space-3); }
 .ol-heute__backup-icon { display: inline-flex; padding-top: var(--space-3); color: var(--color-primary); }
 .ol-heute__backup-text { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--space-1); padding-top: var(--space-3); }
-.ol-heute__backup-export { justify-self: start; margin-left: calc(24px + var(--space-3)); }
+.ol-heute__backup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-left: calc(24px + var(--space-3)); }
 
 /* Fokus: ring (B.3 ol-progress-ring 28 px, stroke 3, sage-strong on border), slots */
 .ol-heute__ring { display: inline-flex; align-items: center; gap: var(--space-2); }
@@ -482,6 +499,7 @@
 .ol-settings__subhead { font-size: 1rem; line-height: 1.5rem; font-weight: 600; }
 .ol-settings__licenses { display: grid; gap: var(--space-1); font-size: .875rem; line-height: 1.25rem; }
 .ol-settings__licenses > li { overflow-wrap: anywhere; }
+.ol-settings__link { display: inline-flex; align-items: center; align-self: flex-start; min-height: 48px; font-weight: 500; text-underline-offset: 3px; }
 
 @media (prefers-reduced-motion: reduce) {
   .ol-settings__select > select { transition: none; }

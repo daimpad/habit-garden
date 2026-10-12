@@ -16,6 +16,8 @@
 //   rows coming back (undo) expand at their position.
 // - Content stays invisible until the first data arrived (no sections popping in); the card stagger (B.4)
 //   runs on the first render after page load only.
+// - The missed-reminders toast ("Fällig heute", S13/D.5.3) reveals that section once the data is
+//   complete: the list expands, scrolls into view and its heading takes focus.
 // TODO(phase-3): swipe left on a focus row removes it from the focus (A.3); Phase 1 uses the task sheet.
 // TODO(phase-2): evening card "Morgen vorbereiten" above Fällig heute (H7 [Ext]).
 // TODO(phase-5): tapping the date opens the calendar sheet (H8), header landscape (H11), review card (H9).
@@ -27,7 +29,7 @@ import { particles } from '../components/ol-particles.js';
 import type { OlPlant } from '../components/ol-plant.js';
 import { onModalChange, topModal, type OlSheet } from '../components/ol-sheet.js';
 import { showToast } from '../components/ol-toast.js';
-import { fmt, moodLabel, stageName, t } from '../i18n/de.js';
+import { fmt, stageName, t } from '../i18n/de.js';
 import {
   DEFAULT_SETTINGS, GENERIC_TINT, MAX_FOCUS,
   type Area, type Day, type FirstStepId, type FlowerId, type Habit, type HabitLog, type Id, type MoodLog,
@@ -44,9 +46,10 @@ import { compareDue, completeTask, dueOn, getTask, reopenTask } from '../repo/ta
 import type { Route } from '../router.js';
 import { isScheduledOn, stageFor, streak, weekProgress } from '../services/growth.js';
 import { backupCardState } from '../services/storage-hints.js';
-import { exportJson } from '../services/transfer.js';
+import { takeRevealDue } from '../services/reminders.js';
 import { currentHour, formatDayLong, formatDayShort, formatTime, now, nowIso, today } from '../util/date.js';
 import { emit, h, HAPTIC, icon, motionReduced, raw, render, vibrate, type SafeHtml } from '../util/dom.js';
+import { exportWithNotice } from './export-flow.js';
 import { openCapture, type CaptureType } from './sheets/capture.js';
 import { openFocusPick } from './sheets/focus-pick.js';
 import { openJournal } from './sheets/journal.js';
@@ -66,6 +69,8 @@ const MILESTONES: readonly number[] = [7, 30, 100];
 const COMPLETE_LABEL_MS = 2000;
 const MOOD_FLASH_MS = 1500;
 const EXPECT_TIMEOUT_MS = 2000;
+/** A confirm dialog has finished closing (fade 150 ms) and handed focus back by then. */
+const DIALOG_SETTLE_MS = 400;
 const REVEAL_TIMEOUT_MS = 800;
 const RING_R = 11.5;
 const RING_C = 2 * Math.PI * RING_R;
@@ -114,6 +119,7 @@ interface Els {
   backup: HTMLElement;
   backupText: HTMLElement;
   backupExport: HTMLElement;
+  backupSettings: HTMLElement;
   backupDismiss: HTMLElement;
   focusHeading: HTMLElement;
   ring: HTMLElement;
@@ -273,7 +279,8 @@ function attachLongPress(list: HTMLElement, onLong: (row: HTMLElement) => void):
     if (Math.hypot(event.clientX - startX, event.clientY - startY) > LONG_PRESS_SLOP) cancel();
   };
   const click = (event: MouseEvent): void => {
-    if (!recentlyFired()) return;
+    // Only the pointer's own click is swallowed; a keyboard activation (detail 0) always goes through.
+    if (!recentlyFired() || event.detail === 0) return;
     firedAt = Number.NEGATIVE_INFINITY;
     event.preventDefault();
     event.stopPropagation();
@@ -381,6 +388,9 @@ class HeuteScreen {
   /** Checked/unchecked focus tasks whose write has not reached the snapshot yet (no flicker back). */
   private readonly focusOverride = new Map<Id, boolean>();
   private readonly pendingHabits = new Set<Id>();
+  /** Latest check/uncheck per task: a write that finishes after a newer one shows no feedback. */
+  private readonly checkSeq = new Map<Id, number>();
+  private checkCounter = 0;
   private readonly expectLog = new Map<Id, { done: boolean; timer: number }>();
   private pendingMood: MoodValue | null = null;
   private moodSeq = 0;
@@ -447,6 +457,9 @@ class HeuteScreen {
     this.later(() => this.reveal(), REVEAL_TIMEOUT_MS);
     this.armHourTimer();
     this.detach.push(onModalChange(() => this.onModalChange()));
+    const onRevealDue = (): void => this.maybeRevealDue();
+    document.addEventListener('ol-reveal-due', onRevealDue);
+    this.detach.push(() => document.removeEventListener('ol-reveal-due', onRevealDue));
   }
 
   destroy(): void {
@@ -574,12 +587,12 @@ class HeuteScreen {
 
   private openTask(row: HTMLElement): void {
     const id = row.dataset['id'];
-    if (id) this.navigate(row, `/aufgabe/${id}`);
+    if (id) this.navigate(row, `/aufgabe/${encodeURIComponent(id)}`);
   }
 
   private openHabit(row: HTMLElement): void {
     const id = row.dataset['id'];
-    if (id) this.navigate(row, `/gewohnheit/${id}`);
+    if (id) this.navigate(row, `/gewohnheit/${encodeURIComponent(id)}`);
   }
 
   private capture(type: CaptureType): void {
@@ -649,7 +662,10 @@ class HeuteScreen {
             </div>
             <ol-icon-button class="ol-heute__backup-dismiss" icon="x" label="${fmt(t.cardDismissNamed, { label: t.backupCardTitle })}"></ol-icon-button>
           </div>
-          <ol-button class="ol-heute__backup-export" variant="tonal" icon="download" label="${t.backupCardAction}"></ol-button>
+          <div class="ol-heute__backup-actions">
+            <ol-button class="ol-heute__backup-export" variant="tonal" icon="download" label="${t.backupCardAction}"></ol-button>
+            <ol-button class="ol-heute__backup-settings" variant="ghost" label="${t.backupCardSettings}"></ol-button>
+          </div>
         </ol-card>
         <section class="ol-section ol-heute__focus" aria-labelledby="heute-focus">
           <div class="ol-section__head">
@@ -684,7 +700,7 @@ class HeuteScreen {
           <ol-card class="ol-heute__card ol-heute__mood-card">
             <div class="ol-heute__moods" role="radiogroup" aria-label="${t.moodGroupAria}">
               ${MOODS.map((v) => h`<button type="button" class="ol-heute__mood" role="radio" aria-checked="false" data-value="${v}"
-                aria-label="${fmt(t.moodChoiceAria, { n: v, label: moodLabel(v) })}" tabindex="${v === 1 ? 0 : -1}">${moodGlyph(v)}<span class="ol-heute__mood-n ol-num" aria-hidden="true">${v}</span></button>`)}
+                aria-label="${fmt(t.moodChoiceAria, { n: v })}" tabindex="${v === 1 ? 0 : -1}">${moodGlyph(v)}<span class="ol-heute__mood-n ol-num" aria-hidden="true">${v}</span></button>`)}
             </div>
             <div class="ol-heute__mood-foot">
               <ol-button class="ol-heute__journal" variant="ghost" size="sm" label="${t.actionAddNote}"></ol-button>
@@ -720,6 +736,7 @@ class HeuteScreen {
       backup,
       backupText: req<HTMLElement>(backup, '.ol-heute__backup-text p'),
       backupExport: req<HTMLElement>(backup, '.ol-heute__backup-export'),
+      backupSettings: req<HTMLElement>(backup, '.ol-heute__backup-settings'),
       backupDismiss: req<HTMLElement>(backup, '.ol-heute__backup-dismiss'),
       focusHeading: req<HTMLElement>(view, '#heute-focus'),
       ring,
@@ -746,6 +763,13 @@ class HeuteScreen {
 
   private bindEvents(): void {
     const els = this.els;
+    // The input that reveals a new day (util/date re-checks on pointerdown/keydown) re-mounts this
+    // screen asynchronously; until then no click may write into the old day.
+    this.view.addEventListener('click', (event) => {
+      if (today() === this.day) return;
+      event.stopPropagation();
+      event.preventDefault();
+    }, { capture: true });
     req<HTMLElement>(this.view, '.ol-heute__settings').addEventListener('click', (event) => {
       if (event.currentTarget instanceof Element) this.navigate(event.currentTarget, '/einstellungen');
     });
@@ -762,6 +786,9 @@ class HeuteScreen {
 
     // Daten sichern
     els.backupExport.addEventListener('click', () => void this.exportBackup());
+    els.backupSettings.addEventListener('click', (event) => {
+      if (event.currentTarget instanceof Element) this.navigate(event.currentTarget, '/einstellungen/daten');
+    });
     els.backupDismiss.addEventListener('click', () => {
       this.els.focusHeading.focus({ preventScroll: true });
       updateProfile({ backupCardDismissedAt: nowIso() }).catch(() => showToast(t.toastError));
@@ -827,11 +854,30 @@ class HeuteScreen {
 
   // --- Reveal and stagger ---
 
-  private maybeReveal(): void {
-    if (this.revealed) return;
-    const ready = this.profile !== null && this.areasLoaded && this.focus !== null && this.habits !== null
+  private dataReady(): boolean {
+    return this.profile !== null && this.areasLoaded && this.focus !== null && this.habits !== null
       && this.logs !== null && this.moodLoaded && this.due !== null && this.anyFocus !== null && this.noteCount !== null;
-    if (ready) this.reveal();
+  }
+
+  private maybeReveal(): void {
+    if (!this.revealed && this.dataReady()) this.reveal();
+    this.maybeRevealDue();
+  }
+
+  /** Reveals "Fällig heute" when the reminders toast asked for it and the data is complete. */
+  private maybeRevealDue(): void {
+    if (this.destroyed || !this.revealed || !this.dataReady() || !takeRevealDue()) return;
+    const els = this.els;
+    if (els.due.hidden) {
+      els.focusHeading.focus({ preventScroll: false });
+      return;
+    }
+    if (!this.dueExpanded && !els.dueToggle.hidden) {
+      this.dueExpanded = true;
+      this.renderDue();
+    }
+    els.due.scrollIntoView({ block: 'start', behavior: motionReduced() ? 'auto' : 'smooth' });
+    els.dueHeading.focus({ preventScroll: true });
   }
 
   private reveal(): void {
@@ -916,17 +962,16 @@ class HeuteScreen {
     card.hidden = false;
   }
 
+  /** S25: the plaintext notice comes first; the card hides itself once lastExportAt is set. */
   private async exportBackup(): Promise<void> {
     const button = this.els.backupExport;
     if (button.hasAttribute('loading')) return;
-    button.setAttribute('loading', '');
-    try {
-      await exportJson();
-      showToast(t.toastExported);
-    } catch {
-      showToast(t.toastError);
-    } finally {
-      button.removeAttribute('loading');
+    const exported = await exportWithNotice(button);
+    // The closing dialog returns focus to the export button, which the export hides: continue at FOKUS.
+    if (exported) {
+      this.later(() => {
+        if (isLost(document.activeElement)) this.els.focusHeading.focus({ preventScroll: true });
+      }, DIALOG_SETTLE_MS);
     }
   }
 
@@ -1006,6 +1051,7 @@ class HeuteScreen {
     const id = row.dataset['id'];
     const tasks = this.focus?.tasks ?? [];
     if (!id || !tasks.some((task) => task.id === id)) return;
+    const seq = this.nextCheck(id);
     this.focusOverride.set(id, checked);
     this.renderFocus();
     if (!checked) {
@@ -1018,7 +1064,6 @@ class HeuteScreen {
       }
       return;
     }
-    const completesAll = tasks.every((task) => this.focusDone(task));
     try {
       await completeTask(id);
     } catch {
@@ -1027,7 +1072,10 @@ class HeuteScreen {
       this.renderFocus();
       return;
     }
-    if (this.destroyed) return;
+    // Unchecked again meanwhile: no toast, no celebration for an open task.
+    if (this.destroyed || this.checkSeq.get(id) !== seq) return;
+    const current = this.focus?.tasks ?? [];
+    const completesAll = current.length >= 1 && current.every((task) => this.focusDone(task));
     showToast(t.toastDone, {
       action: {
         label: t.actionUndo,
@@ -1037,7 +1085,13 @@ class HeuteScreen {
         },
       },
     });
-    if (completesAll) this.celebrateFocus(tasks.length);
+    if (completesAll) this.celebrateFocus(current.length);
+  }
+
+  private nextCheck(id: Id): number {
+    const seq = ++this.checkCounter;
+    this.checkSeq.set(id, seq);
+    return seq;
   }
 
   /** B.4 "Fokus vollständig" (n/n): the ring closes, 4 sparks at the ring, label in primary for 2 s, confirm. */
@@ -1162,6 +1216,8 @@ class HeuteScreen {
       setAttr(plant, 'tint', tint);
       if (stage) setAttr(plant, 'stage', String(stageFor(habit, logs, day)));
       setAttr(plant, 'streak', String(count));
+      if (habit.schedule.kind === 'timesPerWeek') setAttr(plant, 'streak-unit', 'weeks');
+      else plant.removeAttribute('streak-unit');
     }
 
     const status = todayStatus(logs, day);
@@ -1443,6 +1499,7 @@ class HeuteScreen {
     if (!id) return;
     const task = this.due?.find((x) => x.id === id) ?? this.leaving.get(id)?.task;
     if (!task) return;
+    const seq = this.nextCheck(id);
     if (!checked) {
       this.cancelLeaving(id);
       row.removeAttribute('data-done');
@@ -1478,7 +1535,7 @@ class HeuteScreen {
       }
       return;
     }
-    if (this.destroyed) return;
+    if (this.destroyed || this.checkSeq.get(id) !== seq || entry.cancelled) return;
     showToast(t.toastDone, { action: { label: t.actionUndo, onAction: () => this.undoDue(id) } });
   }
 

@@ -3,7 +3,7 @@ import { liveQuery, type Observable } from 'dexie';
 import { db } from '../db.js';
 import { fmt, t } from '../i18n/de.js';
 import type { Day, Id, MoodLog, Note } from '../model.js';
-import { dayParts, formatDayFull, isDay, nowIso, timeOfIso } from '../util/date.js';
+import { dayParts, isDay, nowIso, timeOfIso } from '../util/date.js';
 import { newId } from '../util/ids.js';
 import { ensureTags, normalizeTagPaths } from './tags.js';
 
@@ -54,7 +54,7 @@ export function newestMood(rows: readonly MoodLog[]): MoodLog | undefined {
 /**
  * Journal entry of day (A.2 H4): appends text to the day's journal note
  * (kind 'journal', journalDay = day), separated by a blank line, or creates it
- * with title fmt(t.journalNoteTitle) and tag `journal/YYYY/MM`.
+ * with title fmt(t.journalNoteTitle) ("YYYY-MM-DD Journal", S20: sorts by date) and tag `journal/YYYY/MM`.
  * Each entry starts with its local time ("**HH:MM** text"); the day's mood
  * entry, if any, is linked to the note (MoodLog.noteId).
  */
@@ -80,7 +80,7 @@ export function appendJournal(day: Day, text: string): Promise<Note> {
         id: newId(),
         kind: 'journal',
         journalDay: day,
-        title: fmt(t.journalNoteTitle, { date: formatDayFull(day) }),
+        title: fmt(t.journalNoteTitle, { date: day }),
         body: entry,
         tagPaths: [tag],
         pinned: 0,

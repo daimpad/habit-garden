@@ -8,7 +8,10 @@
 //   search text, so focus on a suggestion survives data changes.
 // - When three existing tasks are in focus, t.focusLimitHint is shown and every action is disabled.
 // - "Neu anlegen" creates a task titled with the search text in the first active area (Phase-1 default,
-//   decision 8) and adds it to the focus; an empty search field gets t.captureTitleRequired and focus.
+//   decision 8) and adds it to the focus in one transaction (createTaskInFocus: a full focus creates
+//   nothing); an empty search field gets t.captureTitleRequired and focus.
+// - The picker belongs to `day`: when the day changes while it is open (midnight), it closes, and a
+//   pick or "Neu anlegen" re-checks today() before writing, so nothing lands in a past DayPlan.
 import { liveQuery, type Subscription } from 'dexie';
 import type { OlButton } from '../../components/ol-button.js';
 import type { OlInput } from '../../components/ol-input.js';
@@ -17,9 +20,9 @@ import { showToast } from '../../components/ol-toast.js';
 import { t } from '../../i18n/de.js';
 import { MAX_FOCUS, type Area, type Day, type Id, type Task } from '../../model.js';
 import { firstActiveArea, listAreas } from '../../repo/areas.js';
-import { addToFocus, FocusFullError, getFocus } from '../../repo/dayPlans.js';
-import { createTask, focusCandidates, getTask, type FocusCandidates } from '../../repo/tasks.js';
-import { formatDayShort, formatTime } from '../../util/date.js';
+import { addToFocus, createTaskInFocus, FocusFullError, getFocus } from '../../repo/dayPlans.js';
+import { focusCandidates, getTask, type FocusCandidates } from '../../repo/tasks.js';
+import { formatDayShort, formatTime, onDayChange, today } from '../../util/date.js';
 import { h, render, type SafeHtml } from '../../util/dom.js';
 
 type GroupKey = keyof FocusCandidates;
@@ -57,7 +60,7 @@ export function openFocusPick(day: Day): OlSheet {
       <h3 class="ol-label" id="${key}-${g.key}">${g.label}</h3>
       <ul class="ol-focus-pick__list"></ul>
     </section>`)}
-    <p class="ol-focus-pick__empty ol-body-s" hidden>${t.emptyFocusPick}</p>
+    <p class="ol-focus-pick__empty ol-body-s" hidden>${t.emptyFocusPickNone}</p>
   </div>`);
   render(sheet.footerEl, h`<ol-button class="ol-focus-pick__create" variant="filled" icon="plus" label="${t.actionCreate}"></ol-button>`);
 
@@ -144,6 +147,8 @@ export function openFocusPick(day: Day): OlSheet {
       total += items.length;
     }
     empty.hidden = total > 0;
+    const message = query.trim() === '' ? t.emptyFocusPickNone : t.emptyFocusPickSearch;
+    if (empty.textContent !== message) empty.textContent = message;
     sync();
   };
 
@@ -156,13 +161,23 @@ export function openFocusPick(day: Day): OlSheet {
     });
   };
 
+  /** True while `day` is still today; otherwise the picker closes without writing. */
+  const current = (): boolean => {
+    if (today() === day) return true;
+    sheet.close('action');
+    return false;
+  };
+  let stopDay: (() => void) | null = onDayChange(() => void current());
+
   const finish = (): void => {
     sub?.unsubscribe();
     sub = null;
+    stopDay?.();
+    stopDay = null;
   };
 
   const pick = async (id: Id): Promise<void> => {
-    if (busy || full || !tasks.has(id)) return;
+    if (busy || full || !tasks.has(id) || !current()) return;
     setBusy(true);
     try {
       await addToFocus(day, id);
@@ -181,12 +196,12 @@ export function openFocusPick(day: Day): OlSheet {
       search.focusInput();
       return;
     }
+    if (!current()) return;
     setBusy(true);
     try {
       const area = await firstActiveArea();
       if (!area) throw new Error('no active area');
-      const task = await createTask({ title, areaId: area.id });
-      await addToFocus(day, task.id);
+      await createTaskInFocus(day, { title, areaId: area.id });
       sheet.close('action');
     } catch (err) {
       setBusy(false);

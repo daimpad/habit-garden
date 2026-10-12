@@ -1,6 +1,7 @@
 // Journal sheet (F §4.13, A.2 H4, S20). Auto-height sheet with history entry: a short multiline field,
 // "Speichern" in the footer → appendJournal(day, text) (one note per day, kind 'journal', tag
-// journal/JJJJ/MM; later saves append), the day's mood entry is linked (linkMoodNote), toast, close.
+// journal/JJJJ/MM; later saves append; it links the day's mood entry in the same transaction), toast, close.
+// The sheet keeps the day it was opened for: an entry belongs to the day on which it was started.
 // Today's earlier entries are listed read-only below the field (S20), as plain text.
 import type { Subscription } from 'dexie';
 import type { OlButton } from '../../components/ol-button.js';
@@ -9,7 +10,6 @@ import { createSheet, type OlSheet } from '../../components/ol-sheet.js';
 import { showToast } from '../../components/ol-toast.js';
 import { t } from '../../i18n/de.js';
 import type { Day, Note } from '../../model.js';
-import { linkMoodNote } from '../../repo/moodLogs.js';
 import { appendJournal, journalFor$ } from '../../repo/notes.js';
 import { h, render } from '../../util/dom.js';
 
@@ -76,8 +76,7 @@ export function openJournal(day: Day): OlSheet {
     }
     save.setAttribute('loading', '');
     try {
-      const note = await appendJournal(day, text);
-      await linkMoodNote(day, note.id);
+      await appendJournal(day, text);
       showToast(t.toastJournalSaved);
       sheet.close('action');
     } catch {

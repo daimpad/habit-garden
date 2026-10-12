@@ -1,6 +1,8 @@
 // Copies the three runtime libraries (ESM) and the Inter font into public/.
 // markdown-it 14 ships no self-contained browser ESM build, so it is bundled
 // once with esbuild (the only bundler use in this project, vendor/ only).
+// Writes public/licenses.txt with the full licence (and NOTICE) texts of
+// everything that is delivered (S39); Einstellungen › Info links to it.
 import { mkdir, copyFile, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,11 +33,44 @@ await build({
   platform: 'browser',
   target: 'es2022',
   minify: true,
-  legalComments: 'inline',
+  legalComments: 'eof',
+  // The bundled sources carry no licence comments; the banner names them (full texts: licenses.txt).
+  banner: {
+    js: '/*! markdown-it (MIT), bundled with entities (BSD-2-Clause), linkify-it, mdurl, punycode.js and uc.micro (MIT). Full licence texts: licenses.txt */',
+  },
   logLevel: 'warning',
 });
 
 await copyFile(nm('inter-ui/variable/InterVariable.woff2'), out('assets/fonts/InterVariable.woff2'));
 await copyFile(nm('inter-ui/LICENSE.txt'), out('assets/fonts/OFL.txt'));
 
-console.log('vendor: dexie.mjs, purify.mjs, markdown-it.mjs, InterVariable.woff2');
+// Licence texts of everything delivered (S39): Olife itself, the runtime libraries
+// (markdown-it with the packages bundled into it), the font and the icons.
+const LICENSES = [
+  { pkg: null, files: ['LICENSE'] },
+  { pkg: 'dexie', files: ['LICENSE', 'NOTICE'] },
+  { pkg: 'dompurify', files: ['LICENSE'] },
+  { pkg: 'markdown-it', files: ['LICENSE'] },
+  { pkg: 'entities', files: ['LICENSE'] },
+  { pkg: 'linkify-it', files: ['LICENSE'] },
+  { pkg: 'mdurl', files: ['LICENSE'] },
+  { pkg: 'punycode.js', files: ['LICENSE-MIT.txt'] },
+  { pkg: 'uc.micro', files: ['LICENSE.txt'] },
+  { pkg: 'inter-ui', files: ['LICENSE.txt'] },
+  { pkg: 'lucide-static', files: ['LICENSE'] },
+];
+
+const sections = [];
+for (const { pkg, files } of LICENSES) {
+  const dir = pkg === null ? root : nm(pkg);
+  const meta = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'));
+  const name = pkg === null ? 'Olife' : meta.name;
+  const texts = [];
+  for (const file of files) texts.push((await readFile(join(dir, file), 'utf8')).trim());
+  const rule = '='.repeat(72);
+  const license = String(meta.license).replace(/^\((.*)\)$/u, '$1');
+  sections.push(`${rule}\n${name} ${meta.version} (${license})\n${rule}\n\n${texts.join(`\n\n${'-'.repeat(72)}\n\n`)}\n`);
+}
+await writeFile(out('licenses.txt'), `${sections.join('\n\n')}`);
+
+console.log(`vendor: dexie.mjs, purify.mjs, markdown-it.mjs, InterVariable.woff2, licenses.txt (${LICENSES.length} sections)`);

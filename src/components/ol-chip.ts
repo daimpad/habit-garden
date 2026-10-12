@@ -22,6 +22,7 @@
 //   need a 16 px row gap (8 px above + 8 px below each chip) so neighbouring hit areas do not overlap.
 import { fmt, t } from '../i18n/de.js';
 import { emit, h, HAPTIC, icon, render, vibrate } from '../util/dom.js';
+import { isTint } from './flora.js';
 import './ol-flower.js';
 
 export interface ChipChange { selected: boolean; value: string }
@@ -115,7 +116,7 @@ export class OlChip extends HTMLElement {
     if (this.labelEl && this.labelEl.textContent !== label) this.labelEl.textContent = label;
 
     const tint = this.getAttribute('tint')?.trim();
-    if (tint) {
+    if (isTint(tint)) {
       if (this.style.getPropertyValue('--tint') !== tint) this.style.setProperty('--tint', tint);
     } else if (this.style.getPropertyValue('--tint')) {
       this.style.removeProperty('--tint');

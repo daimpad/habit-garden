@@ -1,5 +1,6 @@
 import { liveQuery, type Observable } from 'dexie';
 import { db } from '../db.js';
+import { isFlowerId } from '../components/flora.js';
 import type { Area, Id } from '../model.js';
 import { nowIso } from '../util/date.js';
 import { newId, sortKeyBetween } from '../util/ids.js';
@@ -31,8 +32,21 @@ export function firstActiveArea(): Promise<Area | undefined> {
   return db.areas.orderBy('sortKey').filter((a) => a.archived === 0).first();
 }
 
-/** Appends a new area at the end (sortKey after the last one). */
+const AREA_TINT_RE = /^#[0-9A-Fa-f]{6}$/u;
+
+/** Area tints are #RRGGBB (the palette), flowers one of the known ids; anything else throws RangeError. */
+function checkLook(look: Partial<Pick<Area, 'flower' | 'tint'>>): void {
+  if (look.tint !== undefined && !AREA_TINT_RE.test(look.tint)) throw new RangeError(`invalid tint ${look.tint}`);
+  if (look.flower !== undefined && !isFlowerId(look.flower)) throw new RangeError(`invalid flower ${String(look.flower)}`);
+}
+
+/** Appends a new area at the end (sortKey after the last one); tint/flower are validated. */
 export function createArea(input: Pick<Area, 'name' | 'flower' | 'tint'>): Promise<Area> {
+  try {
+    checkLook(input);
+  } catch (err) {
+    return Promise.reject(err);
+  }
   return db.transaction('rw', db.areas, async () => {
     const last = await db.areas.orderBy('sortKey').last();
     const area: Area = {
@@ -49,8 +63,13 @@ export function createArea(input: Pick<Area, 'name' | 'flower' | 'tint'>): Promi
   });
 }
 
-/** Patches an area; archiving the last active area throws LastAreaError. */
+/** Patches an area; archiving the last active area throws LastAreaError; tint/flower are validated. */
 export function updateArea(id: Id, patch: Partial<Omit<Area, 'id' | 'updatedAt'>>): Promise<void> {
+  try {
+    checkLook(patch);
+  } catch (err) {
+    return Promise.reject(err);
+  }
   return db.transaction('rw', db.areas, async () => {
     const area = await db.areas.get(id);
     if (!area) throw new Error(`unknown area ${id}`);

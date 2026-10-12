@@ -8,11 +8,15 @@
 //
 // Details of this implementation:
 // - The sheet opens once habit, logs and areas are loaded; an unknown id closes it unopened.
-// - Plant feedback after a toggle (B.4): stage up → grow + wobble, drops on the soil, burst from the
-//   head, haptic confirm; stage down → crossfade; today done without a stage change → wobble + drops.
-//   Live renders leave the plant's stage alone while a toggle is in flight, so the animation is not
-//   pre-empted. The day toast (date + status + "Rückgängig") is the only toast: a queued "Stufe …
-//   erreicht" toast would still show after an undo and then be wrong.
+// - Plant feedback after a toggle (B.4): stage up → grow; for today also wobble, drops on the soil,
+//   burst from the head and haptic confirm (a backfilled past day only grows, S35); stage down →
+//   crossfade; today done without a stage change → wobble + drops. The toggle result is applied to
+//   the local logs at once, and live renders leave the plant's stage alone while a toggle is in
+//   flight, so the animation is not pre-empted by a stale snapshot.
+// - One toast per toggle (date + status + "Rückgängig"); when today's toggle raises the stage it
+//   also names the new stage (F §4.13), so no separate "Stufe … erreicht" toast outlives an undo.
+// - A done log before startDay moves startDay (S35, repo/habitLogs); undo restores it.
+// - timesPerWeek: streak and best streak are ISO weeks and carry the unit (S19).
 // - Sheet and editor use fit + full detent: the height follows the content up to 92 %.
 // - Un-archiving archived habits: TODO(phase-5) (S17); the menu offers "Archivieren" only for active ones.
 import '../../components/ol-button.js';
@@ -33,15 +37,15 @@ import type { OlPlant } from '../../components/ol-plant.js';
 import type { OlSegmented } from '../../components/ol-segmented.js';
 import { createSheet, type OlSheet } from '../../components/ol-sheet.js';
 import { showToast } from '../../components/ol-toast.js';
-import { fmt, t, weekdayShort } from '../../i18n/de.js';
+import { fmt, stageName, t, weekdayShort } from '../../i18n/de.js';
 import {
   GENERIC_TINT, type Area, type Day, type FlowerId, type Habit, type HabitLog, type HabitSchedule, type Id,
 } from '../../model.js';
 import { areas$, listAreas } from '../../repo/areas.js';
 import { deleteHabit, getHabit, habit$, restoreHabit, setHabitArchived, updateHabit } from '../../repo/habits.js';
-import { habitLogs$, logsFor, toggleLog, type ToggleResult } from '../../repo/habitLogs.js';
+import { habitLogId, habitLogs$, logsFor, toggleLog, type ToggleResult } from '../../repo/habitLogs.js';
 import { bestStreak, stageFor, streak } from '../../services/growth.js';
-import { formatDayLong, isoWeekday, onDayChange, today } from '../../util/date.js';
+import { formatDayLong, isoWeekday, nowIso, onDayChange, today } from '../../util/date.js';
 import { h, HAPTIC, render, setVar, vibrate } from '../../util/dom.js';
 import { failed, openActionMenu, syncAreaChips, type MenuItem } from './task.js';
 
@@ -82,6 +86,14 @@ function setAttr(el: Element, name: string, value: string): void {
 function setText(el: Element, value: string): void {
   if (el.textContent !== value) el.textContent = value;
 }
+
+/** Streak value with its unit for timesPerWeek habits ("1 Woche", "3 Wochen"), else the bare number. */
+export function streakText(habit: Habit, n: number): string {
+  if (habit.schedule.kind !== 'timesPerWeek') return String(n);
+  return n === 1 ? t.streakWeeksOne : fmt(t.streakWeeks, { n });
+}
+
+const byDay = (a: HabitLog, b: HabitLog): number => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0);
 
 // ---------------------------------------------------------------------------
 // Habit sheet
@@ -232,12 +244,14 @@ class HabitSheet {
     setAttr(this.plant, 'flower', flower);
     setAttr(this.plant, 'tint', tint);
     setAttr(this.plant, 'streak', String(current));
+    if (habit.schedule.kind === 'timesPerWeek') setAttr(this.plant, 'streak-unit', 'weeks');
+    else this.plant.removeAttribute('streak-unit');
     // Stage changes caused by a toggle are animated in feedback(); everything else applies directly.
     if (this.pending === 0) setAttr(this.plant, 'stage', String(stageFor(habit, this.logs, day)));
     const rhythm = rhythmText(habit.schedule);
     setText(this.rhythm, habit.period === 'any' ? rhythm : fmt(t.habitRhythmLine, { rhythm, period: PERIOD_LABELS[habit.period] }));
-    setText(this.streakEl, String(current));
-    setText(this.bestEl, String(bestStreak(habit, this.logs, day)));
+    setText(this.streakEl, streakText(habit, current));
+    setText(this.bestEl, streakText(habit, bestStreak(habit, this.logs, day)));
   }
 
   // --- Toggling ---
@@ -247,15 +261,24 @@ class HabitSheet {
     if (day) this.toggle(day, true);
   };
 
-  /** Serialised toggles: each result drives the plant feedback and its toast in order. */
-  private toggle(day: Day, offerUndo: boolean): void {
+  /**
+   * Serialised toggles: each result drives the plant feedback and its toast in order.
+   * restoreStartDay: the start day to restore when an undo removes a backfilled log (S35).
+   */
+  private toggle(day: Day, offerUndo: boolean, restoreStartDay?: Day): void {
     this.pending += 1;
     this.queue = this.queue.then(async () => {
       try {
-        const result = await toggleLog(this.habitId, day);
+        const result = await toggleLog(this.habitId, day, restoreStartDay === undefined ? {} : { restoreStartDay });
+        this.applyResult(day, result, restoreStartDay);
         this.feedback(day, result);
-        const message = fmt(result.done ? t.toastDayDone : t.toastDayReset, { date: formatDayLong(day) });
-        showToast(message, offerUndo ? { action: { label: t.actionUndo, onAction: () => this.toggle(day, false) } } : {});
+        const date = formatDayLong(day);
+        const raised = result.done && result.after > result.before && day === today();
+        const message = raised
+          ? fmt(t.toastDayDoneStage, { date, stage: stageName(result.after) })
+          : fmt(result.done ? t.toastDayDone : t.toastDayReset, { date });
+        const undo = (): void => this.toggle(day, false, result.startDayBefore);
+        showToast(message, offerUndo ? { action: { label: t.actionUndo, onAction: undo } } : {});
       } catch (err) {
         failed(err);
       } finally {
@@ -265,14 +288,36 @@ class HabitSheet {
     });
   }
 
+  /**
+   * Applies a toggle result to the local snapshot at once (like HEUTE's withDay), so a render
+   * before the next liveQuery emission does not reset the plant to the old stage. Later
+   * emissions carry the same data.
+   */
+  private applyResult(day: Day, result: ToggleResult, restoreStartDay: Day | undefined): void {
+    const next = this.logs.filter((log) => log.day !== day);
+    if (result.done) next.push({ id: habitLogId(this.habitId, day), habitId: this.habitId, day, status: 'done', loggedAt: nowIso() });
+    next.sort(byDay);
+    this.logs = next;
+    const habit = this.habit;
+    if (!habit) return;
+    if (result.startDayBefore !== undefined && day < habit.startDay) {
+      this.habit = { ...habit, startDay: day };
+    } else if (!result.done && restoreStartDay !== undefined && habit.startDay === day && restoreStartDay > day) {
+      this.habit = { ...habit, startDay: restoreStartDay };
+    }
+  }
+
   private feedback(day: Day, result: ToggleResult): void {
     const plant = this.plant;
     if (!plant.isConnected) return;
     const { before, after, done } = result;
+    const isToday = day === today();
     if (after > before) {
-      const { flower, tint } = this.look();
       plant.setAttribute('stage', String(after));
       void plant.grow();
+      // A backfilled past day only grows (S35): no wobble, particles or haptics.
+      if (!isToday) return;
+      const { flower, tint } = this.look();
       void plant.wobble();
       const { soil, head } = plant.anchorPoints();
       const layer = particles();
@@ -281,7 +326,7 @@ class HabitSheet {
       vibrate(HAPTIC.confirm);
     } else if (after < before) {
       void plant.crossfadeTo(after);
-    } else if (done && day === today()) {
+    } else if (done && isToday) {
       void plant.wobble();
       const { soil } = plant.anchorPoints();
       particles().drops(soil.x, soil.y);

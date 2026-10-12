@@ -4,8 +4,12 @@
 // Uses <form method="dialog"> (allowed under form-action 'none') or plain buttons; no server submit.
 //
 // Details of this implementation:
-// - Plain ol-button elements, no form. Esc, scrim tap and a history popstate (the sheet underneath
-//   is being closed by Back) cancel. The browser closing the dialog on its own also counts as cancel.
+// - Plain ol-button elements, no form. Esc, scrim tap and Back cancel; the browser closing the dialog on
+//   its own also counts as cancel.
+// - History (A.1: Back closes the topmost layer): like a sheet, an open dialog pushes an entry with the
+//   same URL ({olSheet: id}, ignored by the router) once a pending back() has landed; a popstate that
+//   removes it cancels the dialog, and closing it otherwise pops the entry (ol-sheet goBack, so code
+//   that touches history afterwards can wait for historySettled()).
 // - The promise resolves synchronously inside the click handler (user activation still counts, e.g.
 //   for Notification.requestPermission()); the closing fade runs afterwards and the element removes itself.
 // - ol-confirm carries detail { value } ('confirm' for confirmDialog, the choice value for choiceDialog).
@@ -16,8 +20,8 @@ import { t } from '../i18n/de.js';
 import { emit, h, HAPTIC, motionReduced, render, vibrate } from '../util/dom.js';
 import './ol-button.js';
 import {
-  captureFocusReturn, firstFocusable, focusWithinOrLost, historySettled, lockScroll, popModal, pushModal, restoreFocus,
-  setFocusReturn, type FocusReturn,
+  captureFocusReturn, firstFocusable, focusWithinOrLost, goBack, historySettled, isOwnEntry, lockScroll, popModal,
+  pushModal, restoreFocus, setFocusReturn, type FocusReturn,
 } from './ol-sheet.js';
 
 export interface ConfirmOptions { title: string; body?: string; confirmLabel: string; cancelLabel?: string; destructive?: boolean }
@@ -44,6 +48,8 @@ export class OlDialog extends HTMLElement {
   private focusReturn: FocusReturn | null = null;
   private anim: Animation | null = null;
   private downOnScrim = false;
+  private entryId = '';
+  private hasEntry = false;
 
   connectedCallback(): void {
     this.build();
@@ -99,11 +105,23 @@ export class OlDialog extends HTMLElement {
         [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'scale(1)' }],
         { duration: OPEN_MS, easing: 'cubic-bezier(0,0,0,1)' },
       );
-    // A history.back() still pending from a sheet closed just before must not cancel this dialog.
+    // A history.back() still pending from a sheet closed just before must neither cancel this dialog
+    // nor undo its entry: push and listen once it has landed.
     void historySettled().then(() => {
-      if (this.phase === 'open') window.addEventListener('popstate', this.onPopState);
+      if (this.phase !== 'open') return;
+      this.pushEntry();
+      window.addEventListener('popstate', this.onPopState);
     });
     return result;
+  }
+
+  private pushEntry(): void {
+    dialogSeq += 1;
+    this.entryId = `dialog-${dialogSeq}`;
+    const prev: unknown = history.state;
+    const base = typeof prev === 'object' && prev !== null ? prev : {};
+    history.pushState({ ...base, olSheet: this.entryId }, '');
+    this.hasEntry = true;
   }
 
   /** Cancels the dialog (same as Esc). */
@@ -164,6 +182,10 @@ export class OlDialog extends HTMLElement {
     if (this.phase !== 'open') return;
     this.phase = 'closing';
     window.removeEventListener('popstate', this.onPopState);
+    if (this.hasEntry) {
+      this.hasEntry = false;
+      if (isOwnEntry(history.state, this.entryId)) goBack();
+    }
     const dialog = this.dialogEl;
     if (dialog) {
       dialog.dataset['closing'] = '';
@@ -242,7 +264,10 @@ export class OlDialog extends HTMLElement {
     if (this.phase === 'closing') this.finish();
   };
 
-  private readonly onPopState = (): void => {
+  private readonly onPopState = (event: PopStateEvent): void => {
+    if (isOwnEntry(event.state, this.entryId)) return;
+    // Back removed the dialog's entry: cancel without going back once more.
+    this.hasEntry = false;
     this.decide(null);
   };
 }

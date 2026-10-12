@@ -169,8 +169,10 @@ export function formatTime(iso: ISO): string {
 }
 
 // ---------------------------------------------------------------------------
-// Day watcher: "today" is re-evaluated on visibilitychange, focus and at the
-// next local midnight; it is never held as a constant.
+// Day watcher: "today" is re-evaluated on visibilitychange, focus, user input
+// (pointerdown/keydown, capture phase: a timer may have stood still while the
+// device slept with the page visible) and at the next local midnight; it is
+// never held as a constant. checkDay notifies only on a real change.
 
 type DayListener = (day: Day) => void;
 
@@ -213,6 +215,8 @@ function startWatching(): void {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') checkDay();
     });
+    document.addEventListener('pointerdown', checkDay, { capture: true, passive: true });
+    document.addEventListener('keydown', checkDay, { capture: true });
   }
   if (typeof window !== 'undefined') window.addEventListener('focus', checkDay);
   arm();

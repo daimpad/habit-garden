@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+header_remove('X-Powered-By');
+
 // Olife: delivers the static app shell. Sets security headers and the build
 // stamp; no further server logic, no database, no sessions.
 
