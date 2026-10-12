@@ -1,4 +1,4 @@
-# Simple workflow for deploying static content to GitHub Pages
+# Builds the static Olife site (npm run build:pages) and deploys it to GitHub Pages
 name: Deploy static content to Pages
 
 on:
@@ -31,13 +31,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test
+        run: npm test
       - name: Setup Pages
+        id: pages
         uses: actions/configure-pages@v5
+      - name: Build static site
+        # base_path is "/<repo>" for a project site ("" for a custom domain); the build wants a trailing slash.
+        run: npm run build:pages
+        env:
+          BASE_PATH: "${{ steps.pages.outputs.base_path }}/"
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: '.'
+          # Only the static build output (dist/pages)
+          path: dist/pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

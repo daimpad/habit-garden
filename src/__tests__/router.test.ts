@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { current, isTab, lastPathOf, parseRoute, routeHref, type Route } from '../router.js';
+import { stripBase, withBase } from '../util/base.js';
 
 function parsed(path: string): Route {
   const route = parseRoute(path);
@@ -142,5 +143,33 @@ describe('router helpers without a browser', () => {
     const route = current();
     assert.equal(route.name, 'heute');
     assert.equal(route.path, '/heute');
+  });
+});
+
+describe('routes under a base path (GitHub Pages project site)', () => {
+  const base = '/habit-garden/';
+  const at = (pathname: string): Route | null => {
+    const path = stripBase(base, pathname);
+    return path === null ? null : parseRoute(path);
+  };
+
+  test('a location under the base parses to the internal route', () => {
+    assert.equal(at('/habit-garden/heute')?.name, 'heute');
+    assert.equal(at('/habit-garden/aufgabe/t1')?.params['taskId'], 't1');
+    assert.equal(at('/habit-garden/wissen?tag=a/b,c')?.query.get('tag'), 'a/b,c');
+    assert.equal(routeHref(parsed('/einstellungen/daten')), '/einstellungen/daten');
+  });
+
+  test('a location outside the base or at the base root is unknown (→ /heute)', () => {
+    assert.equal(at('/heute'), null);
+    assert.equal(at('/habit-garden/'), null);
+    assert.equal(at('/habit-garden/licenses.txt'), null);
+    assert.equal(at('/habit-gardenheute'), null);
+  });
+
+  test('history URLs carry the base, route hrefs stay internal', () => {
+    const route = parsed('/planung/p/p1?view=kanban');
+    assert.equal(withBase(base, routeHref(route)), '/habit-garden/planung/p/p1?view=kanban');
+    assert.equal(withBase('/', routeHref(route)), '/planung/p/p1?view=kanban');
   });
 });
