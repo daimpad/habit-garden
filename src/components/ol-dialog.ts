@@ -20,8 +20,8 @@ import { t } from '../i18n/de.js';
 import { emit, h, HAPTIC, motionReduced, render, vibrate } from '../util/dom.js';
 import './ol-button.js';
 import {
-  captureFocusReturn, firstFocusable, focusWithinOrLost, goBack, historySettled, isOwnEntry, lockScroll, popModal,
-  pushModal, restoreFocus, setFocusReturn, type FocusReturn,
+  captureFocusReturn, firstFocusable, focusWithinOrLost, goBack, historySettled, isOwnEntry, layerState, lockScroll,
+  popModal, pushModal, restoreFocus, setFocusReturn, type FocusReturn,
 } from './ol-sheet.js';
 
 export interface ConfirmOptions { title: string; body?: string; confirmLabel: string; cancelLabel?: string; destructive?: boolean }
@@ -118,9 +118,7 @@ export class OlDialog extends HTMLElement {
   private pushEntry(): void {
     dialogSeq += 1;
     this.entryId = `dialog-${dialogSeq}`;
-    const prev: unknown = history.state;
-    const base = typeof prev === 'object' && prev !== null ? prev : {};
-    history.pushState({ ...base, olSheet: this.entryId }, '');
+    history.pushState(layerState(history.state, this.entryId), '');
     this.hasEntry = true;
   }
 

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 header_remove('X-Powered-By');
 
-// Olife: delivers the static app shell. Sets security headers and the build
+// Habit Garden: delivers the static app shell. Sets security headers and the build
 // stamp; no further server logic, no database, no sessions.
 
 $stampFile = __DIR__ . '/app/build.txt';
@@ -37,7 +37,7 @@ header('Content-Type: text/html; charset=utf-8');
 <meta name="color-scheme" content="light dark">
 <meta name="olife-build" content="<?= $build ?>">
 <meta name="olife-base" content="/">
-<title>Olife</title>
+<title>Habit Garden</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/styles/tokens.css<?= $v ?>">
 <link rel="stylesheet" href="/styles/base.css<?= $v ?>">
@@ -48,6 +48,6 @@ header('Content-Type: text/html; charset=utf-8');
 </head>
 <body>
 <div id="app"></div>
-<noscript>Olife benötigt JavaScript; bitte aktiviere es in diesem Browser.</noscript>
+<noscript>Habit Garden benötigt JavaScript; bitte aktiviere es in diesem Browser.</noscript>
 </body>
 </html>

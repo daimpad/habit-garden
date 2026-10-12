@@ -13,6 +13,8 @@ export const ICONS = [
   'download', 'ellipsis', 'flag', 'flame', 'hard-drive', 'hash', 'inbox', 'info',
   'list-checks', 'notebook-pen', 'pencil', 'plus', 'repeat', 'search', 'settings',
   'shield', 'sprout', 'sun', 'trash-2', 'undo-2', 'upload', 'x',
+  // Garden and people (Habit Garden redesign)
+  'coffee', 'droplets', 'heart-handshake', 'message-circle', 'moon', 'phone', 'user-plus', 'users',
 ];
 
 const parts = [];

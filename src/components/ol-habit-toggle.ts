@@ -1,4 +1,5 @@
-// <ol-habit-toggle state="pending|done|skipped|partial" progress="0..1" today-done label="…"></ol-habit-toggle>
+// <ol-habit-toggle state="pending|done|skipped|partial" progress="0..1" today-done label="…"
+//   [caption="Heute gießen" caption-done="Gegossen"]></ol-habit-toggle>
 // Ring 28 px, stroke 2.5, primary; 48 px target. role="checkbox", tabindex 0, Space/Enter/click.
 // aria-checked: "true" when today-done (or state done for daily habits), "mixed" for partial, else "false".
 // timesPerWeek rows: progress = min(1, done/target) draws the partial ring; state 'done' when the
@@ -18,6 +19,8 @@
 // - `disabled` (e.g. while toggleLog is pending) keeps focus and tab order, sets aria-disabled
 //   and ignores activation.
 // - Plays HAPTIC.tick when it fills; owners do not need to vibrate for the plain toggle.
+// - With `caption` the toggle becomes a pill (ring + text, garden cards); CSS shows `caption` while
+//   today's log is open and `caption-done` once it exists, so the optimistic flip switches the text too.
 // - preventDefault() on `ol-change` reverts the optimistic flip.
 import { emit, h, HAPTIC, render, vibrate } from '../util/dom.js';
 
@@ -27,9 +30,11 @@ const RADIUS = 12.75; // 28 px outer diameter with a 2.5 stroke
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 export class OlHabitToggle extends HTMLElement {
-  static observedAttributes = ['state', 'progress', 'today-done', 'label', 'disabled'];
+  static observedAttributes = ['state', 'progress', 'today-done', 'label', 'disabled', 'caption', 'caption-done'];
 
   private arc: SVGCircleElement | null = null;
+  private captionTodo: HTMLElement | null = null;
+  private captionDone: HTMLElement | null = null;
 
   connectedCallback(): void {
     if (!this.hasAttribute('role')) this.setAttribute('role', 'checkbox');
@@ -82,8 +87,28 @@ export class OlHabitToggle extends HTMLElement {
     this.arc = this.querySelector<SVGCircleElement>('.ol-habit-toggle__arc');
   }
 
+  private syncCaption(): void {
+    const todo = this.getAttribute('caption');
+    if (todo === null) return;
+    if (!this.captionTodo || !this.captionDone) {
+      const box = document.createElement('span');
+      box.className = 'ol-habit-toggle__caption';
+      box.setAttribute('aria-hidden', 'true');
+      this.captionTodo = document.createElement('span');
+      this.captionTodo.className = 'ol-habit-toggle__todo';
+      this.captionDone = document.createElement('span');
+      this.captionDone.className = 'ol-habit-toggle__done';
+      box.append(this.captionTodo, this.captionDone);
+      this.append(box);
+    }
+    const done = this.getAttribute('caption-done') ?? todo;
+    if (this.captionTodo.textContent !== todo) this.captionTodo.textContent = todo;
+    if (this.captionDone.textContent !== done) this.captionDone.textContent = done;
+  }
+
   private sync(): void {
     this.ensureSkeleton();
+    this.syncCaption();
     const state = this.state;
     const checked = this.todayDone ? 'true' : state === 'partial' || state === 'done' ? 'mixed' : 'false';
     if (this.getAttribute('aria-checked') !== checked) this.setAttribute('aria-checked', checked);

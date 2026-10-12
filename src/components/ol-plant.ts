@@ -1,12 +1,13 @@
-// <ol-plant stage="0..4" flower="bellis" tint="#7FA36F" size="32|120" streak="12" [streak-unit="weeks"]></ol-plant>
+// <ol-plant stage="0..4" flower="bellis" tint="#7FA36F" size="32|120" streak="12" [streak-unit="weeks"] [ground]></ol-plant>
 // role="img", aria-label = fmt(t.habitPlantAria, { stage: stageName, n: streak }); with streak-unit="weeks"
 // (timesPerWeek habits) the streak is read in weeks (t.habitPlantAriaWeeks).
-// `size` is the width in px (height = size · 190/160). Changing `stage` re-renders the SVG
+// `size` is the width in px (height = size · 190/160). `ground` draws the plant without pot, growing
+// from a soil mound (meadow; height = size · 152/160). Changing `stage` re-renders the SVG
 // (no animation by itself); callers set the new stage first, then call grow()/wobble().
 import { GENERIC_TINT, type Stage } from '../model.js';
 import { fmt, stageName, t } from '../i18n/de.js';
 import { motionReduced, raw, render } from '../util/dom.js';
-import { isFlowerId, plant, safeTint } from './flora.js';
+import { GROUND_VIEW_H, isFlowerId, plant, PLANT_VIEW_H, safeTint } from './flora.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const STAGES: readonly Stage[] = [0, 1, 2, 3, 4];
@@ -34,7 +35,7 @@ function crossfadeMs(): number {
 }
 
 export class OlPlant extends HTMLElement {
-  static observedAttributes = ['stage', 'flower', 'tint', 'size', 'streak', 'streak-unit'];
+  static observedAttributes = ['stage', 'flower', 'tint', 'size', 'streak', 'streak-unit', 'ground'];
 
   #key = '';
   #prevGrow: SVGGElement | null = null;
@@ -100,9 +101,10 @@ export class OlPlant extends HTMLElement {
   anchorPoints(): { soil: { x: number; y: number }; head: { x: number; y: number } } {
     const box = (this.querySelector('svg') ?? this).getBoundingClientRect();
     const x = box.left + box.width / 2;
+    const viewH = this.hasAttribute('ground') ? GROUND_VIEW_H : PLANT_VIEW_H;
     return {
-      soil: { x, y: box.top + (box.height * SOIL_Y) / 190 },
-      head: { x, y: box.top + (box.height * TOP_Y[this.stage]) / 190 },
+      soil: { x, y: box.top + (box.height * SOIL_Y) / viewH },
+      head: { x, y: box.top + (box.height * TOP_Y[this.stage]) / viewH },
     };
   }
 
@@ -121,10 +123,11 @@ export class OlPlant extends HTMLElement {
     const tint = safeTint(this.getAttribute('tint') ?? GENERIC_TINT);
     const stage = this.stage;
     const size = this.#size();
-    const key = `${stage}|${flower}|${tint}|${size}`;
+    const ground = this.hasAttribute('ground');
+    const key = `${stage}|${flower}|${tint}|${size}|${ground ? 'g' : 'p'}`;
     if (key === this.#key && this.querySelector('svg')) return;
     const oldGrow = this.#part('.ol-plant__grow');
-    render(this, raw(plant(stage, flower, tint, size)));
+    render(this, raw(plant(stage, flower, tint, size, ground)));
     this.#growAnim = null;
     this.#wobbleAnim = null;
     if (oldGrow && this.#key) {

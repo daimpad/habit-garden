@@ -231,6 +231,34 @@ export function isScheduledOn(habit: Habit, day: Day): boolean {
   return scheduled(buildContext(habit, []), toNum(day));
 }
 
+export interface NextStage {
+  stage: Stage;
+  /** The following stage, null in full bloom. */
+  next: Stage | null;
+  /** Further done days (or fulfilled weeks for timesPerWeek) until `next`, at least 1. */
+  remaining: number;
+  unit: 'days' | 'weeks';
+}
+
+/** Minimum streak per stage (B.5): days 1/3/7/14, weeks 1/2/3/4. */
+const STAGE_THRESHOLDS: Readonly<Record<'days' | 'weeks', readonly number[]>> = {
+  days: [0, 1, 3, 7, 14],
+  weeks: [0, 1, 2, 3, 4],
+};
+
+/**
+ * Today's stage and how far the next one is ("Noch 2 Tage bis Blätter"): the threshold of the next
+ * stage minus the current streak. A plant held at stage 1 after a broken streak counts from 0.
+ */
+export function nextStage(habit: Habit, logs: readonly HabitLog[], today: Day): NextStage {
+  const unit = unitOf(habit);
+  const stage = stageFor(habit, logs, today);
+  if (stage === 4) return { stage, next: null, remaining: 0, unit };
+  const next = (stage + 1) as Stage;
+  const threshold = STAGE_THRESHOLDS[unit][next] ?? 1;
+  return { stage, next, remaining: Math.max(1, threshold - streak(habit, logs, today)), unit };
+}
+
 /** Stage thresholds (B.5): days 0/1–2/3–6/7–13/≥14, weeks 0/1/2/3/≥4. */
 export function stageForCount(unit: 'days' | 'weeks', count: number): Stage {
   if (!(count >= 1)) return 0;

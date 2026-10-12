@@ -1,10 +1,13 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Area, DayPlan, Habit, HabitLog, MoodLog, Note, Profile, Project, Tag, Task } from './model.js';
+import type {
+  Area, Contact, ContactLog, DayPlan, Habit, HabitLog, MoodLog, Note, Profile, Project, Tag, Task,
+} from './model.js';
 
 export const db = new Dexie('olife') as Dexie & {
   profile: EntityTable<Profile,'key'>; areas: EntityTable<Area,'id'>; projects: EntityTable<Project,'id'>;
   tasks: EntityTable<Task,'id'>; habits: EntityTable<Habit,'id'>; habitLogs: EntityTable<HabitLog,'id'>;
   notes: EntityTable<Note,'id'>; tags: EntityTable<Tag,'path'>; moodLogs: EntityTable<MoodLog,'id'>; dayPlans: EntityTable<DayPlan,'id'>;
+  contacts: EntityTable<Contact,'id'>; contactLogs: EntityTable<ContactLog,'id'>;
 };
 db.version(1).stores({
   profile:   'key',
@@ -18,10 +21,17 @@ db.version(1).stores({
   moodLogs:  'id, day',
   dayPlans:  'id'
 });
+// Version 2 adds people and their contact logs; Dexie keeps the version-1 tables as they are.
+// ContactLog.id is `${contactId}:${day}` (one log per person and day, like HabitLog).
+db.version(2).stores({
+  contacts:    'id, archived, sortKey',
+  contactLogs: 'id, contactId, day, [contactId+day]',
+});
 
 /** All table names in a stable order (export, import, delete-all). */
 export const TABLES = [
   'profile', 'areas', 'projects', 'tasks', 'habits', 'habitLogs', 'notes', 'tags', 'moodLogs', 'dayPlans',
+  'contacts', 'contactLogs',
 ] as const;
 export type TableName = typeof TABLES[number];
 

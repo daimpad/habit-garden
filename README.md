@@ -1,8 +1,20 @@
-# Olife
+# Habit Garden
 
-Olife (Organize Your Life / Open Life) ist eine local-first Website für Selbstorganisation: Tagesfokus mit höchstens drei Aufgaben, Routinen als wachsende Pflanzen, Stimmung und Journal. Alle Daten liegen ausschließlich im Browser (IndexedDB). Es gibt kein Konto, keine Datenbank auf dem Server und keine Telemetrie; Export und Import (JSON) sind der einzige Transferweg.
+Habit Garden ist eine local-first Website für Selbstorganisation. Routinen wachsen als Pflanzen in einem Garten, und Menschen, bei denen man sich melden möchte, fliegen dort als Schmetterlinge. Dazu kommen ein Tagesfokus mit höchstens drei Aufgaben sowie Stimmung und Journal. Alle Daten liegen ausschließlich im Browser (IndexedDB). Es gibt kein Konto, keine Datenbank auf dem Server und keine Telemetrie; Export und Import (JSON) sind der einzige Transferweg.
 
-Stand: Phase 1 (Grundgerüst). PLANUNG und WISSEN sind als Screens mit Leerzustand vorhanden; die vollständigen Fassungen folgen in Phase 3 und 4.
+Stand: Phase 1 (Grundgerüst) mit dem Garten-Redesign vom 12.10.2026. PLANUNG und WISSEN sind als Screens mit Leerzustand vorhanden; die vollständigen Fassungen folgen in Phase 3 und 4.
+
+## Garten und Personen
+
+Auf Wunsch des Product Owners weicht HEUTE seit dem 12.10.2026 bewusst von der zurückhaltenden Gestaltung des Feinkonzepts (Calm Technology) ab:
+
+- Hero: Datum, Begrüßung nach Tageszeit, Fortschritt „x von y heute gegossen“ und eine Landschaft, deren Himmel sich nach der Tageszeit färbt; die Sonne wandert, nachts steht ein Mond.
+- Wiese: Jeder aktive Bereich ist ein Beet mit Schild (Blume und Name). Jede Routine steht darin als Pflanze in ihrer aktuellen Stufe und trägt ein Namensschild; ein Bereich ohne Routine zeigt einen Samen. Die Pflanzen wiegen sanft im Wind.
+- Routinen-Karten: Pflanze im Bogenfenster, Stufe, „Noch n Tage bis …“ (`nextStage` in `services/growth.ts`), Tage in Folge, „Heute gießen“ und eine 12-Wochen-Heatmap.
+- Personen: Name, Wunschrhythmus (wöchentlich, alle zwei Wochen, monatlich, vierteljährlich), Notiz und Kontaktverlauf mit optionaler Art (Anruf, Nachricht, Treffen). „Melde dich bei“ schlägt bis zu drei Personen vor, deren Rhythmus am weitesten überschritten ist. In der Wiese fliegt jede Person als Schmetterling über dem Beet „Beziehungen“: im Rhythmus in ihrer Farbe, überfällig blass am Boden. Fehlt dieser Bereich, erscheinen die Schmetterlinge in einem eigenen Beet „Menschen“. Verwaltung über „Alle Personen“ (`screens/sheets/people.ts`).
+- Bewegung: Wiegen, Flattern und ziehende Wolken laufen nur in CSS und stehen still bei „Bewegung reduzieren“ im System oder bei „Animationen: reduziert“ in den Einstellungen.
+- Datenbank: Version 2 ergänzt die Tabellen `contacts` und `contactLogs`. Exporte enthalten sie; ältere Exportdateien ohne diese Tabellen bleiben importierbar.
+- Technische Kennungen bleiben aus Kompatibilitätsgründen beim früheren Arbeitsnamen: IndexedDB-Name `olife`, Exportformat `"format": "olife"`, Meta-Namen `olife-build` und `olife-base`. Die Exportdatei heißt `habit-garden-backup-JJJJ-MM-TT.json`.
 
 ## Voraussetzungen
 
@@ -28,7 +40,7 @@ npm run build
 
 Weitere Befehle:
 
-- `npm test`: Unit-Tests (`node:test`, Zeitzone Europe/Berlin) für Wachstum, Wiederholung, Datum, Sortierschlüssel und Router
+- `npm test`: Unit-Tests (`node:test`, Zeitzone Europe/Berlin) für Wachstum, Wiederholung, Datum, Sortierschlüssel, Router, Basispfad und Kontakte
 - `npm run check`: Prüft, dass kein `any`, kein `@ts-ignore`, keine Ausrufezeichen in Oberflächentexten und keine deutschen Texte außerhalb von `src/i18n/de.ts` vorkommen
 - `npm run watch`: `tsc --watch` für die Entwicklung
 - `npm run build:pages`: `npm run build` und danach die statische Fassung für GitHub Pages in `dist/pages/` (`scripts/pages.mjs`, siehe [Deployment auf GitHub Pages](#deployment-auf-github-pages))
@@ -58,7 +70,7 @@ Caching (abgestimmte Abweichung von F §4.3): Der Build-Stempel wird über alle 
 
 ## Deployment auf GitHub Pages
 
-Zusätzlich lässt sich Olife als statische Projektseite auf GitHub Pages betreiben, etwa unter `https://daimpad.github.io/habit-garden/`. Die Apache-Auslieferung bleibt davon unberührt.
+Zusätzlich lässt sich Habit Garden als statische Projektseite auf GitHub Pages betreiben, etwa unter `https://daimpad.github.io/habit-garden/`. Die Apache-Auslieferung bleibt davon unberührt.
 
 - Workflow: `.github/workflows/static.yml` (Pages-Quelle „GitHub Actions“) läuft bei jedem Push auf `main` und manuell. Er führt `npm ci`, `npm test` und `npm run build:pages` aus und veröffentlicht `dist/pages/`.
 - Inhalt von `dist/pages/`: `app/`, `vendor/`, `styles/`, `assets/` und `licenses.txt` aus `public/` (ohne `index.php` und `.htaccess`), dazu `index.html`, eine identische `404.html` und `.nojekyll`. Das HTML wird aus `public/index.php` abgeleitet und hat denselben Aufbau.
@@ -75,7 +87,7 @@ Zusätzlich lässt sich Olife als statische Projektseite auf GitHub Pages betrei
 
 ## Lizenzen
 
-Olife steht unter der Apache License 2.0 (siehe `LICENSE`).
+Habit Garden steht unter der Apache License 2.0 (siehe `LICENSE`).
 
 | Komponente | Version | Lizenz | Verwendung |
 |---|---|---|---|

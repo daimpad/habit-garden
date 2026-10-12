@@ -7,6 +7,8 @@
   --color-warning-text: #9A4E33; --color-danger-text: #A3463F; --color-danger-soft: #F3DCD8; --color-info: #3F6F9E;
   --color-scrim: rgba(47,79,58,.35); --color-overlay-hover: rgba(47,79,58,.06); --color-overlay-pressed: rgba(47,79,58,.10);
   --color-focus: #2F4F3A;
+  /* Habit Garden accent for display text only (greeting, ≥ 34 px bold): ≥ 3.2 : 1 on every sky colour. */
+  --color-accent-text: #B8623F;
   --heat-0: #E9EEE4; --heat-1: #D3DFCD; --heat-2: #B5C9B0; --heat-3: #8FAE8B; --heat-4: #5F8A66;
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
   --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-full: 999px; --radius-arch: 48px 48px 12px 12px;

@@ -1,4 +1,4 @@
-# Builds the static Olife site (npm run build:pages) and deploys it to GitHub Pages
+# Builds the static Habit Garden site (npm run build:pages) and deploys it to GitHub Pages
 name: Deploy static content to Pages
 
 on:
