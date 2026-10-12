@@ -368,6 +368,7 @@ export const t = {
   wissenNoteSavedOne: '1 Notiz ist gespeichert und im JSON-Export enthalten; neue Notizen legst du mit + an.',
   wissenNotesSaved: '{n} Notizen sind gespeichert und im JSON-Export enthalten; neue Notizen legst du mit + an.',
   // --- additions: integration ---
+  notifRequest: 'Berechtigung anfragen',
   toastDayDoneStage: '{date}: als erledigt markiert, Stufe {stage} erreicht',
   streakWeeksOne: '1 Woche',
   streakWeeks: '{n} Wochen',

@@ -280,3 +280,18 @@ export async function ensureReminderPermission(): Promise<void> {
     console.error(err);
   }
 }
+
+/**
+ * Settings › Benachrichtigungen (decision 2026-10-12): asks for the permission again while the
+ * browser has not decided yet ('default'). Must be called directly from a click handler.
+ */
+export function requestNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
+  if (notificationPermission() !== 'default') return Promise.resolve(notificationPermission());
+  try {
+    const request: unknown = Notification.requestPermission();
+    if (request instanceof Promise) return request.then(() => notificationPermission(), () => notificationPermission());
+  } catch (err) {
+    console.error(err);
+  }
+  return Promise.resolve(notificationPermission());
+}
