@@ -14,6 +14,11 @@
 // - The guard runs on start, navigate, popstate and refresh; its redirect replaces the entry.
 // - Tab state (last path per tab) lives in memory; localStorage 'activeTab' only picks the underlay.
 // - No browser globals are touched at module load: parseRoute() runs in node tests.
+// - Base path (util/base.ts, e.g. "/habit-garden/" on GitHub Pages): routes and every path passed in or
+//   out stay internal ("/heute"); only the boundary to location/history adds or strips the base. A
+//   location outside the base counts as an unknown path (→ /heute).
+
+import { appPath, appUrl } from './util/base.js';
 
 export type Tab = 'heute' | 'planung' | 'wissen';
 export type RouteName =
@@ -178,8 +183,19 @@ function entry(idx: number): { olIdx: number } {
   return { olIdx: idx };
 }
 
+/** Internal path + query of the address bar; '' (unknown → /heute) outside the base. */
 function locationHref(): string {
-  return location.pathname + location.search;
+  const path = appPath(location.pathname);
+  return path === null ? '' : path + location.search;
+}
+
+/** history.pushState/replaceState with the base-prefixed URL of an internal href. */
+function pushEntry(state: object, href: string): void {
+  history.pushState(state, '', appUrl(href));
+}
+
+function replaceEntry(state: object, href: string): void {
+  history.replaceState(state, '', appUrl(href));
 }
 
 function storedTab(): Tab | null {
@@ -260,13 +276,13 @@ async function go(input: string, kind: Exclude<NavigationKind, 'initial'>): Prom
   const same = currentRoute !== null && routeHref(currentRoute) === href;
   if (kind === 'push') {
     if (same) return;
-    history.pushState(entry(state.idx + 1), '', href);
+    pushEntry(entry(state.idx + 1), href);
   } else if (kind === 'replace') {
     if (same && href === locationHref()) return;
-    history.replaceState(entry(state.idx), '', href);
+    replaceEntry(entry(state.idx), href);
   } else if (redirected || href !== locationHref()) {
     // pop/refresh: the address bar already shows the entry; only a redirect or normalisation rewrites it.
-    history.replaceState(entry(state.idx), '', href);
+    replaceEntry(entry(state.idx), href);
   } else if (!state.stamped) {
     history.replaceState({ ...(history.state as object | null), olIdx: state.idx }, '');
   }
@@ -360,14 +376,14 @@ export async function startRouter(guard: RouteGuard, opts: RouterOptions = {}): 
     if (underlay.tab) lastPaths.set(underlay.tab, routeHref(underlay));
     if (state.idx === 0) {
       // Fresh direct entry: make the underlay the first entry so back closes the sheet in-app.
-      history.replaceState(entry(0), '', routeHref(underlay));
-      history.pushState(entry(1), '', href);
+      replaceEntry(entry(0), routeHref(underlay));
+      pushEntry(entry(1), href);
     } else {
-      history.replaceState(entry(state.idx), '', href);
+      replaceEntry(entry(state.idx), href);
     }
   } else {
     // Stamps the depth (kept across reloads) and drops a stale sheet marker.
-    history.replaceState(entry(state.idx), '', href);
+    replaceEntry(entry(state.idx), href);
   }
   commit(route, 'initial');
 }

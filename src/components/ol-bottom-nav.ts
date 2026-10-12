@@ -5,6 +5,8 @@
 // 64 px + safe-area-inset-bottom; from 900 px a left rail with the same three targets.
 // Navigation itself happens through main.ts' delegated link handler. Tap on the active tab:
 // preventDefault; if scrolled, scroll to top; otherwise emit `ol-navigate` to the tab root.
+// Paths (tab roots, setTabPath) are internal app paths; the rendered hrefs carry the base path
+// (util/base.ts), e.g. "/habit-garden/heute" on GitHub Pages.
 //
 // Details of this implementation:
 // - Fixed to the bottom (z-index 20); from 900 px a fixed left rail 96 px wide (base.css pads .ol-shell).
@@ -14,6 +16,7 @@
 //   is not the tab root, `ol-navigate` (detail: { path: '/heute' | '/planung' | '/wissen' }).
 //   Modified clicks (Ctrl/Meta/Shift/Alt, middle button) are left to the browser.
 import { t } from '../i18n/de.js';
+import { appPath, appUrl } from '../util/base.js';
 import { emit, h, icon, motionReduced, render } from '../util/dom.js';
 
 export type Tab = 'heute' | 'planung' | 'wissen';
@@ -59,7 +62,8 @@ export class OlBottomNav extends HTMLElement {
     if (!TABS.some((d) => d.tab === tab) || !path.startsWith('/') || path.startsWith('//')) return;
     this.paths.set(tab, path);
     const link = this.linkOf(tab);
-    if (link && link.getAttribute('href') !== path) link.setAttribute('href', path);
+    const href = appUrl(path);
+    if (link && link.getAttribute('href') !== href) link.setAttribute('href', href);
   }
 
   private linkOf(tab: Tab): HTMLAnchorElement | null {
@@ -73,7 +77,7 @@ export class OlBottomNav extends HTMLElement {
       render(
         this,
         h`<nav class="ol-bottom-nav__nav" aria-label="${t.navLabel}">${TABS.map(
-          (d) => h`<a class="ol-bottom-nav__link" href="${this.paths.get(d.tab) ?? d.root}" data-tab="${d.tab}"><span class="ol-bottom-nav__pill">${icon(d.icon, 24)}</span><span class="ol-bottom-nav__label">${d.label}</span></a>`,
+          (d) => h`<a class="ol-bottom-nav__link" href="${appUrl(this.paths.get(d.tab) ?? d.root)}" data-tab="${d.tab}"><span class="ol-bottom-nav__pill">${icon(d.icon, 24)}</span><span class="ol-bottom-nav__label">${d.label}</span></a>`,
         )}</nav>`,
       );
       nav = this.querySelector<HTMLElement>(':scope > nav.ol-bottom-nav__nav');
@@ -92,8 +96,8 @@ export class OlBottomNav extends HTMLElement {
       } else if (link.hasAttribute('aria-current')) {
         link.removeAttribute('aria-current');
       }
-      const path = this.paths.get(d.tab) ?? d.root;
-      if (link.getAttribute('href') !== path) link.setAttribute('href', path);
+      const href = appUrl(this.paths.get(d.tab) ?? d.root);
+      if (link.getAttribute('href') !== href) link.setAttribute('href', href);
     }
   }
 
@@ -112,7 +116,7 @@ export class OlBottomNav extends HTMLElement {
       window.scrollTo({ top: 0, behavior: motionReduced() ? 'auto' : 'smooth' });
       return;
     }
-    if (location.pathname !== def.root || location.search !== '') {
+    if (appPath(location.pathname) !== def.root || location.search !== '') {
       emit<NavigateDetail>(this, 'ol-navigate', { path: def.root });
     }
   };

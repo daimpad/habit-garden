@@ -11,7 +11,7 @@
 //   import → validation (ImportError → "kein gültiger Olife-Export") → mode dialog (Zusammenführen /
 //   Wiederherstellen) → restore needs a destructive confirmation with Abbrechen focused, then the route
 //   is re-dispatched. "Alle Daten löschen" needs two destructive confirmations, deletes the database and
-//   the UI preferences in localStorage, then location.replace('/start') (S40).
+//   the UI preferences in localStorage, then location.replace('/start') under the base path (S40).
 // - Benachrichtigungen (S13): permission state (re-read on focus/visibility), default lead time, hint.
 // - Darstellung (S38): Profile.settings is the source of truth; 'theme' also goes to localStorage as the
 //   pre-paint cache. 'System' renders light until dark mode exists (TODO(phase-5)). main.ts applies
@@ -50,6 +50,7 @@ import { estimate, formatBytes, isPersisted, isSafari, requestPersist, type Pers
 import {
   deleteAllData, ImportError, importMerge, importRestore, parseImport, type ExportFile,
 } from '../services/transfer.js';
+import { appUrl } from '../util/base.js';
 import { dayOfIso, formatDayFull, formatTime } from '../util/date.js';
 import { buildHash, h, icon, render, setVar, type SafeHtml } from '../util/dom.js';
 import { exportWithNotice } from './export-flow.js';
@@ -347,7 +348,7 @@ class SettingsScreen {
       <div class="ol-settings__item">
         <h3 class="ol-settings__subhead">${t.infoLicenses}</h3>
         <ul class="ol-settings__licenses">${LICENSES.map((line) => h`<li>${line}</li>`)}</ul>
-        <a class="ol-settings__link" href="/licenses.txt">${t.infoLicensesLink}</a>
+        <a class="ol-settings__link" href="${appUrl('/licenses.txt')}">${t.infoLicensesLink}</a>
         <p class="ol-settings__hint">${t.infoProvenance}</p>
       </div>
       <div class="ol-settings__item">
@@ -616,7 +617,7 @@ class SettingsScreen {
     }
     // The dialogs' history entries are popped before the page is replaced.
     await historySettled();
-    location.replace('/start');
+    location.replace(appUrl('/start'));
   }
 
   // -------------------------------------------------------------------------
