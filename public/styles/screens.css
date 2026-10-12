@@ -1,46 +1,491 @@
 /* Screen and sheet styles. Each screen/sheet owns exactly one section between its markers. */
 
 /* === shell === */
-
+/* #view and the screen <h1> receive focus programmatically after navigation; they are not controls,
+   so no ring is drawn around the whole screen or the heading. */
+.ol-view:focus, .ol-view h1[tabindex="-1"]:focus { outline: none; }
+/* Full-screen screens (/start, /einstellungen) have no rail: the content column uses the full width. */
+@media (min-width: 900px) {
+  .ol-shell[data-overlay-screen] { padding-left: 0; }
+}
+.ol-shell__error {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding-top: var(--space-6);
+}
 /* === /shell === */
 
 /* === start === */
+/* Onboarding (F §4.13, S37): one full-height column (max 560 px), the actions stay at the bottom edge
+   (thumb zone) and stick there while a long step scrolls. */
+.ol-view[data-screen="start"] { padding-bottom: 0; }
+.ol-start {
+  display: flex; flex-direction: column;
+  max-width: 560px; min-height: calc(100dvh - env(safe-area-inset-top)); margin: 0 auto;
+}
+.ol-start [hidden] { display: none !important; }
 
+/* Step indicator: the active dot is wider (shape, not only colour). */
+.ol-start__dots { display: flex; justify-content: center; gap: var(--space-2); padding: var(--space-5) 0 var(--space-2); }
+.ol-start__dot {
+  width: 8px; height: 8px; border-radius: var(--radius-full); background-color: var(--color-text-3);
+  transition: width var(--duration-base) var(--ease-standard), background-color var(--duration-base) linear;
+}
+.ol-start__dot[data-active] { width: 24px; background-color: var(--color-primary); }
+
+.ol-start__step { flex: 1 0 auto; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4) 0 var(--space-5); }
+.ol-start__title { text-wrap: balance; overflow-wrap: break-word; hyphens: auto; }
+.ol-start__intro { color: var(--color-text-2); }
+
+/* Step 1: arch window with a flowering plant, three principles, device note. */
+.ol-start__hero {
+  align-self: center; display: flex; align-items: flex-end; justify-content: center;
+  width: 136px; height: 152px; padding-bottom: var(--space-3);
+  border-radius: var(--radius-arch);
+  background-color: color-mix(in srgb, var(--color-sage) 14%, var(--color-surface));
+}
+.ol-start__principles { display: grid; gap: var(--space-2); }
+.ol-start__principle {
+  display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); background-color: var(--color-surface);
+}
+.ol-start__principle > .ol-icon { color: var(--color-primary); }
+.ol-start__notes { display: grid; gap: var(--space-3); }
+.ol-start__note {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  color: var(--color-text-2); font-size: .875rem; line-height: 1.25rem;
+}
+.ol-start__note > .ol-icon { margin-top: 0; }
+
+/* Step 2: flower cards (multi-select). Selected: primary 2 px outline, area tone 10 %, filled check. */
+.ol-start__areas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 148px), 1fr)); gap: var(--space-3); }
+.ol-start__area { display: flex; min-width: 0; }
+.ol-start__card {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2);
+  width: 100%; min-width: 0; min-height: 136px; margin: 0; padding: var(--space-3);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background-color: var(--color-surface); color: var(--color-text);
+  font: inherit; text-align: left; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) linear, border-color var(--duration-fast) linear, box-shadow var(--duration-fast) linear;
+}
+.ol-start__card::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background-color: transparent; transition: background-color var(--duration-fast) linear;
+}
+@media (hover: hover) {
+  .ol-start__card:hover::after { background-color: var(--color-overlay-hover); }
+}
+.ol-start__card:active::after { background-color: var(--color-overlay-pressed); }
+.ol-start__card[aria-checked="true"] {
+  border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary);
+  background-color: color-mix(in srgb, var(--tint, var(--color-sage)) 10%, var(--color-surface));
+}
+.ol-start__check {
+  position: absolute; top: var(--space-2); right: var(--space-2);
+  display: inline-grid; place-items: center; width: 24px; height: 24px;
+  border: 1.5px solid var(--color-text-2); border-radius: var(--radius-full);
+  background-color: var(--color-surface); color: transparent;
+  transition: background-color var(--duration-fast) linear, border-color var(--duration-fast) linear;
+}
+.ol-start__check > .ol-icon { width: 16px; height: 16px; stroke-width: 2.5; }
+.ol-start__card[aria-checked="true"] .ol-start__check {
+  border-color: var(--color-primary); background-color: var(--color-primary); color: var(--color-on-primary);
+}
+.ol-start__card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: var(--space-1); }
+.ol-start__name { font-weight: 600; line-height: 1.375rem; overflow-wrap: break-word; hyphens: auto; }
+.ol-start__desc { color: var(--color-text-2); font-size: .8125rem; line-height: 1.125rem; }
+
+/* "Eigener Bereich": full-width card; the toggle and the name field share the card frame. */
+.ol-start__custom {
+  grid-column: 1 / -1; flex-direction: column; gap: var(--space-1); padding-bottom: var(--space-3);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); background-color: var(--color-surface);
+  transition: background-color var(--duration-fast) linear, border-color var(--duration-fast) linear, box-shadow var(--duration-fast) linear;
+}
+.ol-start__custom[data-selected] {
+  border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary);
+  background-color: color-mix(in srgb, var(--tint, var(--color-sage)) 10%, var(--color-surface));
+}
+.ol-start__card--custom,
+.ol-start__card--custom[aria-checked="true"] {
+  flex-direction: row; align-items: center; gap: var(--space-3); min-height: 80px; padding-right: 48px;
+  border-color: transparent; box-shadow: none; background-color: transparent;
+}
+.ol-start__custom-name { padding: 0 var(--space-3); }
+.ol-start__error { color: var(--color-danger-text); font-size: .875rem; line-height: 1.25rem; }
+.ol-start__error:empty { margin-top: calc(var(--space-4) * -1); }
+
+/* Step 3: storage status (neutral for every outcome). */
+.ol-start__status {
+  display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); background-color: var(--color-surface);
+}
+.ol-start__status > .ol-icon { color: var(--color-primary); }
+.ol-start__status-text { min-height: 1.5rem; }
+
+.ol-start__actions {
+  position: sticky; bottom: 0; z-index: 1;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3);
+  margin-top: auto; padding: var(--space-3) 0 calc(var(--space-4) + env(safe-area-inset-bottom));
+  background-color: var(--color-bg);
+}
+.ol-start__next { margin-left: auto; min-width: min(100%, 9rem); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ol-start__dot, .ol-start__card, .ol-start__check, .ol-start__custom { transition: none; }
+}
+:root[data-motion="reduced"] .ol-start__dot,
+:root[data-motion="reduced"] .ol-start__card,
+:root[data-motion="reduced"] .ol-start__check,
+:root[data-motion="reduced"] .ol-start__custom { transition: none; }
 /* === /start === */
 
 /* === heute === */
+/* Content stays invisible until the first data arrived (no sections popping in). */
+.ol-heute[data-loading] { visibility: hidden; }
+.ol-heute [hidden] { display: none !important; }
+.ol-heute h2[tabindex="-1"]:focus { outline: none; }
+.ol-heute__card { padding: var(--space-1) var(--space-2); }
+.ol-heute__list { display: grid; }
 
+/* Rows (56 px): sibling controls; long press suppresses callout and text selection (S16). */
+.ol-heute__row {
+  display: flex; align-items: center; gap: var(--space-1); min-height: 56px;
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+}
+.ol-heute__row.is-collapsing { min-height: 0; overflow: hidden; }
+.ol-heute__title {
+  flex: 1 1 auto; min-width: 0; min-height: 48px; margin: 0; padding: var(--space-3) var(--space-2);
+  border: 0; border-radius: var(--radius-sm); background-color: transparent; color: var(--color-text);
+  font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) linear, opacity var(--duration-base) linear;
+}
+@media (hover: hover) {
+  .ol-heute__title:hover { background-color: var(--color-overlay-hover); }
+}
+.ol-heute__title:active { background-color: var(--color-overlay-pressed); }
+.ol-heute__task[data-done] .ol-heute__title { text-decoration: line-through; opacity: .5; }
+.ol-heute__meta {
+  flex: 0 1 auto; max-width: 38%; padding-right: var(--space-2);
+  color: var(--color-text-2); text-align: right; overflow-wrap: break-word; hyphens: auto;
+}
+.ol-heute__overdue { color: var(--color-warning-text); }
+
+/* Erste Schritte */
+.ol-heute__steps { display: grid; gap: var(--space-2); }
+.ol-heute__step-card { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1); }
+.ol-heute__step-action {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--space-3);
+  min-height: 48px; margin: 0; padding: var(--space-2) var(--space-3);
+  border: 0; border-radius: var(--radius-sm); background-color: transparent; color: var(--color-text);
+  font: inherit; text-align: left; cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--duration-fast) linear;
+}
+.ol-heute__step-action .ol-icon { color: var(--color-primary); }
+@media (hover: hover) {
+  .ol-heute__step-action:hover { background-color: var(--color-overlay-hover); }
+}
+.ol-heute__step-action:active { background-color: var(--color-overlay-pressed); }
+
+/* Daten sichern */
+.ol-heute__backup { display: grid; gap: var(--space-2); margin-top: var(--space-5); padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4); }
+.ol-heute__backup-head { display: flex; align-items: flex-start; gap: var(--space-3); }
+.ol-heute__backup-icon { display: inline-flex; padding-top: var(--space-3); color: var(--color-primary); }
+.ol-heute__backup-text { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--space-1); padding-top: var(--space-3); }
+.ol-heute__backup-export { justify-self: start; margin-left: calc(24px + var(--space-3)); }
+
+/* Fokus: ring (B.3 ol-progress-ring 28 px, stroke 3, sage-strong on border), slots */
+.ol-heute__ring { display: inline-flex; align-items: center; gap: var(--space-2); }
+.ol-heute__ring-label {
+  font-size: .8125rem; line-height: 1rem; font-weight: 500; color: var(--color-text-2);
+  transition: color var(--duration-base) linear;
+}
+.ol-heute__ring[data-complete] .ol-heute__ring-label { color: var(--color-primary); font-weight: 600; }
+.ol-heute__ring-svg { width: 28px; height: 28px; }
+.ol-heute__ring-track { fill: none; stroke: var(--color-border); stroke-width: 3; }
+.ol-heute__ring-arc {
+  fill: none; stroke: var(--color-sage-strong); stroke-width: 3;
+  transition: stroke-dashoffset var(--duration-slow) var(--ease-standard);
+}
+.ol-heute__focus-empty { padding: var(--space-3) var(--space-2) var(--space-1); color: var(--color-text-2); }
+.ol-heute__slot {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; min-height: 48px; margin: var(--space-1) 0; padding: var(--space-2) var(--space-3);
+  border: 1.5px dashed var(--color-sage-strong); border-radius: var(--radius-sm);
+  background-color: transparent; color: var(--color-primary);
+  font: inherit; font-weight: 500; text-align: left; cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--duration-fast) linear;
+}
+@media (hover: hover) {
+  .ol-heute__slot:hover { background-color: var(--color-overlay-hover); }
+}
+.ol-heute__slot:active { background-color: var(--color-overlay-pressed); }
+
+/* Routinen: plant column aligned with the 48 px checkbox column */
+.ol-heute__plant { margin: 0 var(--space-2); }
+.ol-heute__streak {
+  flex: none; display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px;
+  min-width: 2.5rem; color: var(--color-text-2); font-size: .875rem; line-height: 1.25rem;
+}
+.ol-heute__streak-icon { display: inline-flex; }
+.ol-heute__streak[data-week] .ol-heute__streak-icon { display: none; }
+.ol-heute__counter { color: var(--color-text-2); }
+
+/* Stimmung (S21): five 48 px targets, selected scale 1.1, others .5 */
+.ol-heute__mood-card { padding: var(--space-2); }
+.ol-heute__moods { display: flex; justify-content: space-between; gap: var(--space-1); }
+.ol-heute__mood {
+  flex: 1 1 0; min-width: 48px; max-width: 72px; min-height: 64px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1);
+  margin: 0; padding: var(--space-1) 0; border: 0; border-radius: var(--radius-md);
+  background-color: transparent; color: var(--color-text-2); font: inherit; cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) linear;
+}
+@media (hover: hover) {
+  .ol-heute__mood:hover { background-color: var(--color-overlay-hover); }
+}
+.ol-heute__mood:active { background-color: var(--color-overlay-pressed); }
+.ol-heute__mood-svg { width: 28px; height: 28px; overflow: visible; transition: transform 150ms var(--ease-standard), opacity 150ms linear; }
+.ol-heute__mood-bg { fill: var(--color-surface); }
+.ol-heute__mood-fill { fill: var(--color-primary); }
+.ol-heute__mood-ring { fill: none; stroke: var(--color-primary); stroke-width: 2; }
+.ol-heute__mood-n { font-size: .75rem; line-height: 1rem; }
+.ol-heute__mood[aria-checked="true"] { color: var(--color-primary); }
+.ol-heute__mood[aria-checked="true"] .ol-heute__mood-n { font-weight: 600; }
+.ol-heute__mood[aria-checked="true"] .ol-heute__mood-svg { transform: scale(1.1); }
+.ol-heute__moods[data-selected] .ol-heute__mood:not([aria-checked="true"]) .ol-heute__mood-svg { opacity: .5; }
+.ol-heute__mood-foot { display: flex; justify-content: flex-end; margin-top: var(--space-1); }
+.ol-heute__mood-meta { color: var(--color-text-2); }
+
+/* Fällig heute */
+.ol-heute__due-count { margin-left: 2px; }
+.ol-heute__due-toggle { margin-right: calc(var(--space-2) * -1); }
+
+/* Reduced motion (system or in-app): no scaling, no colour/offset transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .ol-heute__mood-svg, .ol-heute__ring-arc, .ol-heute__title { transition: none; }
+  .ol-heute__mood[aria-checked="true"] .ol-heute__mood-svg { transform: none; }
+}
+:root[data-motion="reduced"] .ol-heute__mood-svg,
+:root[data-motion="reduced"] .ol-heute__ring-arc,
+:root[data-motion="reduced"] .ol-heute__title { transition: none; }
+:root[data-motion="reduced"] .ol-heute__mood[aria-checked="true"] .ol-heute__mood-svg { transform: none; }
 /* === /heute === */
 
 /* === focus-pick === */
-
+.ol-focus-pick { display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-1); }
+.ol-focus-pick [hidden] { display: none !important; }
+.ol-focus-pick__hint { color: var(--color-info); }
+.ol-focus-pick__group { display: grid; gap: var(--space-1); }
+.ol-focus-pick__list { display: grid; }
+.ol-focus-pick__list > li + li { border-top: 1px solid var(--color-border); }
+.ol-focus-pick__item {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  width: 100%; min-height: 56px; margin: 0; padding: var(--space-2) var(--space-3);
+  border: 0; border-radius: var(--radius-sm); background-color: transparent; color: var(--color-text);
+  font: inherit; text-align: left; cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--duration-fast) linear;
+}
+@media (hover: hover) {
+  .ol-focus-pick__item:hover:not(:disabled) { background-color: var(--color-overlay-hover); }
+}
+.ol-focus-pick__item:active:not(:disabled) { background-color: var(--color-overlay-pressed); }
+.ol-focus-pick__item:disabled { opacity: .38; cursor: default; }
+.ol-focus-pick__title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.ol-focus-pick__meta {
+  flex: 0 1 auto; max-width: 45%; display: flex; flex-direction: column; align-items: flex-end;
+  color: var(--color-text-2); text-align: right; overflow-wrap: break-word; hyphens: auto;
+}
+.ol-focus-pick__overdue { color: var(--color-warning-text); }
+.ol-focus-pick__empty { padding: var(--space-4) 0; color: var(--color-text-2); text-align: center; }
 /* === /focus-pick === */
 
 /* === journal === */
-
+.ol-journal { display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-1); }
+.ol-journal [hidden] { display: none !important; }
+.ol-journal__earlier { display: grid; gap: var(--space-2); }
+.ol-journal__entries { display: grid; gap: var(--space-3); }
+.ol-journal__entry { display: grid; gap: 2px; }
+.ol-journal__text { color: var(--color-text); white-space: pre-wrap; overflow-wrap: anywhere; }
 /* === /journal === */
 
 /* === capture === */
-
+/* B.3: type chips above the title field, Save in the footer. Chip rows keep a 16 px row gap (S28). */
+.ol-capture { display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-2); }
+.ol-capture__types { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-2); }
 /* === /capture === */
 
 /* === task === */
+/* Task sheet (A.3): checkbox + title on one line, due row, flag and area chips, disabled project,
+   "Mehr anzeigen"; full detent: description, subtasks placeholder, reminders. Footer: focus action. */
+/* The bottom padding keeps room for a toast (it sits above the footer), so the last field can be
+   scrolled clear of it. */
+.ol-task-sheet {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  padding: var(--space-1) 0 calc(var(--touch) + var(--space-2));
+}
+.ol-task-sheet__head { display: flex; align-items: flex-start; gap: var(--space-1); margin-left: calc(var(--space-3) * -1); }
+.ol-task-sheet__title { flex: 1 1 auto; }
+.ol-task-sheet__title .ol-input__field { font-size: max(16px, 1.0625rem); font-weight: 600; }
+.ol-task-sheet[data-done] .ol-task-sheet__title .ol-input__field { text-decoration: line-through; color: var(--color-text-2); }
+.ol-task-sheet__row { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-3); }
+.ol-task-sheet__chips,
+.ol-task-sheet__areas { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-2); }
+.ol-task-sheet__field,
+.ol-task-sheet__section { display: flex; flex-direction: column; gap: var(--space-2); }
+.ol-task-sheet__label { font-size: .8125rem; line-height: 1rem; font-weight: 500; color: var(--color-text-2); }
+.ol-task-sheet__more-btn { align-self: flex-start; margin-left: calc(var(--space-3) * -1); }
+.ol-task-sheet__more { display: flex; flex-direction: column; gap: var(--space-5); }
+.ol-task-sheet__more[hidden] { display: none; }
+.ol-task-sheet__placeholder,
+.ol-task-sheet__needs-due,
+.ol-task-sheet__focus-hint { color: var(--color-text-2); }
+.ol-task-sheet__reminders { display: flex; flex-direction: column; }
+.ol-task-sheet__reminders[hidden] { display: none; }
+.ol-task-sheet__reminder {
+  display: flex; align-items: center; gap: var(--space-2); min-height: 48px;
+  border-bottom: 1px solid var(--color-border);
+}
+.ol-task-sheet__reminder-icon { display: inline-flex; flex: none; color: var(--color-text-2); }
+.ol-task-sheet__reminder-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.ol-task-sheet__reminder > ol-icon-button { margin-right: calc(var(--space-3) * -1); }
+.ol-task-sheet__reminder-form { display: flex; flex-direction: column; gap: var(--space-3); }
+.ol-task-sheet__reminder-form > ol-button { align-self: flex-start; }
+.ol-task-sheet__focus { display: flex; flex-direction: column; gap: var(--space-2); }
+.ol-task-sheet__focus > ol-button { display: flex; }
 
+/* ⋯ menu sheet (shared by the task and habit sheets): full-width, left-aligned text buttons. */
+.ol-menu-sheet { display: flex; flex-direction: column; gap: var(--space-1); padding-bottom: var(--space-2); }
+.ol-menu-sheet__item { display: flex; }
+.ol-menu-sheet__item .ol-button__btn { justify-content: flex-start; padding-left: var(--space-3); }
 /* === /task === */
 
 /* === habit === */
+/* Habit sheet (A.3): arch window (--radius-arch, tint 10 % on surface) with the 120 px plant beside the
+   rhythm and streak figures (they wrap below on narrow widths or large text), heatmap underneath. */
+/* Every heatmap toggle shows a toast at the bottom of the sheet: the bottom padding keeps the heatmap
+   clear of it. */
+.ol-habit-sheet {
+  display: flex; flex-direction: column; gap: var(--space-5);
+  padding: var(--space-1) 0 calc(var(--touch) + var(--space-4));
+}
+.ol-habit-sheet__top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); }
+.ol-habit-sheet__arch {
+  flex: none; display: flex; align-items: flex-end; justify-content: center;
+  width: 152px; height: 168px; padding-bottom: var(--space-3);
+  border-radius: var(--radius-arch);
+  background-color: color-mix(in srgb, var(--tint, var(--color-sage)) 10%, var(--color-surface));
+}
+.ol-habit-sheet__stats { flex: 1 1 9rem; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); margin: 0; }
+.ol-habit-sheet__stat { display: flex; flex-direction: column; }
+.ol-habit-sheet__stat > dd { margin: 0; color: var(--color-text); overflow-wrap: anywhere; }
+.ol-habit-sheet__heatmap { align-self: flex-start; max-width: 100%; }
 
+/* Habit editor: name, area chips, rhythm segmented with its detail field, time of day. */
+.ol-habit-editor { display: flex; flex-direction: column; gap: var(--space-5); padding-top: var(--space-1); }
+.ol-habit-editor__field { display: flex; flex-direction: column; gap: var(--space-2); }
+.ol-habit-editor__field[hidden] { display: none; }
+.ol-habit-editor__label { font-size: .8125rem; line-height: 1rem; font-weight: 500; color: var(--color-text-2); }
+.ol-habit-editor__chips { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-2); }
+.ol-habit-editor__error { color: var(--color-danger-text); }
 /* === /habit === */
 
 /* === planung === */
-
+/* Placeholder (TODO(phase-3)): app bar with ⚙ and the empty state; the FAB comes from the shell. */
+.ol-planung { display: block; }
 /* === /planung === */
 
 /* === wissen === */
-
+/* Placeholder (TODO(phase-4)): app bar with ⚙ and the empty state; the FAB comes from the shell. */
+.ol-wissen { display: block; }
 /* === /wissen === */
 
 /* === einstellungen === */
+/* Settings (F §4.13, A.3): headed sections, each one card whose items are separated by 1 px lines. */
+.ol-settings { display: flex; flex-direction: column; padding-bottom: var(--space-4); }
+.ol-settings [hidden] { display: none !important; }
+.ol-settings__section { scroll-margin-top: var(--space-4); }
+/* Long German compounds ("Systembenachrichtigungen") break instead of widening the page at 200 % text. */
+.ol-settings__section .ol-label, .ol-settings__fact > dt, .ol-settings__label, .ol-settings__strong {
+  min-width: 0; overflow-wrap: break-word; hyphens: auto;
+}
+.ol-settings__section h2[tabindex="-1"]:focus { outline: none; }
+.ol-settings__card { padding-top: var(--space-1); padding-bottom: var(--space-1); }
+.ol-settings__card > * + * { border-top: 1px solid var(--color-border); }
+.ol-settings__item { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-3) 0; }
+.ol-settings__item > ol-segmented { align-self: stretch; max-width: 24rem; }
 
+.ol-settings__label { font-size: .8125rem; line-height: 1rem; font-weight: 500; color: var(--color-text-2); }
+.ol-settings__hint { color: var(--color-text-2); font-size: .8125rem; line-height: 1.125rem; }
+.ol-settings__strong { display: block; font-weight: 500; }
+.ol-settings__line { display: flex; align-items: flex-start; gap: var(--space-2); overflow-wrap: anywhere; }
+.ol-settings__line > .ol-icon { margin-top: 2px; color: var(--color-text-2); }
+.ol-settings__notes { display: grid; gap: var(--space-2); color: var(--color-text-2); font-size: .875rem; line-height: 1.25rem; }
+.ol-settings__notes .ol-icon { margin-top: 0; }
+
+/* Facts (label left, value right; they wrap at large text sizes). */
+.ol-settings__facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); width: 100%; margin: 0; }
+.ol-settings__fact { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-1) var(--space-3); }
+.ol-settings__fact > dt { max-width: 100%; color: var(--color-text-2); }
+.ol-settings__fact > dd { margin: 0; font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+
+/* Switch row: text and hint left, the 48 px checkbox right (the text toggles it too). */
+.ol-settings__switch { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.ol-settings__switch-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.ol-settings__switch > ol-checkbox { margin-right: calc(var(--space-3) * -1); }
+
+/* Native selects (48 px, 1.5 px text-2 border like ol-input) with a Lucide chevron. */
+.ol-settings__pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: var(--space-3); }
+.ol-settings__field { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; min-width: 0; }
+.ol-settings__item > .ol-settings__field { max-width: 20rem; }
+.ol-settings__select { position: relative; display: block; }
+.ol-settings__select > select {
+  display: block; width: 100%; min-height: 48px; margin: 0; padding: 0 calc(var(--space-3) + 28px) 0 var(--space-3);
+  border: 1.5px solid var(--color-text-2); border-radius: var(--radius-sm);
+  background-color: var(--color-surface); color: var(--color-text);
+  font: inherit; font-size: max(16px, 1rem); line-height: 1.5rem;
+  -webkit-appearance: none; appearance: none; cursor: pointer;
+  transition: border-color var(--duration-fast) linear, box-shadow var(--duration-fast) linear;
+}
+.ol-settings__select > select:focus { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); }
+.ol-settings__chevron {
+  position: absolute; top: 50%; right: var(--space-3); transform: translateY(-50%);
+  display: inline-flex; color: var(--color-text-2); pointer-events: none;
+}
+
+/* Bereiche: rows with tone bar, flower, name, state; rename inline; create form below. */
+.ol-settings__areas { display: grid; }
+.ol-settings__area { display: flex; align-items: center; gap: var(--space-3); min-height: 56px; padding: var(--space-1) 0; }
+.ol-settings__area + .ol-settings__area { border-top: 1px solid var(--color-border); }
+.ol-settings__area-bar {
+  flex: none; align-self: stretch; width: 4px; margin: var(--space-2) 0;
+  border-radius: var(--radius-full); background-color: var(--tint, var(--color-border));
+}
+.ol-settings__area-main { flex: 1 1 auto; min-width: 0; }
+.ol-settings__area-view { display: flex; flex-direction: column; }
+.ol-settings__area-name { overflow-wrap: anywhere; }
+.ol-settings__area-state { color: var(--color-text-2); font-size: .75rem; line-height: 1rem; }
+.ol-settings__area[data-archived] .ol-settings__area-name { color: var(--color-text-2); }
+.ol-settings__area[data-archived] .ol-settings__area-flower,
+.ol-settings__area[data-archived] .ol-settings__area-bar { opacity: .5; }
+.ol-settings__area-actions { flex: none; display: flex; margin-right: calc(var(--space-3) * -1); }
+.ol-settings__area[data-editing] { align-items: flex-start; padding: var(--space-3) 0; }
+.ol-settings__area[data-editing] .ol-settings__area-flower { margin-top: 32px; }
+.ol-settings__area-edit { display: flex; flex-direction: column; gap: var(--space-2); }
+.ol-settings__area-edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+.ol-settings__create { align-items: stretch; gap: var(--space-3); }
+.ol-settings__flowers { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-2); padding: var(--space-2) 0; }
+.ol-settings__create > ol-input { max-width: 24rem; }
+.ol-settings__create > ol-button { align-self: flex-start; }
+
+/* Info */
+.ol-settings__subhead { font-size: 1rem; line-height: 1.5rem; font-weight: 600; }
+.ol-settings__licenses { display: grid; gap: var(--space-1); font-size: .875rem; line-height: 1.25rem; }
+.ol-settings__licenses > li { overflow-wrap: anywhere; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ol-settings__select > select { transition: none; }
+}
+:root[data-motion="reduced"] .ol-settings__select > select { transition: none; }
 /* === /einstellungen === */
 

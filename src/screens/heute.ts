@@ -1,8 +1,1548 @@
-// CONTRACT STUB – implemented in AP7. HEUTE (F §4.13, A.3 Screen 1).
+// HEUTE (F §4.13, A.3 Screen 1, A.2 H1–H6/H10, B.4, D.1/D.2).
+// Rendering contract (S7): the skeleton is rendered once per mount; every liveQuery emission patches keyed
+// rows in place (attributes, textContent), so focus, running animations and component state survive.
+// The rendered day is fixed per mount: main.ts re-mounts the screen on a day change (onDayChange → refresh)
+// and every write uses this day (S6).
+//
+// Details of this implementation:
+// - Focus ring = done/n of the filled slots (approved decision 2), hidden when n = 0. Checking the last open
+//   focus task closes the ring, sparks at the ring, label in primary for 2 s, confirm haptic.
+// - Routines: one section per period (Morgen / Routinen / Abend); the order follows the hour (H6, S18).
+//   timesPerWeek rows show x/y instead of the flame streak (S19). The plant and toggle of a row stay
+//   untouched while its toggleLog runs and until the snapshot shows the result, so grow/wobble survive.
+// - Rows open their sheet by tapping the title (keyboard equivalent) or a 350 ms long press on the row (S16);
+//   the click after a long press is swallowed; callout and selection are suppressed in CSS.
+// - Fällig heute = dueOn(day) minus today's focus ids; a checked row stays 1.5 s, then collapses (B.4);
+//   rows coming back (undo) expand at their position.
+// - Content stays invisible until the first data arrived (no sections popping in); the card stagger (B.4)
+//   runs on the first render after page load only.
+// TODO(phase-3): swipe left on a focus row removes it from the focus (A.3); Phase 1 uses the task sheet.
+// TODO(phase-2): evening card "Morgen vorbereiten" above Fällig heute (H7 [Ext]).
+// TODO(phase-5): tapping the date opens the calendar sheet (H8), header landscape (H11), review card (H9).
+import { liveQuery, type Observable, type Subscription } from 'dexie';
+import { petalColor } from '../components/flora.js';
+import type { CheckboxChange } from '../components/ol-checkbox.js';
+import type { HabitToggleChange } from '../components/ol-habit-toggle.js';
+import { particles } from '../components/ol-particles.js';
+import type { OlPlant } from '../components/ol-plant.js';
+import { onModalChange, topModal, type OlSheet } from '../components/ol-sheet.js';
+import { showToast } from '../components/ol-toast.js';
+import { fmt, moodLabel, stageName, t } from '../i18n/de.js';
+import {
+  DEFAULT_SETTINGS, GENERIC_TINT, MAX_FOCUS,
+  type Area, type Day, type FirstStepId, type FlowerId, type Habit, type HabitLog, type Id, type MoodLog,
+  type Profile, type Task,
+} from '../model.js';
+import { areas$ } from '../repo/areas.js';
+import { anyFocusEver, getFocus } from '../repo/dayPlans.js';
+import { habitLogId, logsByHabit$, toggleLog, type ToggleResult } from '../repo/habitLogs.js';
+import { habits$ } from '../repo/habits.js';
+import { mood$, setMood } from '../repo/moodLogs.js';
+import { noteCount$ } from '../repo/notes.js';
+import { profile$, updateProfile } from '../repo/profile.js';
+import { compareDue, completeTask, dueOn, getTask, reopenTask } from '../repo/tasks.js';
 import type { Route } from '../router.js';
+import { isScheduledOn, stageFor, streak, weekProgress } from '../services/growth.js';
+import { backupCardState } from '../services/storage-hints.js';
+import { exportJson } from '../services/transfer.js';
+import { currentHour, formatDayLong, formatDayShort, formatTime, now, nowIso, today } from '../util/date.js';
+import { emit, h, HAPTIC, icon, motionReduced, raw, render, vibrate, type SafeHtml } from '../util/dom.js';
+import { openCapture, type CaptureType } from './sheets/capture.js';
+import { openFocusPick } from './sheets/focus-pick.js';
+import { openJournal } from './sheets/journal.js';
+
+type Period = Habit['period'];
+type MoodValue = 1 | 2 | 3 | 4 | 5;
+
+const PERIODS: readonly Period[] = ['morning', 'any', 'evening'];
+const MOODS: readonly MoodValue[] = [1, 2, 3, 4, 5];
+const NOON = 12;
+const LONG_PRESS_MS = 350;
+const LONG_PRESS_SLOP = 10;
+const LONG_PRESS_CLICK_WINDOW_MS = 1000;
+const LEAVE_MS = 1500;
+const DUE_COLLAPSED = 3;
+const MILESTONES: readonly number[] = [7, 30, 100];
+const COMPLETE_LABEL_MS = 2000;
+const MOOD_FLASH_MS = 1500;
+const EXPECT_TIMEOUT_MS = 2000;
+const REVEAL_TIMEOUT_MS = 800;
+const RING_R = 11.5;
+const RING_C = 2 * Math.PI * RING_R;
+const EASE_ENTER = 'cubic-bezier(0,0,0,1)';
+const EASE_EXIT = 'cubic-bezier(.3,0,1,1)';
+const EASE_STANDARD = 'cubic-bezier(.2,0,0,1)';
+
+interface FirstStep { id: FirstStepId; icon: string; text: string; label: string }
+
+const FIRST_STEPS: readonly FirstStep[] = [
+  { id: 'focus', icon: 'list-checks', text: t.firstStepFocus, label: t.actionFocusPick },
+  { id: 'habit', icon: 'sprout', text: t.firstStepHabit, label: t.actionCreateHabit },
+  { id: 'note', icon: 'notebook-pen', text: t.firstStepNote, label: t.firstStepNoteAction },
+];
+
+const PERIOD_HEADINGS: Readonly<Record<Period, string>> = {
+  morning: t.sectionRoutinesMorning,
+  any: t.sectionRoutines,
+  evening: t.sectionRoutinesEvening,
+};
+
+/** The stagger runs once per page load (B.4 "nur beim ersten Rendern eines Screens"). */
+let staggerDone = false;
+
+interface FocusData { ids: Id[]; tasks: Task[] }
+
+interface Leaving {
+  task: Task;
+  timer: number;
+  /** The snapshot no longer lists the task (completeTask has landed). */
+  confirmed: boolean;
+  /** Unchecked or undone: the row stays until the task is listed again. */
+  cancelled: boolean;
+  collapsing: boolean;
+}
+
+interface RoutineSection { section: HTMLElement; list: HTMLElement; counter: HTMLElement }
+
+/** The focused element that opened a sheet, with its row position (focus fallback, 5.12.c). */
+interface Opener { list: HTMLElement | null; index: number; inRoutines: boolean }
+
+interface Els {
+  root: HTMLElement;
+  first: HTMLElement;
+  steps: HTMLElement;
+  backup: HTMLElement;
+  backupText: HTMLElement;
+  backupExport: HTMLElement;
+  backupDismiss: HTMLElement;
+  focusHeading: HTMLElement;
+  ring: HTMLElement;
+  ringLabel: HTMLElement;
+  ringArc: SVGCircleElement;
+  focusEmpty: HTMLElement;
+  focusList: HTMLElement;
+  slot: HTMLButtonElement;
+  routines: HTMLElement;
+  routine: Record<Period, RoutineSection>;
+  routineEmpty: HTMLElement;
+  routineEmptyState: HTMLElement;
+  moodHeading: HTMLElement;
+  moodMeta: HTMLElement;
+  moods: HTMLElement;
+  journal: HTMLElement;
+  due: HTMLElement;
+  dueHeading: HTMLElement;
+  dueCount: HTMLElement;
+  dueToggle: HTMLElement;
+  dueList: HTMLElement;
+}
 
 export function mount(view: HTMLElement, route: Route): () => void {
   void route;
-  view.textContent = '';
-  return () => {};
+  const screen = new HeuteScreen(view, today());
+  screen.start();
+  return () => screen.destroy();
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+
+function req<T extends Element>(root: ParentNode, selector: string): T {
+  const el = root.querySelector<T>(selector);
+  if (!el) throw new Error(`heute: missing ${selector}`);
+  return el;
+}
+
+function setAttr(el: Element, name: string, value: string): void {
+  if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+}
+
+function setText(el: Element, text: string): void {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+function rowsOf(list: HTMLElement): HTMLElement[] {
+  return [...list.children].filter((c): c is HTMLElement => c instanceof HTMLElement);
+}
+
+function rowById(list: HTMLElement, id: string): HTMLElement | null {
+  return rowsOf(list).find((row) => row.dataset['id'] === id) ?? null;
+}
+
+function firstControl(root: Element): HTMLElement | null {
+  return root.querySelector<HTMLElement>('ol-checkbox:not([disabled]), button:not([disabled]), [tabindex="0"]');
+}
+
+function isLost(active: Element | null): boolean {
+  return !active || active === document.body || !active.isConnected || active.closest('[hidden]') !== null;
+}
+
+/** Moves focus out of a row that is about to disappear: next visible row, previous one, else fallback. */
+function moveFocusFrom(row: HTMLElement, fallback: () => HTMLElement | null): void {
+  const candidates: Element[] = [];
+  for (let el = row.nextElementSibling; el; el = el.nextElementSibling) candidates.push(el);
+  for (let el = row.previousElementSibling; el; el = el.previousElementSibling) candidates.push(el);
+  for (const el of candidates) {
+    if (!(el instanceof HTMLElement) || el.hidden) continue;
+    const control = firstControl(el);
+    if (control) {
+      control.focus({ preventScroll: true });
+      return;
+    }
+  }
+  fallback()?.focus({ preventScroll: true });
+}
+
+/**
+ * Patches a keyed list in place (S7): reuses rows by data-id, creates missing ones, removes stale ones
+ * (moving focus out first) and fixes the order. Focus survives moves. Returns the created rows.
+ */
+function syncKeyed<T>(
+  list: HTMLElement,
+  items: readonly T[],
+  keyOf: (item: T) => string,
+  create: (item: T) => HTMLElement,
+  update: (row: HTMLElement, item: T) => void,
+  fallback: () => HTMLElement | null,
+): HTMLElement[] {
+  const active = document.activeElement;
+  const existing = new Map<string, HTMLElement>();
+  for (const row of rowsOf(list)) existing.set(row.dataset['id'] ?? '', row);
+  const keys = new Set(items.map(keyOf));
+  for (const [key, row] of existing) {
+    if (keys.has(key)) continue;
+    if (row.contains(document.activeElement)) moveFocusFrom(row, fallback);
+    row.remove();
+    existing.delete(key);
+  }
+  const created: HTMLElement[] = [];
+  items.forEach((item, i) => {
+    const key = keyOf(item);
+    let row = existing.get(key);
+    if (!row) {
+      row = create(item);
+      row.dataset['id'] = key;
+      created.push(row);
+    }
+    const at = list.children[i] ?? null;
+    if (at !== row) list.insertBefore(row, at);
+    update(row, item);
+  });
+  if (active instanceof HTMLElement && active.isConnected && document.activeElement !== active && list.contains(active)) {
+    active.focus({ preventScroll: true });
+  }
+  return created;
+}
+
+/**
+ * Long press (350 ms) on a row of `list` (B.4, S16): cancelled after 10 px of movement; a click within
+ * 1 s after a fired long press is swallowed (touch browsers may send none, so the flag expires); the
+ * context menu is suppressed while pressing. Presses that start on the checkbox or toggle are ignored.
+ */
+function attachLongPress(list: HTMLElement, onLong: (row: HTMLElement) => void): () => void {
+  let timer = 0;
+  let pointerId = -1;
+  let startX = 0;
+  let startY = 0;
+  let firedAt = Number.NEGATIVE_INFINITY;
+  const recentlyFired = (): boolean => performance.now() - firedAt < LONG_PRESS_CLICK_WINDOW_MS;
+  const cancel = (): void => {
+    if (timer) window.clearTimeout(timer);
+    timer = 0;
+  };
+  const down = (event: PointerEvent): void => {
+    firedAt = Number.NEGATIVE_INFINITY;
+    cancel();
+    if (!event.isPrimary || event.button !== 0) return;
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest('ol-checkbox, ol-habit-toggle')) return;
+    const row = target.closest<HTMLElement>('[data-id]');
+    if (!row || row.parentElement !== list) return;
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    startY = event.clientY;
+    timer = window.setTimeout(() => {
+      timer = 0;
+      if (!row.isConnected) return;
+      firedAt = performance.now();
+      onLong(row);
+    }, LONG_PRESS_MS);
+  };
+  const move = (event: PointerEvent): void => {
+    if (!timer || event.pointerId !== pointerId) return;
+    if (Math.hypot(event.clientX - startX, event.clientY - startY) > LONG_PRESS_SLOP) cancel();
+  };
+  const click = (event: MouseEvent): void => {
+    if (!recentlyFired()) return;
+    firedAt = Number.NEGATIVE_INFINITY;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const menu = (event: Event): void => {
+    if (timer || recentlyFired()) event.preventDefault();
+  };
+  list.addEventListener('pointerdown', down);
+  list.addEventListener('pointermove', move);
+  list.addEventListener('pointerup', cancel);
+  list.addEventListener('pointercancel', cancel);
+  list.addEventListener('click', click, true);
+  list.addEventListener('contextmenu', menu);
+  return () => {
+    cancel();
+    list.removeEventListener('pointerdown', down);
+    list.removeEventListener('pointermove', move);
+    list.removeEventListener('pointerup', cancel);
+    list.removeEventListener('pointercancel', cancel);
+    list.removeEventListener('click', click, true);
+    list.removeEventListener('contextmenu', menu);
+  };
+}
+
+/** Morning first between dayStartHour and eveningHour (12 is the fixed noon), else evening first (S18). */
+function periodOrder(hour: number, settings: Profile['settings']): readonly Period[] {
+  const morning = hour >= settings.dayStartHour && hour < Math.max(NOON, settings.eveningHour);
+  return morning ? ['morning', 'any', 'evening'] : ['evening', 'any', 'morning'];
+}
+
+function periodOf(habit: Habit): Period {
+  return habit.period === 'morning' || habit.period === 'evening' ? habit.period : 'any';
+}
+
+function todayStatus(logs: readonly HabitLog[], day: Day): HabitLog['status'] | undefined {
+  let status: HabitLog['status'] | undefined;
+  for (const log of logs) if (log.day === day && (log.status === 'done' || status === undefined)) status = log.status;
+  return status;
+}
+
+/** The logs of a habit after toggling day to done/undone (immutable copy for growth.ts). */
+function withDay(logs: readonly HabitLog[], habit: Habit, day: Day, done: boolean): HabitLog[] {
+  const next = logs.filter((log) => log.day !== day);
+  if (done) next.push({ id: habitLogId(habit.id, day), habitId: habit.id, day, status: 'done', loggedAt: nowIso() });
+  return next;
+}
+
+/**
+ * Mood glyph (S21): a circle whose fill grows 0, ¼, ½, ¾, 1 for the values 1 → 5 (a pie from 12 o'clock).
+ * Generator output built from numbers only, hence raw().
+ */
+function moodGlyph(value: MoodValue): SafeHtml {
+  const c = 14;
+  const r = 11;
+  const share = (value - 1) / 4;
+  let fill = '';
+  if (share >= 1) {
+    fill = `<circle class="ol-heute__mood-fill" cx="${c}" cy="${c}" r="${r}"/>`;
+  } else if (share > 0) {
+    const angle = share * 2 * Math.PI;
+    const x = (c + r * Math.sin(angle)).toFixed(2);
+    const y = (c - r * Math.cos(angle)).toFixed(2);
+    fill = `<path class="ol-heute__mood-fill" d="M${c} ${c}L${c} ${c - r}A${r} ${r} 0 ${share > 0.5 ? 1 : 0} 1 ${x} ${y}Z"/>`;
+  }
+  return raw(
+    `<svg class="ol-heute__mood-svg" viewBox="0 0 28 28" width="28" height="28" aria-hidden="true" focusable="false">`
+    + `<circle class="ol-heute__mood-bg" cx="${c}" cy="${c}" r="${r}"/>${fill}`
+    + `<circle class="ol-heute__mood-ring" cx="${c}" cy="${c}" r="${r}"/></svg>`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Screen
+
+class HeuteScreen {
+  private readonly view: HTMLElement;
+  private readonly day: Day;
+  private readonly els: Els;
+  private readonly subs: Subscription[] = [];
+  private readonly timers = new Set<number>();
+  private readonly detach: Array<() => void> = [];
+  private destroyed = false;
+
+  private logsSub: Subscription | null = null;
+  private logsKey: string | null = null;
+
+  private profile: Profile | null = null;
+  private areas = new Map<Id, Area>();
+  private areasLoaded = false;
+  private focus: FocusData | null = null;
+  private habits: Habit[] | null = null;
+  private logs: Map<Id, HabitLog[]> | null = null;
+  private mood: MoodLog | undefined;
+  private moodLoaded = false;
+  private due: Task[] | null = null;
+  private anyFocus: boolean | null = null;
+  private noteCount: number | null = null;
+
+  private revealed = false;
+  private focusRendered = false;
+  private dueRendered = false;
+  private dueExpanded = false;
+  private routineOrder = '';
+  private readonly leaving = new Map<Id, Leaving>();
+  /** Checked/unchecked focus tasks whose write has not reached the snapshot yet (no flicker back). */
+  private readonly focusOverride = new Map<Id, boolean>();
+  private readonly pendingHabits = new Set<Id>();
+  private readonly expectLog = new Map<Id, { done: boolean; timer: number }>();
+  private pendingMood: MoodValue | null = null;
+  private moodSeq = 0;
+  private moodFlashUntil = 0;
+  private completeTimer = 0;
+  private opener: Opener | null = null;
+
+  constructor(view: HTMLElement, day: Day) {
+    this.view = view;
+    this.day = day;
+    this.els = this.renderSkeleton();
+    this.bindEvents();
+  }
+
+  start(): void {
+    const day = this.day;
+    this.watch(profile$(), (profile) => {
+      this.profile = profile;
+      this.renderFirstSteps();
+      this.renderBackup();
+      this.renderRoutines();
+    });
+    this.watch(areas$(true), (list) => {
+      this.areas = new Map(list.map((a) => [a.id, a]));
+      this.areasLoaded = true;
+      this.renderFocus();
+      this.renderRoutines();
+    });
+    this.watch(
+      liveQuery(async (): Promise<FocusData> => {
+        const ids = await getFocus(day);
+        const tasks = await Promise.all(ids.map((id) => getTask(id)));
+        return { ids, tasks: tasks.filter((task): task is Task => task !== undefined).slice(0, MAX_FOCUS) };
+      }),
+      (focus) => {
+        this.focus = focus;
+        this.renderFocus();
+        this.renderDue();
+      },
+    );
+    this.watch(habits$(true), (list) => {
+      this.habits = list;
+      this.watchLogs(list);
+      this.renderRoutines();
+      this.renderFirstSteps();
+    });
+    this.watch(mood$(day), (mood) => {
+      this.mood = mood;
+      this.moodLoaded = true;
+      this.renderMood();
+    });
+    this.watch(dueOn(day), (list) => {
+      this.due = list;
+      this.renderDue();
+    });
+    this.watch(liveQuery(() => anyFocusEver()), (any) => {
+      this.anyFocus = any;
+      this.renderFirstSteps();
+    });
+    this.watch(noteCount$(), (n) => {
+      this.noteCount = n;
+      this.renderFirstSteps();
+    });
+    this.later(() => this.reveal(), REVEAL_TIMEOUT_MS);
+    this.armHourTimer();
+    this.detach.push(onModalChange(() => this.onModalChange()));
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    for (const sub of this.subs) sub.unsubscribe();
+    this.subs.length = 0;
+    this.logsSub?.unsubscribe();
+    this.logsSub = null;
+    for (const timer of this.timers) window.clearTimeout(timer);
+    this.timers.clear();
+    for (const entry of this.leaving.values()) window.clearTimeout(entry.timer);
+    for (const entry of this.expectLog.values()) window.clearTimeout(entry.timer);
+    for (const off of this.detach) off();
+    this.detach.length = 0;
+  }
+
+  // --- Plumbing ---
+
+  private watch<T>(source: Observable<T>, next: (value: T) => void): void {
+    this.subs.push(source.subscribe({
+      next: (value: T) => {
+        if (this.destroyed) return;
+        try {
+          next(value);
+        } catch (err) {
+          console.error(err);
+        }
+        this.maybeReveal();
+      },
+      error: (err: unknown) => console.error(err),
+    }));
+  }
+
+  private watchLogs(habits: readonly Habit[]): void {
+    const ids = habits.map((hb) => hb.id).sort();
+    const key = ids.join('|');
+    if (key === this.logsKey) return;
+    this.logsKey = key;
+    this.logsSub?.unsubscribe();
+    this.logsSub = logsByHabit$(ids).subscribe({
+      next: (logs: Map<Id, HabitLog[]>) => {
+        if (this.destroyed) return;
+        this.logs = logs;
+        try {
+          this.renderRoutines();
+        } catch (err) {
+          console.error(err);
+        }
+        this.maybeReveal();
+      },
+      error: (err: unknown) => console.error(err),
+    });
+  }
+
+  private later(fn: () => void, ms: number): number {
+    const timer = window.setTimeout(() => {
+      this.timers.delete(timer);
+      if (!this.destroyed) fn();
+    }, ms);
+    this.timers.add(timer);
+    return timer;
+  }
+
+  private clearLater(timer: number): void {
+    window.clearTimeout(timer);
+    this.timers.delete(timer);
+  }
+
+  private armHourTimer(): void {
+    const n = now();
+    const next = new Date(n.getFullYear(), n.getMonth(), n.getDate(), n.getHours() + 1, 0, 1);
+    this.later(() => {
+      this.renderRoutines();
+      this.armHourTimer();
+    }, Math.max(1000, next.getTime() - n.getTime()));
+  }
+
+  private navigate(from: Element, path: string): void {
+    this.rememberOpener();
+    emit(from, 'ol-navigate', { path });
+  }
+
+  /**
+   * Notes where keyboard focus was before a sheet opens. A sheet returns focus to its opener; when the
+   * opener is gone by then (the task was deleted, the "Erste Schritte" card or the empty state disappeared),
+   * focus continues at the same row position instead of falling back to <body> (5.12.c).
+   */
+  private rememberOpener(): void {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !this.view.contains(active)) {
+      this.opener = null;
+      return;
+    }
+    const row = active.closest<HTMLElement>('li[data-id]');
+    const list = row?.parentElement ?? null;
+    this.opener = {
+      list: row && list && this.view.contains(list) ? list : null,
+      index: row && list ? rowsOf(list).indexOf(row) : -1,
+      inRoutines: this.els.routines.contains(active),
+    };
+  }
+
+  private onModalChange(): void {
+    if (this.destroyed || topModal()) return;
+    const opener = this.opener;
+    this.opener = null;
+    if (!opener) return;
+    // A sheet leaves the modal stack when closing starts; check once it has restored focus and is gone.
+    const closing = [...document.querySelectorAll<OlSheet>('ol-sheet[dismissing]')].map((sheet) => sheet.closed);
+    void Promise.allSettled(closing).then(() => {
+      if (this.destroyed || !isLost(document.activeElement)) return;
+      let target: HTMLElement | null = null;
+      if (opener.list?.isConnected) {
+        const rows = rowsOf(opener.list).filter((row) => !row.hidden);
+        const row = rows[Math.min(Math.max(opener.index, 0), rows.length - 1)];
+        target = row ? firstControl(row) : null;
+      }
+      if (!target && opener.inRoutines) {
+        const rows = PERIODS.flatMap((p) => (this.els.routine[p].section.hidden ? [] : rowsOf(this.els.routine[p].list)));
+        target = rows[0]?.querySelector<HTMLElement>('.ol-heute__title') ?? null;
+      }
+      (target ?? (this.els.slot.hidden ? this.els.focusHeading : this.els.slot)).focus({ preventScroll: true });
+    });
+  }
+
+  private openTask(row: HTMLElement): void {
+    const id = row.dataset['id'];
+    if (id) this.navigate(row, `/aufgabe/${id}`);
+  }
+
+  private openHabit(row: HTMLElement): void {
+    const id = row.dataset['id'];
+    if (id) this.navigate(row, `/gewohnheit/${id}`);
+  }
+
+  private capture(type: CaptureType): void {
+    this.rememberOpener();
+    try {
+      openCapture({ type });
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  private openPicker(): void {
+    this.rememberOpener();
+    let sheet: OlSheet;
+    try {
+      sheet = openFocusPick(this.day);
+    } catch (err) {
+      console.error(err);
+      return;
+    }
+    // The slot that opened the picker may be hidden now (3 tasks): continue at the last focus row.
+    void sheet.closed.then(() => {
+      if (this.destroyed || !isLost(document.activeElement)) return;
+      const rows = rowsOf(this.els.focusList);
+      const last = rows[rows.length - 1];
+      const target = last?.querySelector<HTMLElement>('.ol-heute__title') ?? (this.els.slot.hidden ? this.els.focusHeading : this.els.slot);
+      target.focus({ preventScroll: true });
+    });
+  }
+
+  private openJournalSheet(): void {
+    this.rememberOpener();
+    try {
+      openJournal(this.day);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // --- Skeleton ---
+
+  private renderSkeleton(): Els {
+    const view = this.view;
+    const routineSection = (period: Period): SafeHtml => h`
+      <section class="ol-section ol-heute__routine" data-period="${period}" aria-labelledby="heute-r-${period}" hidden>
+        <div class="ol-section__head">
+          <h2 class="ol-label" id="heute-r-${period}">${PERIOD_HEADINGS[period]}</h2>
+          <span class="ol-heute__counter ol-caption ol-num"></span>
+        </div>
+        <ol-card class="ol-heute__card"><ul class="ol-heute__list"></ul></ol-card>
+      </section>`;
+    render(view, h`
+      <ol-app-bar display heading="${formatDayLong(this.day)}">
+        <ol-icon-button slot="actions" class="ol-heute__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
+      </ol-app-bar>
+      <div class="ol-heute" data-loading>
+        <section class="ol-section ol-heute__first" aria-labelledby="heute-first" hidden>
+          <div class="ol-section__head"><h2 class="ol-label" id="heute-first">${t.sectionFirstSteps}</h2></div>
+          <ul class="ol-heute__steps"></ul>
+        </section>
+        <ol-card class="ol-heute__backup" hidden>
+          <div class="ol-heute__backup-head">
+            <span class="ol-heute__backup-icon">${icon('hard-drive')}</span>
+            <div class="ol-heute__backup-text">
+              <h2 class="ol-heading">${t.backupCardTitle}</h2>
+              <p class="ol-body-s ol-text-2"></p>
+            </div>
+            <ol-icon-button class="ol-heute__backup-dismiss" icon="x" label="${fmt(t.cardDismissNamed, { label: t.backupCardTitle })}"></ol-icon-button>
+          </div>
+          <ol-button class="ol-heute__backup-export" variant="tonal" icon="download" label="${t.backupCardAction}"></ol-button>
+        </ol-card>
+        <section class="ol-section ol-heute__focus" aria-labelledby="heute-focus">
+          <div class="ol-section__head">
+            <h2 class="ol-label" id="heute-focus" tabindex="-1">${t.sectionFocus}</h2>
+            <div class="ol-heute__ring" role="progressbar" aria-valuemin="0" hidden>
+              <span class="ol-heute__ring-label ol-num" aria-hidden="true"></span>
+              <svg class="ol-heute__ring-svg" viewBox="0 0 28 28" width="28" height="28" aria-hidden="true" focusable="false">
+                <circle class="ol-heute__ring-track" cx="14" cy="14" r="${RING_R}"></circle>
+                <circle class="ol-heute__ring-arc" cx="14" cy="14" r="${RING_R}" transform="rotate(-90 14 14)"
+                  stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${RING_C.toFixed(2)}"></circle>
+              </svg>
+            </div>
+          </div>
+          <ol-card class="ol-heute__card">
+            <p class="ol-heute__focus-empty ol-body-s" hidden>${t.emptyFocus}</p>
+            <ul class="ol-heute__list ol-heute__focus-list"></ul>
+            <button type="button" class="ol-heute__slot" hidden>${icon('plus')}<span>${t.focusSlotEmpty}</span></button>
+          </ol-card>
+        </section>
+        <div class="ol-heute__routines">
+          <section class="ol-section ol-heute__routine-empty" aria-labelledby="heute-r-empty" hidden>
+            <div class="ol-section__head"><h2 class="ol-label" id="heute-r-empty" tabindex="-1">${t.sectionRoutines}</h2></div>
+            <ol-card class="ol-heute__card"><ol-empty-state compact icon="sprout"></ol-empty-state></ol-card>
+          </section>
+          ${PERIODS.map(routineSection)}
+        </div>
+        <section class="ol-section ol-heute__mood-section" aria-labelledby="heute-mood">
+          <div class="ol-section__head">
+            <h2 class="ol-label" id="heute-mood" tabindex="-1">${t.sectionMood}</h2>
+            <span class="ol-heute__mood-meta ol-caption ol-num" hidden></span>
+          </div>
+          <ol-card class="ol-heute__card ol-heute__mood-card">
+            <div class="ol-heute__moods" role="radiogroup" aria-label="${t.moodGroupAria}">
+              ${MOODS.map((v) => h`<button type="button" class="ol-heute__mood" role="radio" aria-checked="false" data-value="${v}"
+                aria-label="${fmt(t.moodChoiceAria, { n: v, label: moodLabel(v) })}" tabindex="${v === 1 ? 0 : -1}">${moodGlyph(v)}<span class="ol-heute__mood-n ol-num" aria-hidden="true">${v}</span></button>`)}
+            </div>
+            <div class="ol-heute__mood-foot">
+              <ol-button class="ol-heute__journal" variant="ghost" size="sm" label="${t.actionAddNote}"></ol-button>
+            </div>
+          </ol-card>
+        </section>
+        <section class="ol-section ol-heute__due" aria-labelledby="heute-due" hidden>
+          <div class="ol-section__head">
+            <h2 class="ol-label" id="heute-due" tabindex="-1">${t.sectionDueToday} <span class="ol-heute__due-count ol-num"></span></h2>
+            <ol-button class="ol-heute__due-toggle" variant="ghost" size="sm" icon="chevron-down" label="${t.actionExpandList}" hidden></ol-button>
+          </div>
+          <ol-card class="ol-heute__card"><ul class="ol-heute__list ol-heute__due-list" id="heute-due-list"></ul></ol-card>
+        </section>
+      </div>`);
+
+    const routine = {} as Record<Period, RoutineSection>;
+    for (const period of PERIODS) {
+      const section = req<HTMLElement>(view, `.ol-heute__routine[data-period="${period}"]`);
+      routine[period] = {
+        section,
+        list: req<HTMLElement>(section, '.ol-heute__list'),
+        counter: req<HTMLElement>(section, '.ol-heute__counter'),
+      };
+    }
+    const backup = req<HTMLElement>(view, '.ol-heute__backup');
+    const ring = req<HTMLElement>(view, '.ol-heute__ring');
+    const routineEmpty = req<HTMLElement>(view, '.ol-heute__routine-empty');
+    const due = req<HTMLElement>(view, '.ol-heute__due');
+    return {
+      root: req<HTMLElement>(view, '.ol-heute'),
+      first: req<HTMLElement>(view, '.ol-heute__first'),
+      steps: req<HTMLElement>(view, '.ol-heute__steps'),
+      backup,
+      backupText: req<HTMLElement>(backup, '.ol-heute__backup-text p'),
+      backupExport: req<HTMLElement>(backup, '.ol-heute__backup-export'),
+      backupDismiss: req<HTMLElement>(backup, '.ol-heute__backup-dismiss'),
+      focusHeading: req<HTMLElement>(view, '#heute-focus'),
+      ring,
+      ringLabel: req<HTMLElement>(ring, '.ol-heute__ring-label'),
+      ringArc: req<SVGCircleElement>(ring, '.ol-heute__ring-arc'),
+      focusEmpty: req<HTMLElement>(view, '.ol-heute__focus-empty'),
+      focusList: req<HTMLElement>(view, '.ol-heute__focus-list'),
+      slot: req<HTMLButtonElement>(view, '.ol-heute__slot'),
+      routines: req<HTMLElement>(view, '.ol-heute__routines'),
+      routine,
+      routineEmpty,
+      routineEmptyState: req<HTMLElement>(routineEmpty, 'ol-empty-state'),
+      moodHeading: req<HTMLElement>(view, '#heute-mood'),
+      moodMeta: req<HTMLElement>(view, '.ol-heute__mood-meta'),
+      moods: req<HTMLElement>(view, '.ol-heute__moods'),
+      journal: req<HTMLElement>(view, '.ol-heute__journal'),
+      due,
+      dueHeading: req<HTMLElement>(due, '#heute-due'),
+      dueCount: req<HTMLElement>(due, '.ol-heute__due-count'),
+      dueToggle: req<HTMLElement>(due, '.ol-heute__due-toggle'),
+      dueList: req<HTMLElement>(due, '.ol-heute__due-list'),
+    };
+  }
+
+  private bindEvents(): void {
+    const els = this.els;
+    req<HTMLElement>(this.view, '.ol-heute__settings').addEventListener('click', (event) => {
+      if (event.currentTarget instanceof Element) this.navigate(event.currentTarget, '/einstellungen');
+    });
+
+    // Erste Schritte
+    els.steps.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const row = target?.closest<HTMLElement>('[data-id]');
+      const id = row?.dataset['id'] as FirstStepId | undefined;
+      if (!target || !id) return;
+      if (target.closest('.ol-heute__step-dismiss')) void this.dismissStep(id);
+      else if (target.closest('.ol-heute__step-action')) this.runStep(id);
+    });
+
+    // Daten sichern
+    els.backupExport.addEventListener('click', () => void this.exportBackup());
+    els.backupDismiss.addEventListener('click', () => {
+      this.els.focusHeading.focus({ preventScroll: true });
+      updateProfile({ backupCardDismissedAt: nowIso() }).catch(() => showToast(t.toastError));
+    });
+
+    // Fokus
+    els.slot.addEventListener('click', () => this.openPicker());
+    els.focusList.addEventListener('ol-change', (event) => {
+      const row = this.rowOfEvent(event, els.focusList, 'ol-checkbox');
+      if (row && event instanceof CustomEvent) void this.onFocusCheck(row, (event.detail as CheckboxChange).checked);
+    });
+    els.focusList.addEventListener('click', (event) => {
+      const row = this.rowOfEvent(event, els.focusList, '.ol-heute__title');
+      if (row) this.openTask(row);
+    });
+    this.detach.push(attachLongPress(els.focusList, (row) => this.openTask(row)));
+
+    // Routinen
+    els.routines.addEventListener('ol-change', (event) => {
+      const target = event.target instanceof Element ? event.target.closest<HTMLElement>('ol-habit-toggle') : null;
+      const row = target?.closest<HTMLElement>('li[data-id]');
+      if (target && row && event instanceof CustomEvent) void this.onHabitToggle(row, target, (event.detail as HabitToggleChange).done);
+    });
+    els.routines.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const row = target?.closest('.ol-heute__title') ? target.closest<HTMLElement>('li[data-id]') : null;
+      if (row) this.openHabit(row);
+    });
+    for (const period of PERIODS) this.detach.push(attachLongPress(els.routine[period].list, (row) => this.openHabit(row)));
+    els.routineEmptyState.addEventListener('ol-action', () => this.capture('habit'));
+
+    // Stimmung
+    els.moods.addEventListener('click', (event) => {
+      const button = event.target instanceof Element ? event.target.closest<HTMLElement>('.ol-heute__mood') : null;
+      const value = Number(button?.dataset['value']);
+      if (button && MOODS.includes(value as MoodValue)) void this.selectMood(value as MoodValue);
+    });
+    els.moods.addEventListener('keydown', (event) => this.onMoodKey(event));
+    els.journal.addEventListener('click', () => this.openJournalSheet());
+
+    // Fällig heute
+    els.dueToggle.addEventListener('click', () => {
+      this.dueExpanded = !this.dueExpanded;
+      this.renderDue();
+    });
+    els.dueList.addEventListener('ol-change', (event) => {
+      const row = this.rowOfEvent(event, els.dueList, 'ol-checkbox');
+      if (row && event instanceof CustomEvent) void this.onDueCheck(row, (event.detail as CheckboxChange).checked);
+    });
+    els.dueList.addEventListener('click', (event) => {
+      const row = this.rowOfEvent(event, els.dueList, '.ol-heute__title');
+      if (row) this.openTask(row);
+    });
+    this.detach.push(attachLongPress(els.dueList, (row) => this.openTask(row)));
+  }
+
+  private rowOfEvent(event: Event, list: HTMLElement, selector: string): HTMLElement | null {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target?.closest(selector)) return null;
+    const row = target.closest<HTMLElement>('li[data-id]');
+    return row && row.parentElement === list ? row : null;
+  }
+
+  // --- Reveal and stagger ---
+
+  private maybeReveal(): void {
+    if (this.revealed) return;
+    const ready = this.profile !== null && this.areasLoaded && this.focus !== null && this.habits !== null
+      && this.logs !== null && this.moodLoaded && this.due !== null && this.anyFocus !== null && this.noteCount !== null;
+    if (ready) this.reveal();
+  }
+
+  private reveal(): void {
+    if (this.revealed) return;
+    this.revealed = true;
+    this.els.root.removeAttribute('data-loading');
+    if (staggerDone) return;
+    staggerDone = true;
+    if (motionReduced()) return;
+    const parts: HTMLElement[] = [];
+    for (const child of this.els.root.children) {
+      if (!(child instanceof HTMLElement) || child.hidden) continue;
+      if (child === this.els.routines) {
+        for (const section of child.children) if (section instanceof HTMLElement && !section.hidden) parts.push(section);
+      } else {
+        parts.push(child);
+      }
+    }
+    parts.forEach((el, i) => {
+      el.animate(
+        [{ opacity: 0, transform: 'translateY(16px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 300, delay: i * 40, easing: EASE_ENTER, fill: 'backwards' },
+      );
+    });
+  }
+
+  // --- Erste Schritte (E1, S22) ---
+
+  private renderFirstSteps(): void {
+    const { profile, habits, anyFocus, noteCount } = this;
+    if (!profile || !habits || anyFocus === null || noteCount === null) return;
+    const dismissed = new Set(profile.firstStepsDismissed ?? []);
+    const done: Record<FirstStepId, boolean> = { focus: anyFocus, habit: habits.length > 0, note: noteCount > 0 };
+    const steps = FIRST_STEPS.filter((step) => !dismissed.has(step.id) && !done[step.id]);
+    syncKeyed(
+      this.els.steps,
+      steps,
+      (step) => step.id,
+      (step) => {
+        const li = document.createElement('li');
+        li.className = 'ol-heute__step';
+        render(li, h`<ol-card class="ol-heute__step-card">
+          <button type="button" class="ol-heute__step-action">${icon(step.icon)}<span>${step.text}</span></button>
+          <ol-icon-button class="ol-heute__step-dismiss" icon="x" label="${fmt(t.cardDismissNamed, { label: step.label })}"></ol-icon-button>
+        </ol-card>`);
+        return li;
+      },
+      () => undefined,
+      () => this.els.focusHeading,
+    );
+    this.els.first.hidden = steps.length === 0;
+  }
+
+  private runStep(id: FirstStepId): void {
+    if (id === 'focus') this.openPicker();
+    else this.capture(id === 'habit' ? 'habit' : 'note');
+  }
+
+  private async dismissStep(id: FirstStepId): Promise<void> {
+    const current = this.profile?.firstStepsDismissed ?? [];
+    if (!this.profile || current.includes(id)) return;
+    try {
+      await updateProfile({ firstStepsDismissed: [...current, id] });
+    } catch {
+      showToast(t.toastError);
+    }
+  }
+
+  // --- Daten sichern (H10, S22) ---
+
+  private renderBackup(): void {
+    const profile = this.profile;
+    if (!profile) return;
+    const state = backupCardState(profile, now());
+    const card = this.els.backup;
+    if (!state.show) {
+      if (!card.hidden && card.contains(document.activeElement)) this.els.focusHeading.focus({ preventScroll: true });
+      card.hidden = true;
+      return;
+    }
+    setText(this.els.backupText, state.days === null ? t.backupCardBodyNever : fmt(t.backupCardBodyDays, { n: state.days }));
+    card.hidden = false;
+  }
+
+  private async exportBackup(): Promise<void> {
+    const button = this.els.backupExport;
+    if (button.hasAttribute('loading')) return;
+    button.setAttribute('loading', '');
+    try {
+      await exportJson();
+      showToast(t.toastExported);
+    } catch {
+      showToast(t.toastError);
+    } finally {
+      button.removeAttribute('loading');
+    }
+  }
+
+  // --- Fokus (H1, H2, D.1, decision 2) ---
+
+  private createTaskRow(): HTMLElement {
+    const li = document.createElement('li');
+    li.className = 'ol-heute__row ol-heute__task';
+    render(li, h`<ol-checkbox></ol-checkbox><button type="button" class="ol-heute__title"></button><span class="ol-heute__meta ol-caption"></span>`);
+    return li;
+  }
+
+  private renderFocus(): void {
+    const data = this.focus;
+    if (!data || !this.areasLoaded) return;
+    const tasks = data.tasks;
+    for (const task of tasks) {
+      const override = this.focusOverride.get(task.id);
+      if (override !== undefined && override === (task.status === 'done')) this.focusOverride.delete(task.id);
+    }
+    const n = tasks.length;
+    const done = tasks.filter((task) => this.focusDone(task)).length;
+    const els = this.els;
+
+    const slotHidden = n >= MAX_FOCUS;
+    if (slotHidden && !els.slot.hidden && els.slot === document.activeElement) {
+      const last = rowsOf(els.focusList).pop();
+      (last ? firstControl(last) : els.focusHeading)?.focus({ preventScroll: true });
+    }
+    els.slot.hidden = slotHidden;
+    els.focusEmpty.hidden = n > 0;
+
+    const created = syncKeyed(
+      els.focusList,
+      tasks,
+      (task) => task.id,
+      () => this.createTaskRow(),
+      (row, task) => this.updateFocusRow(row, task),
+      () => (els.slot.hidden ? els.focusHeading : els.slot),
+    );
+    if (this.focusRendered) for (const row of created) this.fadeIn(row);
+    this.focusRendered = true;
+    this.updateRing(done, n);
+  }
+
+  private focusDone(task: Task): boolean {
+    return this.focusOverride.get(task.id) ?? task.status === 'done';
+  }
+
+  private updateFocusRow(row: HTMLElement, task: Task): void {
+    const done = this.focusDone(task);
+    const box = row.querySelector('ol-checkbox');
+    if (box) {
+      box.toggleAttribute('checked', done);
+      setAttr(box, 'label', task.title);
+    }
+    const title = row.querySelector('.ol-heute__title');
+    if (title) setText(title, task.title);
+    const meta = row.querySelector('.ol-heute__meta');
+    if (meta) setText(meta, this.areas.get(task.areaId)?.name ?? t.noArea);
+    row.toggleAttribute('data-done', done);
+  }
+
+  private updateRing(done: number, n: number): void {
+    const { ring, ringLabel, ringArc } = this.els;
+    ring.hidden = n === 0;
+    if (n === 0) return;
+    setText(ringLabel, fmt(t.habitWeekProgress, { done, target: n }));
+    setAttr(ring, 'aria-valuenow', String(done));
+    setAttr(ring, 'aria-valuemax', String(n));
+    setAttr(ring, 'aria-label', fmt(t.focusProgressAria, { done, n }));
+    const offset = (RING_C * (1 - Math.min(1, done / n))).toFixed(2);
+    if (ringArc.style.strokeDashoffset !== offset) ringArc.style.strokeDashoffset = offset;
+  }
+
+  private async onFocusCheck(row: HTMLElement, checked: boolean): Promise<void> {
+    const id = row.dataset['id'];
+    const tasks = this.focus?.tasks ?? [];
+    if (!id || !tasks.some((task) => task.id === id)) return;
+    this.focusOverride.set(id, checked);
+    this.renderFocus();
+    if (!checked) {
+      try {
+        await reopenTask(id);
+      } catch {
+        this.focusOverride.delete(id);
+        showToast(t.toastError);
+        this.renderFocus();
+      }
+      return;
+    }
+    const completesAll = tasks.every((task) => this.focusDone(task));
+    try {
+      await completeTask(id);
+    } catch {
+      this.focusOverride.delete(id);
+      showToast(t.toastError);
+      this.renderFocus();
+      return;
+    }
+    if (this.destroyed) return;
+    showToast(t.toastDone, {
+      action: {
+        label: t.actionUndo,
+        onAction: () => {
+          if (this.focusOverride.has(id)) this.focusOverride.set(id, false);
+          void reopenTask(id).catch(() => showToast(t.toastError));
+        },
+      },
+    });
+    if (completesAll) this.celebrateFocus(tasks.length);
+  }
+
+  /** B.4 "Fokus vollständig" (n/n): the ring closes, 4 sparks at the ring, label in primary for 2 s, confirm. */
+  private celebrateFocus(n: number): void {
+    const ring = this.els.ring;
+    this.updateRing(n, n);
+    ring.setAttribute('data-complete', '');
+    if (this.completeTimer) this.clearLater(this.completeTimer);
+    this.completeTimer = this.later(() => {
+      this.completeTimer = 0;
+      ring.removeAttribute('data-complete');
+    }, COMPLETE_LABEL_MS);
+    const svg = ring.querySelector('svg');
+    if (svg && !ring.hidden) {
+      const box = svg.getBoundingClientRect();
+      particles().sparks(box.left + box.width / 2, box.top + box.height / 2);
+    }
+    vibrate(HAPTIC.confirm);
+  }
+
+  private fadeIn(row: HTMLElement): void {
+    if (typeof row.animate !== 'function') return;
+    row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: motionReduced() ? 120 : 200, easing: 'linear' });
+  }
+
+  // --- Routinen (H3, H6, D.2, F "Erledigungsablauf Routine") ---
+
+  private flowerOf(habit: Habit): { flower: FlowerId; tint: string } {
+    const area = habit.areaId ? this.areas.get(habit.areaId) : undefined;
+    return area ? { flower: area.flower, tint: area.tint } : { flower: 'generic', tint: GENERIC_TINT };
+  }
+
+  private createHabitRow(): HTMLElement {
+    const li = document.createElement('li');
+    li.className = 'ol-heute__row ol-heute__habit';
+    render(li, h`<ol-plant class="ol-heute__plant" size="32"></ol-plant>
+      <button type="button" class="ol-heute__title"></button>
+      <span class="ol-heute__streak"><span class="ol-heute__streak-icon">${icon('flame', 20)}</span><span class="ol-heute__streak-n ol-num" aria-hidden="true"></span><span class="ol-heute__streak-sr ol-visually-hidden"></span></span>
+      <ol-habit-toggle></ol-habit-toggle>`);
+    return li;
+  }
+
+  private renderRoutines(): void {
+    const habits = this.habits;
+    const logs = this.logs;
+    if (!habits || !logs || !this.areasLoaded) return;
+    const day = this.day;
+    const active = habits.filter((hb) => hb.archived === 0);
+    const shown = active.filter((hb) => isScheduledOn(hb, day));
+    this.orderRoutines();
+
+    for (const period of PERIODS) {
+      const { section, list, counter } = this.els.routine[period];
+      const items = shown.filter((hb) => periodOf(hb) === period);
+      syncKeyed(
+        list,
+        items,
+        (hb) => hb.id,
+        () => this.createHabitRow(),
+        (row, hb) => this.updateHabitRow(row, hb, logs.get(hb.id) ?? []),
+        () => this.els.moodHeading,
+      );
+      section.hidden = items.length === 0;
+      const done = items.filter((hb) => this.habitDoneToday(hb, logs.get(hb.id) ?? [])).length;
+      const key = `${done}/${items.length}`;
+      if (counter.dataset['key'] !== key) {
+        counter.dataset['key'] = key;
+        render(counter, h`<span aria-hidden="true">${fmt(t.habitWeekProgress, { done, target: items.length })}</span><span class="ol-visually-hidden">${fmt(t.routinesDoneAria, { done, n: items.length })}</span>`);
+      }
+    }
+
+    const empty = this.els.routineEmpty;
+    if (shown.length > 0 && !empty.hidden && empty.contains(document.activeElement)) this.els.moodHeading.focus({ preventScroll: true });
+    empty.hidden = shown.length > 0;
+    const state = this.els.routineEmptyState;
+    setAttr(state, 'message', active.length === 0 ? t.emptyRoutines : t.emptyRoutinesToday);
+    setAttr(state, 'action', active.length === 0 ? t.actionCreateHabit : '');
+  }
+
+  private orderRoutines(): void {
+    const order = periodOrder(currentHour(), this.profile?.settings ?? DEFAULT_SETTINGS);
+    const key = order.join(',');
+    if (key === this.routineOrder) return;
+    this.routineOrder = key;
+    const container = this.els.routines;
+    const active = document.activeElement;
+    for (const period of order) container.append(this.els.routine[period].section);
+    if (active instanceof HTMLElement && active.isConnected && document.activeElement !== active) active.focus({ preventScroll: true });
+  }
+
+  /** Today's log (as the snapshot or an optimistic state shows it) is done. */
+  private habitDoneToday(habit: Habit, logs: readonly HabitLog[]): boolean {
+    const expected = this.expectLog.get(habit.id);
+    if (expected) return expected.done;
+    return todayStatus(logs, this.day) === 'done';
+  }
+
+  private updateHabitRow(row: HTMLElement, habit: Habit, logs: readonly HabitLog[]): void {
+    const title = row.querySelector('.ol-heute__title');
+    if (title) {
+      setText(title, habit.name);
+      setAttr(title, 'aria-label', fmt(t.habitOpenAria, { name: habit.name }));
+    }
+    const expected = this.expectLog.get(habit.id);
+    if (expected && (todayStatus(logs, this.day) === 'done') === expected.done) {
+      window.clearTimeout(expected.timer);
+      this.expectLog.delete(habit.id);
+    }
+    // Plant and toggle belong to the running toggle flow until the snapshot has caught up (S7).
+    if (this.pendingHabits.has(habit.id) || this.expectLog.has(habit.id)) return;
+    this.applyHabitState(row, habit, logs, true);
+  }
+
+  /** Writes plant, streak and toggle of a row from `logs`; the plant stage only when `stage` is set. */
+  private applyHabitState(row: HTMLElement, habit: Habit, logs: readonly HabitLog[], stage: boolean): void {
+    const day = this.day;
+    const { flower, tint } = this.flowerOf(habit);
+    const count = streak(habit, logs, day);
+    const plant = row.querySelector<OlPlant>('ol-plant');
+    if (plant) {
+      setAttr(plant, 'flower', flower);
+      setAttr(plant, 'tint', tint);
+      if (stage) setAttr(plant, 'stage', String(stageFor(habit, logs, day)));
+      setAttr(plant, 'streak', String(count));
+    }
+
+    const status = todayStatus(logs, day);
+    const weekly = habit.schedule.kind === 'timesPerWeek';
+    const toggle = row.querySelector<HTMLElement>('ol-habit-toggle');
+    const streakEl = row.querySelector<HTMLElement>('.ol-heute__streak');
+    const streakN = row.querySelector<HTMLElement>('.ol-heute__streak-n');
+    const streakSr = row.querySelector<HTMLElement>('.ol-heute__streak-sr');
+    streakEl?.toggleAttribute('data-week', weekly);
+    if (weekly) {
+      const progress = weekProgress(habit, logs, day);
+      const target = Math.max(1, progress.target);
+      const done = Math.min(progress.done, target);
+      if (streakN) setText(streakN, fmt(t.habitWeekProgress, { done, target }));
+      if (streakSr) setText(streakSr, fmt(t.habitWeekProgressAria, { done, target }));
+      if (toggle) {
+        setAttr(toggle, 'progress', (done / target).toFixed(3));
+        setAttr(toggle, 'state', progress.done >= target ? 'done' : progress.done > 0 ? 'partial' : 'pending');
+        toggle.toggleAttribute('today-done', status === 'done');
+        setAttr(toggle, 'label', fmt(t.habitToggleWeekAria, { name: habit.name, done, target }));
+      }
+    } else {
+      if (streakN) setText(streakN, String(count));
+      if (streakSr) setText(streakSr, fmt(t.habitStreakAria, { n: count }));
+      if (toggle) {
+        toggle.removeAttribute('progress');
+        toggle.removeAttribute('today-done');
+        setAttr(toggle, 'state', status === 'done' ? 'done' : status === 'skipped' ? 'skipped' : 'pending');
+        setAttr(toggle, 'label', fmt(t.habitToggleAria, { name: habit.name }));
+      }
+    }
+    toggle?.toggleAttribute('disabled', this.pendingHabits.has(habit.id));
+  }
+
+  private async onHabitToggle(row: HTMLElement, toggle: HTMLElement, requested: boolean): Promise<void> {
+    void requested;
+    const id = row.dataset['id'];
+    const habit = this.habits?.find((hb) => hb.id === id);
+    if (!id || !habit || this.pendingHabits.has(id)) return;
+    this.pendingHabits.add(id);
+    toggle.setAttribute('disabled', '');
+    let result: ToggleResult;
+    try {
+      result = await toggleLog(id, this.day);
+    } catch {
+      this.pendingHabits.delete(id);
+      if (!this.destroyed) {
+        showToast(t.toastError);
+        toggle.removeAttribute('disabled');
+        const logs = this.logs?.get(id) ?? [];
+        this.applyHabitState(row, habit, logs, true);
+        this.renderRoutines();
+      }
+      return;
+    }
+    this.pendingHabits.delete(id);
+    if (this.destroyed) return;
+    const snapshot = this.logs?.get(id) ?? [];
+    const next = withDay(snapshot, habit, this.day, result.done);
+    if ((todayStatus(snapshot, this.day) === 'done') !== result.done) {
+      const timer = window.setTimeout(() => {
+        this.expectLog.delete(id);
+        if (!this.destroyed) this.renderRoutines();
+      }, EXPECT_TIMEOUT_MS);
+      this.expectLog.set(id, { done: result.done, timer });
+    }
+    this.applyHabitState(row, habit, next, false);
+    this.animateHabit(row, habit, result, next);
+    this.renderRoutines();
+  }
+
+  /** F "Erledigungsablauf Routine" and B.4 (Routine erledigt, Stufenwechsel, Streak 7/30/100, Rücknahme). */
+  private animateHabit(row: HTMLElement, habit: Habit, result: ToggleResult, logs: readonly HabitLog[]): void {
+    const plant = row.querySelector<OlPlant>('ol-plant');
+    if (!plant) return;
+    const { before, after, done } = result;
+    if (!done) {
+      // Rücknahme: no particles; a lower stage crossfades.
+      if (plant.stage !== after) void plant.crossfadeTo(after);
+      return;
+    }
+    if (plant.stage !== after) plant.setAttribute('stage', String(after));
+    const grown = after > before;
+    const reduced = motionReduced();
+    const points = plant.anchorPoints();
+    let confirm = false;
+    if (!(grown && reduced)) void plant.wobble();
+    particles().drops(points.soil.x, points.soil.y);
+    if (grown) {
+      void plant.grow();
+      const { flower, tint } = this.flowerOf(habit);
+      particles().burst(points.head.x, points.head.y, petalColor(flower, tint), after === 4);
+      showToast(fmt(t.toastStageReached, { name: habit.name, stage: stageName(after) }));
+      confirm = true;
+    }
+    if (habit.schedule.kind !== 'timesPerWeek' && MILESTONES.includes(streak(habit, logs, this.day))) {
+      const number = row.querySelector('.ol-heute__streak-n');
+      if (number) {
+        const box = number.getBoundingClientRect();
+        particles().sparks(box.left + box.width / 2, box.top + box.height / 2);
+      }
+      confirm = true;
+    }
+    if (confirm) vibrate(HAPTIC.confirm);
+  }
+
+  // --- Stimmung (H4, S21) ---
+
+  private renderMood(): void {
+    if (!this.moodLoaded) return;
+    const value = this.pendingMood ?? this.mood?.value ?? null;
+    const buttons = this.els.moods.querySelectorAll<HTMLElement>('.ol-heute__mood');
+    buttons.forEach((button) => {
+      const v = Number(button.dataset['value']);
+      setAttr(button, 'aria-checked', String(v === value));
+      const tabbable = value === null ? v === 1 : v === value;
+      setAttr(button, 'tabindex', tabbable ? '0' : '-1');
+    });
+    this.els.moods.toggleAttribute('data-selected', value !== null);
+
+    const meta = this.els.moodMeta;
+    const mood = this.mood;
+    if (!mood) {
+      meta.hidden = true;
+      return;
+    }
+    const time = formatTime(mood.loggedAt);
+    const flash = performance.now() < this.moodFlashUntil;
+    const key = `${flash ? 'saved' : 'time'}|${time}`;
+    if (meta.dataset['key'] !== key) {
+      meta.dataset['key'] = key;
+      render(meta, flash
+        ? h`${fmt(t.moodSavedAt, { time })}`
+        : h`<span class="ol-visually-hidden">${fmt(t.moodLoggedAtAria, { time })}</span><span aria-hidden="true">${time}</span>`);
+    }
+    meta.hidden = false;
+  }
+
+  private async selectMood(value: MoodValue): Promise<void> {
+    const current = this.pendingMood ?? this.mood?.value ?? null;
+    if (current === value) return;
+    const seq = ++this.moodSeq;
+    this.pendingMood = value;
+    this.renderMood();
+    vibrate(HAPTIC.tick);
+    try {
+      const entry = await setMood(this.day, value);
+      if (this.destroyed || seq !== this.moodSeq) return;
+      this.mood = entry;
+      this.moodFlashUntil = performance.now() + MOOD_FLASH_MS;
+      this.later(() => this.renderMood(), MOOD_FLASH_MS + 20);
+    } catch {
+      if (!this.destroyed) showToast(t.toastError);
+    } finally {
+      if (seq === this.moodSeq && !this.destroyed) {
+        this.pendingMood = null;
+        this.renderMood();
+      }
+    }
+  }
+
+  /** Radio group keys (ARIA APG): arrows move and select, Home/End jump. */
+  private onMoodKey(event: KeyboardEvent): void {
+    const buttons = [...this.els.moods.querySelectorAll<HTMLElement>('.ol-heute__mood')];
+    const index = buttons.findIndex((b) => b === document.activeElement);
+    if (index < 0) return;
+    let next = index;
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        next = (index + 1) % buttons.length;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        next = (index - 1 + buttons.length) % buttons.length;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = buttons.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    const button = buttons[next];
+    if (!button) return;
+    button.focus();
+    const value = Number(button.dataset['value']);
+    if (MOODS.includes(value as MoodValue)) void this.selectMood(value as MoodValue);
+  }
+
+  // --- Fällig heute (H5, S16, B.4) ---
+
+  private renderDue(): void {
+    const due = this.due;
+    const focus = this.focus;
+    if (!due || !focus) return;
+    const focusIds = new Set(focus.ids);
+    const data = due.filter((task) => !focusIds.has(task.id));
+    const listed = new Set(data.map((task) => task.id));
+    for (const [id, entry] of this.leaving) {
+      if (!listed.has(id)) {
+        entry.confirmed = true;
+      } else if ((entry.confirmed || entry.cancelled) && !entry.collapsing) {
+        window.clearTimeout(entry.timer);
+        this.leaving.delete(id);
+      }
+    }
+    const rows = [...data];
+    for (const [id, entry] of this.leaving) if (!listed.has(id)) rows.push(entry.task);
+    rows.sort(compareDue);
+
+    const els = this.els;
+    const count = data.filter((task) => !this.leaving.has(task.id)).length;
+    setText(els.dueCount, fmt(t.dueCount, { n: count }));
+
+    const created = syncKeyed(
+      els.dueList,
+      rows,
+      (task) => task.id,
+      () => this.createTaskRow(),
+      (row, task) => this.updateDueRow(row, task),
+      () => (els.dueToggle.hidden ? els.moodHeading : els.dueToggle),
+    );
+    const expandable = rows.length > DUE_COLLAPSED;
+    if (!expandable) this.dueExpanded = false;
+    rowsOf(els.dueList).forEach((row, i) => {
+      const hide = !this.dueExpanded && i >= DUE_COLLAPSED;
+      if (hide && !row.hidden && row.contains(document.activeElement)) els.dueToggle.focus();
+      row.hidden = hide;
+    });
+    const toggleHidden = !expandable;
+    if (toggleHidden && !els.dueToggle.hidden && els.dueToggle.contains(document.activeElement)) {
+      (rowsOf(els.dueList).find((r) => !r.hidden) ?? null)?.querySelector<HTMLElement>('ol-checkbox')?.focus();
+    }
+    els.dueToggle.hidden = toggleHidden;
+    setAttr(els.dueToggle, 'label', this.dueExpanded ? t.actionCollapseList : t.actionExpandList);
+    setAttr(els.dueToggle, 'icon', this.dueExpanded ? 'chevron-up' : 'chevron-down');
+    const inner = els.dueToggle.querySelector('button');
+    if (inner) {
+      setAttr(inner, 'aria-expanded', String(this.dueExpanded));
+      setAttr(inner, 'aria-controls', 'heute-due-list');
+    }
+
+    const empty = rows.length === 0;
+    if (empty && !els.due.hidden && els.due.contains(document.activeElement)) els.moodHeading.focus({ preventScroll: true });
+    els.due.hidden = empty;
+    if (this.dueRendered) for (const row of created) if (!row.hidden) this.expandIn(row);
+    this.dueRendered = true;
+  }
+
+  private updateDueRow(row: HTMLElement, task: Task): void {
+    const leaving = this.leaving.get(task.id);
+    const checked = leaving !== undefined && !leaving.cancelled;
+    const box = row.querySelector('ol-checkbox');
+    if (box) {
+      box.toggleAttribute('checked', checked);
+      setAttr(box, 'label', task.title);
+    }
+    row.toggleAttribute('data-done', checked);
+    const title = row.querySelector('.ol-heute__title');
+    if (title) setText(title, task.title);
+    const meta = row.querySelector<HTMLElement>('.ol-heute__meta');
+    if (!meta) return;
+    const overdue = task.dueDay !== undefined && task.dueDay < this.day;
+    const time = !overdue && task.dueHasTime === 1 && task.dueAt ? formatTime(task.dueAt) : '';
+    const key = overdue ? `o|${task.dueDay ?? ''}` : `t|${time}`;
+    if (meta.dataset['key'] === key) return;
+    meta.dataset['key'] = key;
+    render(meta, overdue && task.dueDay
+      ? h`<span class="ol-heute__overdue">${t.overdueLabel}</span> <span class="ol-heute__overdue ol-num">${formatDayShort(task.dueDay)}</span>`
+      : h`<span class="ol-num">${time}</span>`);
+  }
+
+  private async onDueCheck(row: HTMLElement, checked: boolean): Promise<void> {
+    const id = row.dataset['id'];
+    if (!id) return;
+    const task = this.due?.find((x) => x.id === id) ?? this.leaving.get(id)?.task;
+    if (!task) return;
+    if (!checked) {
+      this.cancelLeaving(id);
+      row.removeAttribute('data-done');
+      try {
+        await reopenTask(id);
+      } catch {
+        this.leaving.delete(id);
+        showToast(t.toastError);
+        this.renderDue();
+      }
+      return;
+    }
+    const existing = this.leaving.get(id);
+    if (existing) window.clearTimeout(existing.timer);
+    const entry: Leaving = {
+      task,
+      confirmed: false,
+      cancelled: false,
+      collapsing: false,
+      timer: window.setTimeout(() => this.collapseDue(id), LEAVE_MS),
+    };
+    this.leaving.set(id, entry);
+    row.setAttribute('data-done', '');
+    this.renderDue();
+    try {
+      await completeTask(id);
+    } catch {
+      window.clearTimeout(entry.timer);
+      this.leaving.delete(id);
+      if (!this.destroyed) {
+        showToast(t.toastError);
+        this.renderDue();
+      }
+      return;
+    }
+    if (this.destroyed) return;
+    showToast(t.toastDone, { action: { label: t.actionUndo, onAction: () => this.undoDue(id) } });
+  }
+
+  private undoDue(id: Id): void {
+    this.cancelLeaving(id);
+    reopenTask(id).catch(() => {
+      this.leaving.delete(id);
+      showToast(t.toastError);
+      if (!this.destroyed) this.renderDue();
+    });
+  }
+
+  /** Stops the collapse of a checked row; the row stays until the task is listed again. */
+  private cancelLeaving(id: Id): void {
+    const entry = this.leaving.get(id);
+    if (!entry || entry.collapsing) return;
+    window.clearTimeout(entry.timer);
+    entry.cancelled = true;
+  }
+
+  /** B.4: the checked row stays 1.5 s, then its height collapses (fade under reduced motion). */
+  private collapseDue(id: Id): void {
+    if (this.destroyed) return;
+    const entry = this.leaving.get(id);
+    if (!entry || entry.cancelled) return;
+    const list = this.els.dueList;
+    const row = rowById(list, id);
+    if (!row || row.hidden || typeof row.animate !== 'function') {
+      this.leaving.delete(id);
+      this.renderDue();
+      return;
+    }
+    entry.collapsing = true;
+    const height = row.offsetHeight;
+    row.classList.add('is-collapsing');
+    const anim = motionReduced()
+      ? row.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'linear', fill: 'forwards' })
+      : row.animate(
+        [{ height: `${height}px`, opacity: 1 }, { height: '0px', opacity: 0 }],
+        { duration: 250, easing: EASE_EXIT, fill: 'forwards' },
+      );
+    anim.finished.catch(() => undefined).then(() => {
+      this.leaving.delete(id);
+      if (this.destroyed) return;
+      if (row.contains(document.activeElement)) moveFocusFrom(row, () => this.els.moodHeading);
+      anim.cancel();
+      row.remove();
+      this.renderDue();
+    }, () => undefined);
+  }
+
+  /** B.4 "Rückgängig": the row expands at its old position (fade under reduced motion). */
+  private expandIn(row: HTMLElement): void {
+    if (typeof row.animate !== 'function') return;
+    if (motionReduced()) {
+      row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'linear' });
+      return;
+    }
+    const height = row.offsetHeight;
+    row.classList.add('is-collapsing');
+    const anim = row.animate(
+      [{ height: '0px', opacity: 0 }, { height: `${height}px`, opacity: 1 }],
+      { duration: 200, easing: EASE_STANDARD },
+    );
+    anim.finished.catch(() => undefined).then(() => row.classList.remove('is-collapsing'), () => undefined);
+  }
 }

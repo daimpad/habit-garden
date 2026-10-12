@@ -17,7 +17,18 @@ type Status = HabitLog['status'];
 
 const EPOCH: Day = '1970-01-01'; // a Thursday
 
-const toNum = (day: Day): number => diffDays(day, EPOCH);
+// Day keys repeat across calls (a heatmap evaluates 84 days over the same logs), so the
+// pure key → number mapping is memoised.
+const dayNumbers = new Map<Day, number>();
+function toNum(day: Day): number {
+  let n = dayNumbers.get(day);
+  if (n === undefined) {
+    n = diffDays(day, EPOCH);
+    if (dayNumbers.size > 20_000) dayNumbers.clear();
+    dayNumbers.set(day, n);
+  }
+  return n;
+}
 /** ISO weekday 1 = Monday … 7 = Sunday of a day number. */
 const weekdayOf = (n: number): number => ((((n + 3) % 7) + 7) % 7) + 1;
 /** Day number of the Monday of n's ISO week. */
@@ -35,7 +46,21 @@ interface Ctx {
   status: ReadonlyMap<number, Status>;
 }
 
+// The log map is reused while the same logs array (a liveQuery snapshot; treated as immutable)
+// is evaluated for the same habit object, e.g. 84 heatmap cells in one render.
+const contexts = new WeakMap<readonly HabitLog[], { habit: Habit; startDay: Day; schedule: Habit['schedule']; length: number; ctx: Ctx }>();
+
 function context(habit: Habit, logs: readonly HabitLog[]): Ctx {
+  const hit = contexts.get(logs);
+  if (hit && hit.habit === habit && hit.startDay === habit.startDay && hit.schedule === habit.schedule && hit.length === logs.length) {
+    return hit.ctx;
+  }
+  const ctx = buildContext(habit, logs);
+  contexts.set(logs, { habit, startDay: habit.startDay, schedule: habit.schedule, length: logs.length, ctx });
+  return ctx;
+}
+
+function buildContext(habit: Habit, logs: readonly HabitLog[]): Ctx {
   const status = new Map<number, Status>();
   for (const log of logs) {
     if (log.habitId !== habit.id) continue;
@@ -203,7 +228,7 @@ export function bestStreak(habit: Habit, logs: readonly HabitLog[], today: Day):
 
 /** Whether the habit is due on day (shown in HEUTE): daily interval, weekly weekdays, timesPerWeek every day. */
 export function isScheduledOn(habit: Habit, day: Day): boolean {
-  return scheduled(context(habit, []), toNum(day));
+  return scheduled(buildContext(habit, []), toNum(day));
 }
 
 /** Stage thresholds (B.5): days 0/1–2/3–6/7–13/≥14, weeks 0/1/2/3/≥4. */

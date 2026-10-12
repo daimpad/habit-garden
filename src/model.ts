@@ -14,7 +14,7 @@ export interface Area { id: Id; name: string; flower: FlowerId; tint: string; so
 export interface Project { id: Id; areaId: Id; name: string; description?: string; status: 'active'|'archived'; sortKey: SortKey; dueAt?: ISO; kanbanColumns?: string[]; updatedAt: ISO; }
 export type Recurrence =
   | { kind: 'daily'; interval: number }
-  | { kind: 'weekly'; interval: number; weekdays: number[] }
+  | { kind: 'weekly'; interval: number; weekdays: number[] }   // weekdays: 1=Mo … 7=So (ISO, C.3)
   | { kind: 'monthly'; interval: number; day: number|'last' }
   | { kind: 'timesPerWeek'; times: number }
   | { kind: 'afterCompletion'; days: number };

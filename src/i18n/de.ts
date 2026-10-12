@@ -330,15 +330,53 @@ export const t = {
 
   // Agents add keys only directly below their own marker line.
   // --- additions: logic ---
+  notificationDue: '{date}, {time}',
   // --- additions: data ---
   // --- additions: garden ---
   // --- additions: habit-ui ---
+  heatmapAriaWeeks: '{name}: letzte {weeks} Wochen. Erfüllt an {n} von {m} Tagen. Pfeiltasten bewegen, Enter schaltet.',
   // --- additions: basics ---
+  buttonBusy: 'Speichert…',
+  chipRemoveAria: '{label} entfernen',
+  iconButtonBadgeAria: '{label}, {n}',
   // --- additions: overlays ---
+  sheetExpand: 'Auf volle Höhe vergrößern',
+  sheetCollapse: 'Auf halbe Höhe verkleinern',
   // --- additions: shell ---
   // --- additions: heute ---
+  emptyRoutinesToday: 'Heute steht keine Routine an.',
+  routinesDoneAria: '{done} von {n} heute erledigt',
+  habitToggleWeekAria: '{name}: heute erledigt, {done} von {target} in dieser Woche',
+  moodChoiceAria: '{n} von 5: {label}',
+  moodLoggedAtAria: 'Eingetragen um {time}',
+  dueCount: '({n})',
+  firstStepNoteAction: 'Notiz schreiben',
+  cardDismissNamed: '{label}: Karte ausblenden',
+  journalRequired: 'Bitte einen Text eingeben.',
+  journalEarlier: 'Heute bereits notiert',
   // --- additions: sheets ---
+  habitRhythmLine: '{rhythm} · {period}',
+  habitWeekdaysRequired: 'Wähle mindestens einen Wochentag.',
+  habitIntervalInvalid: 'Gib eine ganze Zahl ab 1 ein.',
+  habitTimesInvalid: 'Gib eine ganze Zahl von 1 bis 7 ein.',
+  reminderModeAria: 'Art der Erinnerung',
+  reminderOffsetInvalid: 'Gib eine ganze Zahl von Minuten ab 0 ein.',
+  reminderAtRequired: 'Wähle Datum und Uhrzeit.',
   // --- additions: start-settings ---
+  exportLast: 'Letzter Export: {date}, {time}',
+  importNewDeviceHint: 'Auf einem neuen Gerät „Wiederherstellen“ wählen, damit keine Bereiche doppelt entstehen.',
+  persistAction: 'Dauerhaft speichern',
+  reminderHintClosed: 'Ist die Seite geschlossen, erscheinen fällige Erinnerungen gesammelt beim nächsten Öffnen.',
+  areaRenameAria: '{name} umbenennen',
+  areaArchiveAria: '{name} archivieren',
+  areaUnarchiveAria: '{name} reaktivieren',
+  areaLastActive: 'Der letzte aktive Bereich lässt sich nicht archivieren.',
+  toastAreaCreated: 'Bereich angelegt',
+  toastAreaArchived: 'Bereich archiviert',
+  toastAreaUnarchived: 'Bereich reaktiviert',
+  infoProvenance: 'Pflanzengeometrie nach der Vorlage „Tend – A Habit Garden“',
+  wissenNoteSavedOne: '1 Notiz ist gespeichert. Neue Notizen legst du mit + an; alle sind im JSON-Export enthalten.',
+  wissenNotesSaved: '{n} Notizen sind gespeichert. Neue Notizen legst du mit + an; alle sind im JSON-Export enthalten.',
   // --- additions: integration ---
 } as const;
 

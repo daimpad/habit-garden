@@ -16,11 +16,11 @@ export function createHabit(input: HabitInput): Promise<Habit> {
       if (last === null || h.sortKey > last) last = h.sortKey;
     });
     const habit: Habit = {
-      archived: 0,
-      startDay: today(),
       ...input,
       id: input.id ?? newId(),
       name: input.name.trim(),
+      startDay: input.startDay ?? today(),
+      archived: input.archived ?? 0,
       sortKey: input.sortKey ?? sortKeyBetween(last, null),
       updatedAt: nowIso(),
     };
