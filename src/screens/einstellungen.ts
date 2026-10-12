@@ -45,7 +45,7 @@ import { DEFAULT_AREAS, GENERIC_TINT, type Area, type FlowerId, type Id, type Pr
 import { areas$, createArea, LastAreaError, setAreaArchived, updateArea } from '../repo/areas.js';
 import { profile$, updateSettings } from '../repo/profile.js';
 import { refresh, type Route } from '../router.js';
-import { notificationPermission } from '../services/reminders.js';
+import { notificationPermission, requestNotificationPermission } from '../services/reminders.js';
 import { estimate, formatBytes, isPersisted, isSafari, requestPersist, type PersistResult } from '../services/storage-hints.js';
 import {
   deleteAllData, ImportError, importMerge, importRestore, parseImport, type ExportFile,
@@ -159,6 +159,7 @@ interface Els {
   persistResult: HTMLElement;
   deleteBtn: OlButton;
   notif: HTMLElement;
+  notifBtn: OlButton;
   lead: HTMLSelectElement;
   theme: OlSegmented;
   left: OlCheckbox;
@@ -298,6 +299,9 @@ class SettingsScreen {
         <div class="ol-settings__fact"><dt>${t.notifPermission}</dt><dd class="ol-settings__notif"></dd></div>
       </dl>
       <div class="ol-settings__item">
+        <ol-button class="ol-settings__notif-btn" variant="tonal" size="sm" icon="bell" label="${t.notifRequest}" hidden></ol-button>
+      </div>
+      <div class="ol-settings__item">
         ${selectField('ol-settings__lead', 'settings-lead', t.reminderLead, options(LEAD_MINUTES, minutes))}
       </div>
       <div class="ol-settings__item">
@@ -379,6 +383,7 @@ class SettingsScreen {
       persistResult: req<HTMLElement>(v, '.ol-settings__persist-result'),
       deleteBtn: req<OlButton>(v, '.ol-settings__delete'),
       notif: req<HTMLElement>(v, '.ol-settings__notif'),
+      notifBtn: req<OlButton>(v, '.ol-settings__notif-btn'),
       lead: req<HTMLSelectElement>(v, '.ol-settings__lead'),
       theme: req<OlSegmented>(v, '.ol-settings__theme'),
       left: req<OlCheckbox>(v, '.ol-settings__left'),
@@ -406,6 +411,11 @@ class SettingsScreen {
       if (file) void this.onImport(file);
     });
     els.persistBtn.addEventListener('click', () => void this.onPersist());
+    els.notifBtn.addEventListener('click', () => {
+      void requestNotificationPermission().then(() => {
+        if (!this.destroyed) this.renderNotif();
+      });
+    });
     els.deleteBtn.addEventListener('click', () => void this.onDeleteAll());
 
     els.lead.addEventListener('change', () => this.save({ reminderLeadMinutes: Number(els.lead.value) }));
@@ -624,7 +634,10 @@ class SettingsScreen {
   // Benachrichtigungen
 
   private renderNotif(): void {
-    setText(this.els.notif, NOTIF_TEXT[notificationPermission()]);
+    const permission = notificationPermission();
+    setText(this.els.notif, NOTIF_TEXT[permission]);
+    // Shown only while the browser has not decided yet (decision 2026-10-12).
+    this.els.notifBtn.hidden = permission !== 'default';
   }
 
   private readonly onWake = (): void => {
