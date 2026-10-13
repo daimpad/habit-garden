@@ -8,9 +8,11 @@
   try {
     setting = localStorage.getItem('theme');
   } catch {
-    // Storage blocked: light, as before the profile is read.
+    // Storage blocked: follow the system, like a new profile.
   }
+  // No cache yet (first visit): new profiles default to 'system' (decision 13.10.2026).
+  const followSystem = setting === 'system' || setting === null;
   const dark = setting === 'dark'
-    || (setting === 'system' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    || (followSystem && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset['theme'] = dark ? 'dark' : 'light';
 })();

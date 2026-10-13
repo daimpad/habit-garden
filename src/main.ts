@@ -166,6 +166,10 @@ function applyTheme(): void {
   const theme = dark ? 'dark' : 'light';
   const root = document.documentElement;
   if (root.dataset['theme'] !== theme) root.dataset['theme'] = theme;
+  // Browser chrome (address bar on phones) follows the page background (--color-bg).
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  const bg = getComputedStyle(root).getPropertyValue('--color-bg').trim();
+  if (meta && bg && meta.content !== bg) meta.content = bg;
 }
 
 function applySettings(settings: Profile['settings']): void {

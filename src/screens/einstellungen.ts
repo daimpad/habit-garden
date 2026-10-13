@@ -59,9 +59,9 @@ import {
 import { appUrl } from '../util/base.js';
 import { dayOfIso, formatDayFull, formatTime } from '../util/date.js';
 import { buildHash, h, icon, render, setVar, type SafeHtml } from '../util/dom.js';
-import { listNotes } from '../repo/notes.js';
+import { importNotes, listNotes } from '../repo/notes.js';
 import { exportAllIcs } from '../services/ics.js';
-import { exportNotesMarkdown } from '../services/notes-export.js';
+import { exportNotesMarkdown, parseNotesMarkdown } from '../services/notes-export.js';
 import { exportWithNotice } from './export-flow.js';
 
 export const APP_VERSION = '0.1.0';
@@ -293,6 +293,11 @@ class SettingsScreen {
         <p class="ol-settings__hint">${t.exportMarkdownHint}</p>
       </div>
       <div class="ol-settings__item">
+        <ol-button class="ol-settings__import-md" variant="tonal" icon="upload" label="${t.importMarkdown}"></ol-button>
+        <input class="ol-settings__file-md ol-visually-hidden" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" tabindex="-1" aria-hidden="true">
+        <p class="ol-settings__hint">${t.importMarkdownHint}</p>
+      </div>
+      <div class="ol-settings__item">
         <ol-button class="ol-settings__export-ics" variant="tonal" icon="calendar" label="${t.exportIcsAll}"></ol-button>
         <p class="ol-settings__hint">${t.exportIcsAllHint}</p>
       </div>
@@ -451,6 +456,13 @@ class SettingsScreen {
     this.view.querySelector('.ol-settings__export-md')?.addEventListener('click', () => {
       void listNotes().then((notes) => exportNotesMarkdown(notes), () => showToast(t.notesExportFailed));
     });
+    const mdFile = this.view.querySelector<HTMLInputElement>('.ol-settings__file-md');
+    this.view.querySelector('.ol-settings__import-md')?.addEventListener('click', () => mdFile?.click());
+    mdFile?.addEventListener('change', () => {
+      const file = mdFile.files?.[0];
+      mdFile.value = '';
+      if (file) void this.onImportMarkdown(file);
+    });
     this.view.querySelector('.ol-settings__export-ics')?.addEventListener('click', () => void exportAllIcs());
     // The file picker opens from the click itself (user activation).
     els.importBtn.addEventListener('click', () => {
@@ -607,6 +619,22 @@ class SettingsScreen {
     btn.removeAttribute('loading');
     setText(this.els.persistResult, PERSIST_TEXT[result]);
     await this.renderStorage();
+  }
+
+  /** W6: notes from a Markdown file (the export format, or any single .md as one note). */
+  private async onImportMarkdown(file: File): Promise<void> {
+    try {
+      const parsed = parseNotesMarkdown(await file.text());
+      if (parsed.length === 0) {
+        showToast(t.importMarkdownEmpty);
+        return;
+      }
+      const r = await importNotes(parsed);
+      showToast(fmt(t.importMarkdownDone, { created: r.created, updated: r.updated, unchanged: r.unchanged }));
+    } catch (err) {
+      console.error(err);
+      showToast(t.importMarkdownFailed);
+    }
   }
 
   private async onExport(): Promise<void> {
