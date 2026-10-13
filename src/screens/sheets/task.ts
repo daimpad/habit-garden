@@ -1,10 +1,12 @@
 // Task sheet /aufgabe/:id (F §4.13, A.3 Task-Sheet, D.1, D.5).
 // Half detent: checkbox + title, due date and time (native inputs), Wiederholung row (A.2 P8: repeat
 // icon + current rule, opens a small preset sheet), Wichtig/Dringend chips (icon and text, not colour
-// alone), Bereich (radio chips with flowers), Projekt (disabled), "Mehr anzeigen"; footer: "In den
-// Fokus" / "Aus dem Fokus nehmen" for today, disabled with the limit hint when three other tasks are in
-// focus (D.1). Full detent: description, subtasks (checkbox list, progress "2 von 5" in the section
-// head, one-line input to add), reminders (D.5).
+// alone), Status (radio chips Offen / In Arbeit / Erledigt), Bereich (radio chips with flowers), Projekt
+// row (opens the project picker), "Mehr anzeigen"; footer: "In den Fokus" / "Aus dem Fokus nehmen" for
+// today, disabled with the limit hint when three other tasks are in focus (D.1). Full detent:
+// description, subtasks (checkbox list, progress "2 von 5" in the section head, one-line input to add),
+// reminders (D.5), Verlauf (A.3: angelegt / zuletzt geändert / erledigt from createdAt, updatedAt,
+// completedAt; no extra storage, PO decision 13.10.2026).
 // Header: ⋯ opens a small menu sheet (A.3 "⋯ ⇡") with "Löschen" (destructive dialog, undo toast).
 //
 // Details of this implementation:
@@ -23,7 +25,17 @@
 // - Subtasks (one level, never recurring): Enter in the input adds one and keeps focus for the next;
 //   checking uses completeTask/reopenTask; × removes with toast + Rückgängig. A subtask opened by its
 //   own route shows neither the Wiederholung row nor the subtasks section.
-// - Status chip and Verlauf (A.3): TODO(phase-3). Linked notes: [Ext].
+// - Status (Phase 3): the chips and the checkbox show the same state. Erledigt goes through completeTask
+//   (follow-up of a recurring task, toast with Rückgängig), leaving Erledigt through reopenTask, In Arbeit
+//   / Offen otherwise through updateTask. Status writes run one after another; while they run, the
+//   chips and the checkbox show the last choice instead of the intermediate states.
+// - Projekt (Phase 3): the row opens a small sheet with "Kein Projekt" and the active projects of the
+//   task's area (radio chips; the current project is listed as well when it is archived), plus a name
+//   field "Neues Projekt" (Enter or the folder button creates it in the task's area and assigns it;
+//   "Übernehmen" with a typed name does the same). Changing the area clears a project of another area;
+//   repo/tasks updateTask passes area and project on to the subtasks. A subtask follows its parent:
+//   its project row is disabled with a hint.
+// - Linked notes: [Ext].
 // - Shared helpers for the habit sheets: openActionMenu() and syncAreaChips().
 import { liveQuery } from 'dexie';
 import '../../components/ol-button.js';
@@ -41,10 +53,13 @@ import type { OlSegmented, SegmentedChange } from '../../components/ol-segmented
 import { createSheet, type OlSheet } from '../../components/ol-sheet.js';
 import { showToast } from '../../components/ol-toast.js';
 import { fmt, t, weekdayShort } from '../../i18n/de.js';
-import { GENERIC_TINT, MAX_FOCUS, type Area, type Day, type Id, type Recurrence, type Reminder, type Task } from '../../model.js';
+import {
+  GENERIC_TINT, MAX_FOCUS, type Area, type Day, type Id, type ISO, type Project, type Recurrence, type Reminder, type Task,
+} from '../../model.js';
 import { areas$ } from '../../repo/areas.js';
 import { addToFocus, FocusFullError, getFocus, removeFromFocus } from '../../repo/dayPlans.js';
 import { getProfile } from '../../repo/profile.js';
+import { allProjects$, createProject } from '../../repo/projects.js';
 import {
   addReminder, completeTask, createSubtask, deleteTask, getTask, removeReminder, reopenTask, restoreTask, subtasks$,
   task$, updateTask, type CompleteResult,
@@ -52,7 +67,7 @@ import {
 import { presetOf, presetRecurrence, type RecurrencePreset } from '../../services/recurrence.js';
 import { ensureReminderPermission, fireTime } from '../../services/reminders.js';
 import {
-  dayOfIso, formatDayShort, formatTime, isDay, isoAt, isoWeekday, onDayChange, timeOfIso, today,
+  dayOfIso, formatDayFull, formatDayShort, formatTime, isDay, isoAt, isoWeekday, onDayChange, timeOfIso, today,
 } from '../../util/date.js';
 import { h, icon, render } from '../../util/dom.js';
 
@@ -280,6 +295,89 @@ function openRecurrenceSheet(task: Task, apply: (patch: Partial<Task>) => void):
 }
 
 // ---------------------------------------------------------------------------
+// Projekt
+
+/** The project's name; archived projects say so. */
+function projectLabel(project: Project): string {
+  return project.status === 'archived' ? fmt(t.taskProjectArchived, { name: project.name }) : project.name;
+}
+
+/**
+ * Small sheet to pick the task's project: "Kein Projekt" + the active projects of the task's area
+ * (radio chips), and a name field to create a new project in that area. `apply` gets the chosen id
+ * (null = no project); it is not called when nothing changed.
+ */
+function openProjectSheet(task: Task, projects: readonly Project[], apply: (projectId: Id | null) => void): OlSheet {
+  const sheet = createSheet({ title: t.taskProjectPickerTitle, fit: true });
+  const current = task.projectId ?? '';
+  const inArea = projects.filter((p) => p.areaId === task.areaId && p.status === 'active');
+  const own = current ? projects.find((p) => p.id === current) : undefined;
+  const listed = own && !inArea.includes(own) ? [...inArea, own] : inArea;
+  const options = [{ value: '', label: t.noProject }, ...listed.map((p) => ({ value: p.id, label: projectLabel(p) }))];
+  render(
+    sheet.bodyEl,
+    h`<div class="ol-task-project">
+  <div class="ol-task-project__options" role="radiogroup" aria-label="${t.taskProjectOptionsAria}">${options.map((o) => h`<ol-chip kind="radio" value="${o.value}" label="${o.label}" icon="${o.value ? 'folder' : ''}"></ol-chip>`)}</div>
+  <p class="ol-task-project__empty ol-body-s" ${inArea.length > 0 ? 'hidden' : ''}>${t.taskProjectNoneInArea}</p>
+  <div class="ol-task-project__new">
+    <ol-input class="ol-task-project__name" label="${t.taskProjectNewLabel}" autocomplete="off" maxlength="200"></ol-input>
+    <ol-icon-button class="ol-task-project__create" icon="folder-plus" label="${t.taskProjectCreateAria}"></ol-icon-button>
+  </div>
+</div>`,
+  );
+  render(sheet.footerEl, h`<ol-button class="ol-task-project__apply" label="${t.taskProjectApply}"></ol-button>`);
+  const group = sheet.bodyEl.querySelector<HTMLElement>('.ol-task-project__options');
+  const nameInput = sheet.bodyEl.querySelector<OlInput>('.ol-task-project__name');
+  const createBtn = sheet.bodyEl.querySelector<HTMLElement>('.ol-task-project__create');
+  if (!group || !nameInput || !createBtn) throw new Error('project sheet: missing elements');
+  nameInput.field?.setAttribute('enterkeyhint', 'done');
+  const chips = [...group.querySelectorAll<OlChip>('ol-chip')];
+  for (const chip of chips) chip.selected = chip.value === current;
+  let done = false;
+  const typedName = (): string => nameInput.value.replace(/\s+/gu, ' ').trim();
+  const create = (): void => {
+    if (done) return;
+    const name = typedName();
+    if (!name) {
+      nameInput.setAttribute('error', t.taskProjectNameRequired);
+      nameInput.focusInput();
+      return;
+    }
+    done = true;
+    createProject({ areaId: task.areaId, name }).then((project) => {
+      sheet.close('action');
+      apply(project.id);
+      showToast(fmt(t.toastTaskProjectCreated, { name: project.name }));
+    }, (err: unknown) => {
+      done = false;
+      failed(err);
+    });
+  };
+  const submit = (): void => {
+    if (done) return;
+    // A typed name is a clear intent: it wins over the chip selection.
+    if (typedName()) {
+      create();
+      return;
+    }
+    done = true;
+    sheet.close('action');
+    const value = chips.find((c) => c.selected)?.value ?? current;
+    if (value !== current) apply(value || null);
+  };
+  nameInput.addEventListener('input', () => nameInput.removeAttribute('error'));
+  nameInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.isComposing) return;
+    event.preventDefault();
+    create();
+  });
+  createBtn.addEventListener('click', create);
+  sheet.footerEl.querySelector('ol-button')?.addEventListener('click', submit);
+  sheet.open();
+  return sheet;
+}
+
+// ---------------------------------------------------------------------------
 // Task sheet
 
 class TaskSheet {
@@ -299,6 +397,11 @@ class TaskSheet {
   /** Subtask writes run one after another, so quickly added ones keep their order. */
   private subtaskQueue: Promise<unknown> = Promise.resolve();
   private subtaskBusy = new Set<Id>();
+  private projects: Project[] = [];
+  /** Status writes run one after another; `wantedStatus` is the last choice while some are pending. */
+  private statusQueue: Promise<unknown> = Promise.resolve();
+  private statusPending = 0;
+  private wantedStatus: Task['status'] = 'open';
   private subs: Sub[] = [];
   private focusSub: Sub | null = null;
   private stopDay: (() => void) | null = null;
@@ -312,7 +415,15 @@ class TaskSheet {
   private repeatValue!: HTMLElement;
   private important!: OlChip;
   private urgent!: OlChip;
+  private statusGroup!: HTMLElement;
   private areaGroup!: HTMLElement;
+  private projectBtn!: HTMLButtonElement;
+  private projectValue!: HTMLElement;
+  private projectHint!: HTMLElement;
+  private historyCreated!: HTMLElement;
+  private historyUpdated!: HTMLElement;
+  private historyCompletedRow!: HTMLElement;
+  private historyCompleted!: HTMLElement;
   private moreBtn!: OlButton;
   private more!: HTMLElement;
   private description!: OlInput;
@@ -358,14 +469,14 @@ class TaskSheet {
   private build(): void {
     const sheet = this.sheet;
     const areaLabel = uid('task-area');
+    const statusLabel = uid('task-status');
+    const historyLabel = uid('task-history');
+    const projectHintId = uid('task-project-hint');
     const remindersLabel = uid('task-reminders');
     const subtasksLabel = uid('task-subtasks');
     const moreId = uid('task-more');
     const hintId = uid('task-focus-hint');
     render(sheet.headerActionsEl, h`<ol-icon-button icon="ellipsis" label="${t.actionMore}"></ol-icon-button>`);
-    // TODO(phase-3): project picker; projects cannot be created yet, so the field is disabled ("Kein
-    // Projekt") and projectId stays null.
-    // TODO(phase-3): status chip and Verlauf.
     render(
       sheet.bodyEl,
       h`<div class="ol-task-sheet">
@@ -377,23 +488,41 @@ class TaskSheet {
     <ol-input class="ol-task-sheet__date" type="date" label="${t.fieldDueDate}"></ol-input>
     <ol-input class="ol-task-sheet__time" type="time" label="${t.fieldDueTime}"></ol-input>
   </div>
-  <button type="button" class="ol-task-sheet__repeat" aria-haspopup="dialog">
-    <span class="ol-task-sheet__repeat-icon">${icon('repeat', 20)}</span>
-    <span class="ol-task-sheet__repeat-text">
+  <button type="button" class="ol-task-sheet__picker ol-task-sheet__repeat" aria-haspopup="dialog">
+    <span class="ol-task-sheet__picker-icon">${icon('repeat', 20)}</span>
+    <span class="ol-task-sheet__picker-text">
       <span class="ol-task-sheet__label">${t.recurrenceTitle}</span>
-      <span class="ol-task-sheet__repeat-value"></span>
+      <span class="ol-task-sheet__picker-value ol-task-sheet__repeat-value"></span>
     </span>
-    <span class="ol-task-sheet__repeat-chevron">${icon('chevron-right', 20)}</span>
+    <span class="ol-task-sheet__picker-chevron">${icon('chevron-right', 20)}</span>
   </button>
   <div class="ol-task-sheet__chips">
     <ol-chip class="ol-task-sheet__important" icon="flag" label="${t.flagImportant}" value="important"></ol-chip>
     <ol-chip class="ol-task-sheet__urgent" icon="alarm-clock" label="${t.flagUrgent}" value="urgent"></ol-chip>
   </div>
   <div class="ol-task-sheet__field">
+    <p class="ol-task-sheet__label" id="${statusLabel}">${t.fieldStatus}</p>
+    <div class="ol-task-sheet__status" role="radiogroup" aria-labelledby="${statusLabel}">
+      <ol-chip kind="radio" value="open" label="${t.taskStatusOpen}"></ol-chip>
+      <ol-chip kind="radio" value="doing" label="${t.taskStatusDoing}"></ol-chip>
+      <ol-chip kind="radio" value="done" label="${t.taskStatusDone}"></ol-chip>
+    </div>
+  </div>
+  <div class="ol-task-sheet__field">
     <p class="ol-task-sheet__label" id="${areaLabel}">${t.fieldArea}</p>
     <div class="ol-task-sheet__areas" role="radiogroup" aria-labelledby="${areaLabel}"></div>
   </div>
-  <ol-input class="ol-task-sheet__project" label="${t.fieldProject}" value="${t.noProject}" disabled></ol-input>
+  <div class="ol-task-sheet__field">
+    <button type="button" class="ol-task-sheet__picker ol-task-sheet__project" aria-haspopup="dialog">
+      <span class="ol-task-sheet__picker-icon">${icon('folder', 20)}</span>
+      <span class="ol-task-sheet__picker-text">
+        <span class="ol-task-sheet__label">${t.fieldProject}</span>
+        <span class="ol-task-sheet__picker-value ol-task-sheet__project-value">${t.noProject}</span>
+      </span>
+      <span class="ol-task-sheet__picker-chevron">${icon('chevron-right', 20)}</span>
+    </button>
+    <p class="ol-task-sheet__project-hint ol-body-s" id="${projectHintId}" hidden>${t.taskProjectSubtaskHint}</p>
+  </div>
   <ol-button class="ol-task-sheet__more-btn" variant="ghost" icon="chevron-down" label="${t.actionShowMore}"></ol-button>
   <div class="ol-task-sheet__more" id="${moreId}" hidden>
     <ol-input class="ol-task-sheet__description" label="${t.fieldDescription}" multiline rows-max="8"></ol-input>
@@ -422,6 +551,14 @@ class TaskSheet {
         <ol-button class="ol-task-sheet__add" variant="tonal" icon="bell" label="${t.reminderAdd}"></ol-button>
       </div>
     </section>
+    <section class="ol-task-sheet__section" aria-labelledby="${historyLabel}">
+      <h3 class="ol-label" id="${historyLabel}">${t.sectionHistory}</h3>
+      <dl class="ol-task-sheet__history ol-body-s">
+        <div class="ol-task-sheet__history-row"><dt>${t.historyCreated}</dt><dd class="ol-task-sheet__history-created ol-num"></dd></div>
+        <div class="ol-task-sheet__history-row"><dt>${t.historyUpdated}</dt><dd class="ol-task-sheet__history-updated ol-num"></dd></div>
+        <div class="ol-task-sheet__history-row ol-task-sheet__history-completed-row" hidden><dt>${t.historyCompleted}</dt><dd class="ol-task-sheet__history-completed ol-num"></dd></div>
+      </dl>
+    </section>
   </div>
 </div>`,
     );
@@ -448,7 +585,15 @@ class TaskSheet {
     this.repeatValue = q<HTMLElement>(body, '.ol-task-sheet__repeat-value');
     this.important = q<OlChip>(body, '.ol-task-sheet__important');
     this.urgent = q<OlChip>(body, '.ol-task-sheet__urgent');
+    this.statusGroup = q<HTMLElement>(body, '.ol-task-sheet__status');
     this.areaGroup = q<HTMLElement>(body, '.ol-task-sheet__areas');
+    this.projectBtn = q<HTMLButtonElement>(body, '.ol-task-sheet__project');
+    this.projectValue = q<HTMLElement>(body, '.ol-task-sheet__project-value');
+    this.projectHint = q<HTMLElement>(body, '.ol-task-sheet__project-hint');
+    this.historyCreated = q<HTMLElement>(body, '.ol-task-sheet__history-created');
+    this.historyUpdated = q<HTMLElement>(body, '.ol-task-sheet__history-updated');
+    this.historyCompletedRow = q<HTMLElement>(body, '.ol-task-sheet__history-completed-row');
+    this.historyCompleted = q<HTMLElement>(body, '.ol-task-sheet__history-completed');
     this.moreBtn = q<OlButton>(body, '.ol-task-sheet__more-btn');
     this.more = q<HTMLElement>(body, '.ol-task-sheet__more');
     this.description = q<OlInput>(body, '.ol-task-sheet__description');
@@ -473,6 +618,7 @@ class TaskSheet {
     this.moreBtn.button?.setAttribute('aria-controls', moreId);
     this.moreBtn.button?.setAttribute('aria-expanded', 'false');
     this.focusBtn.button?.setAttribute('aria-describedby', hintId);
+    this.projectBtn.setAttribute('aria-describedby', projectHintId);
     this.subtaskInput.field?.setAttribute('aria-label', t.subtaskAddLabel);
     this.subtaskInput.field?.setAttribute('enterkeyhint', 'enter');
     this.offset.value = String(this.leadMinutes);
@@ -488,7 +634,9 @@ class TaskSheet {
     this.repeatBtn.addEventListener('click', this.onRepeat);
     this.important.addEventListener('ol-change', this.onFlagChange);
     this.urgent.addEventListener('ol-change', this.onFlagChange);
+    this.statusGroup.addEventListener('ol-change', this.onStatusChange);
     this.areaGroup.addEventListener('ol-change', this.onAreaChange);
+    this.projectBtn.addEventListener('click', this.onProject);
     this.moreBtn.addEventListener('click', this.onToggleDetent);
     this.description.addEventListener('ol-change', this.onDescriptionChange);
     this.subtaskList.addEventListener('ol-change', this.onSubtaskCheck);
@@ -536,6 +684,13 @@ class TaskSheet {
         },
         error: (err: unknown) => console.error(err),
       }),
+      allProjects$(true).subscribe({
+        next: (projects) => {
+          this.projects = projects;
+          if (this.task) this.syncProject(this.task);
+        },
+        error: (err: unknown) => console.error(err),
+      }),
     );
     this.subscribeFocus();
     this.stopDay = onDayChange(() => this.subscribeFocus());
@@ -571,9 +726,7 @@ class TaskSheet {
 
   private update(task: Task): void {
     this.task = task;
-    const done = task.status === 'done';
-    if (this.check.checked !== done) this.check.checked = done;
-    this.root.toggleAttribute('data-done', done);
+    this.syncStatus(this.statusPending > 0 ? this.wantedStatus : task.status);
     setIfIdle(this.title, task.title);
 
     const day = task.dueDay ?? '';
@@ -590,7 +743,9 @@ class TaskSheet {
     if (this.important.selected !== (task.important === 1)) this.important.selected = task.important === 1;
     if (this.urgent.selected !== (task.urgent === 1)) this.urgent.selected = task.urgent === 1;
     syncAreaChips(this.areaGroup, this.areas, task.areaId, false);
+    this.syncProject(task);
     setIfIdle(this.description, task.description ?? '');
+    this.syncHistory(task);
 
     if (!this.filled) {
       // First fill: relative reminders need a due time, so the form starts with the mode that works.
@@ -600,6 +755,34 @@ class TaskSheet {
     }
     this.syncReminderForm();
     this.renderReminders(task);
+  }
+
+  /** Checkbox, status chips and the done look for one status. */
+  private syncStatus(status: Task['status']): void {
+    const done = status === 'done';
+    if (this.check.checked !== done) this.check.checked = done;
+    this.root.toggleAttribute('data-done', done);
+    for (const chip of this.statusGroup.querySelectorAll<OlChip>('ol-chip')) {
+      if (chip.selected !== (chip.value === status)) chip.selected = chip.value === status;
+    }
+  }
+
+  private syncProject(task: Task): void {
+    const project = task.projectId ? this.projects.find((p) => p.id === task.projectId) : undefined;
+    this.projectValue.textContent = project ? projectLabel(project) : t.noProject;
+    // A subtask follows its parent's project.
+    const isSubtask = task.parentId !== null && task.parentId !== undefined;
+    this.projectBtn.disabled = isSubtask;
+    this.projectHint.hidden = !isSubtask;
+  }
+
+  private syncHistory(task: Task): void {
+    const stamp = (iso: ISO): string => fmt(t.historyStamp, { date: formatDayFull(dayOfIso(iso)), time: formatTime(iso) });
+    this.historyCreated.textContent = stamp(task.createdAt);
+    this.historyUpdated.textContent = stamp(task.updatedAt);
+    const completed = task.status === 'done' && task.completedAt ? task.completedAt : undefined;
+    this.historyCompletedRow.hidden = completed === undefined;
+    this.historyCompleted.textContent = completed ? stamp(completed) : '';
   }
 
   private syncMore(): void {
@@ -765,20 +948,46 @@ class TaskSheet {
 
   private readonly onCheck = (event: Event): void => {
     const checked = detailOf<CheckboxChange>(event)?.checked ?? this.check.checked;
-    const id = this.taskId;
-    if (!checked) {
-      reopenTask(id).catch(failed);
-      return;
-    }
-    completeTask(id).then(
-      (result) => {
-        // Unchecked again while the write ran: no "Erledigt" toast for an open task.
-        if (!this.check.checked) return;
-        showToast(doneMessage(result), { action: { label: t.actionUndo, onAction: () => void reopenTask(id).catch(failed) } });
-      },
-      failed,
-    );
+    this.setStatus(checked ? 'done' : 'open');
   };
+
+  private readonly onStatusChange = (event: Event): void => {
+    const detail = detailOf<ChipChange>(event);
+    if (!detail?.selected) return;
+    const value = detail.value;
+    if (value === 'open' || value === 'doing' || value === 'done') this.setStatus(value);
+  };
+
+  /**
+   * Writes a status (queued): Erledigt through completeTask (toast with Rückgängig, follow-up of a
+   * recurring task), leaving Erledigt through reopenTask, In Arbeit / Offen through updateTask.
+   */
+  private setStatus(next: Task['status']): void {
+    if (this.gone) return;
+    const id = this.taskId;
+    this.wantedStatus = next;
+    this.statusPending += 1;
+    this.syncStatus(next);
+    this.statusQueue = this.statusQueue
+      .then(async () => {
+        const current = (await getTask(id))?.status;
+        if (current === undefined || current === next) return;
+        if (next === 'done') {
+          const result = await completeTask(id);
+          // Changed again while the write ran: no "Erledigt" toast for an open task.
+          if (this.wantedStatus !== 'done') return;
+          showToast(doneMessage(result), { action: { label: t.actionUndo, onAction: () => void reopenTask(id).catch(failed) } });
+          return;
+        }
+        if (current === 'done') await reopenTask(id);
+        if (next === 'doing' || current !== 'done') await updateTask(id, { status: next });
+      })
+      .catch(failed)
+      .finally(() => {
+        this.statusPending -= 1;
+        if (this.statusPending === 0 && this.task) this.syncStatus(this.task.status);
+      });
+  }
 
   private readonly onTitleChange = (): void => {
     if (this.titleValue() === '') {
@@ -829,10 +1038,18 @@ class TaskSheet {
     this.save(detail.value === 'urgent' ? { urgent: value } : { important: value });
   };
 
+  /** A project of another area does not move along: it is cleared. */
   private readonly onAreaChange = (event: Event): void => {
     const detail = detailOf<ChipChange>(event);
-    if (!detail?.selected || !detail.value || detail.value === this.task?.areaId) return;
-    this.save({ areaId: detail.value });
+    if (!detail?.selected || !detail.value || !this.task || detail.value === this.task.areaId) return;
+    const projectId = this.task.projectId;
+    const project = projectId ? this.projects.find((p) => p.id === projectId) : undefined;
+    this.save(projectId && project?.areaId !== detail.value ? { areaId: detail.value, projectId: null } : { areaId: detail.value });
+  };
+
+  private readonly onProject = (): void => {
+    if (!this.task || this.gone || this.projectBtn.disabled) return;
+    openProjectSheet(this.task, this.projects, (projectId) => this.save({ projectId }));
   };
 
   private readonly onDescriptionChange = (): void => {

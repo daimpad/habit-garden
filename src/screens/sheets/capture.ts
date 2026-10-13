@@ -11,11 +11,13 @@
 // - Note: kind 'note' whose body is the title as well (D8); the notes list in WISSEN is TODO(phase-4).
 // - Quick syntax (A.2 G2, services/quick-syntax): only for "Aufgabe". The title is parsed on every input;
 //   recognised parts show as non-interactive chips below the field (aria-hidden) with a visually hidden
-//   aria-live="polite" summary, so it is clear what will be saved. Until Phase 3 "@" picks the area
-//   (PO decision 13.10.2026). The helper text lists the syntax until something is recognised (then the
-//   chips take its place); habits and notes save the text as typed.
-// - Saving a task parses again with the current day and areas: title = parsed title (the raw text when
-//   nothing else is left), flags, area (else the default), tags (ensureTags first), dueAt via isoAt.
+//   aria-live="polite" summary, so it is clear what will be saved. "@" resolves active projects first,
+//   then areas (Phase 3, repo/projects projectResolver); a project shows its name as the chip. The
+//   helper text lists the syntax until something is recognised (then the chips take its place); habits
+//   and notes save the text as typed.
+// - Saving a task parses again with the current day, areas and projects: title = parsed title (the raw
+//   text when nothing else is left), flags, project + its area / area / the default (a project given by
+//   the caller stays only while the area is its own), tags (ensureTags first), dueAt via isoAt.
 import '../../components/ol-button.js';
 import '../../components/ol-chip.js';
 import '../../components/ol-input.js';
@@ -25,10 +27,11 @@ import type { OlInput } from '../../components/ol-input.js';
 import { createSheet, type OlSheet } from '../../components/ol-sheet.js';
 import { showToast } from '../../components/ol-toast.js';
 import { fmt, t } from '../../i18n/de.js';
-import type { Area, Day, Id } from '../../model.js';
+import type { Area, Day, Id, Project } from '../../model.js';
 import { firstActiveArea, listAreas } from '../../repo/areas.js';
 import { createHabit } from '../../repo/habits.js';
 import { createNote } from '../../repo/notes.js';
+import { getProject, listProjects, projectResolver } from '../../repo/projects.js';
 import { ensureTags } from '../../repo/tags.js';
 import { createTask } from '../../repo/tasks.js';
 import {
@@ -56,7 +59,12 @@ async function defaultAreaId(areaId: Id | undefined): Promise<Id | undefined> {
   return areaId ?? (await firstActiveArea())?.id;
 }
 
-const QUICK_HINT = fmt(t.captureQuickHint, { important: QUICK_IMPORTANT, urgent: QUICK_URGENT });
+const QUICK_HINT = fmt(t.captureQuickHintProjects, { important: QUICK_IMPORTANT, urgent: QUICK_URGENT });
+
+/** Parses with "@" looking up active projects first, then areas. */
+function parseTask(text: string, base: Day, areas: readonly Area[], projects: readonly Project[]): QuickParse {
+  return parseQuickSyntax(text, { today: base, areas, resolveAt: projectResolver(projects, areas) });
+}
 
 /** "Heute" / "Morgen" / "Übermorgen" / "Fr, 16.10.", with ", 14:00" when timed. */
 function dueLabel(day: Day, time: string | undefined, base: Day): string {
@@ -69,13 +77,15 @@ function dueLabel(day: Day, time: string | undefined, base: Day): string {
 
 interface QuickItem { icon: string; label: string; spoken: string }
 
-/** The recognised parts in a fixed order: flags, area, due, tags. */
-function quickItems(quick: QuickParse, areas: readonly Area[], base: Day): QuickItem[] {
+/** The recognised parts in a fixed order: flags, project or area, due, tags. */
+function quickItems(quick: QuickParse, areas: readonly Area[], projects: readonly Project[], base: Day): QuickItem[] {
   const items: QuickItem[] = [];
   if (quick.important) items.push({ icon: 'flag', label: t.flagImportant, spoken: t.flagImportant });
   if (quick.urgent) items.push({ icon: 'alarm-clock', label: t.flagUrgent, spoken: t.flagUrgent });
+  const project = quick.target?.kind === 'project' ? projects.find((p) => p.id === quick.target?.id) : undefined;
   const area = quick.areaId ? areas.find((a) => a.id === quick.areaId) : undefined;
-  if (area) items.push({ icon: 'sprout', label: area.name, spoken: area.name });
+  if (project) items.push({ icon: 'folder', label: project.name, spoken: fmt(t.captureQuickProjectSpoken, { name: project.name }) });
+  else if (area) items.push({ icon: 'sprout', label: area.name, spoken: area.name });
   if (quick.dueDay) {
     const label = dueLabel(quick.dueDay, quick.time, base);
     items.push({ icon: 'calendar', label, spoken: label });
@@ -109,13 +119,14 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
   if (!input || !types || !button || !parsed || !summary) throw new Error('capture: markup missing');
   input.field?.setAttribute('enterkeyhint', 'done');
 
-  // Active areas for "@"; loaded once, the save path reads them again.
+  // Active areas and projects for "@"; loaded once, the save path reads them again.
   let areas: Area[] = [];
+  let projects: Project[] = [];
   let shownKey = '';
   const updateQuick = (): void => {
     const isTask = type === 'task';
     const base = today();
-    const items = isTask ? quickItems(parseQuickSyntax(input.value, { today: base, areas }), areas, base) : [];
+    const items = isTask ? quickItems(parseTask(input.value, base, areas, projects), areas, projects, base) : [];
     // The hint gives way to the chips: the fit sheet is at most half the screen high (S27).
     if (isTask && items.length === 0) input.setAttribute('helper', QUICK_HINT);
     else input.removeAttribute('helper');
@@ -126,8 +137,9 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
     parsed.hidden = items.length === 0;
     summary.textContent = items.length ? fmt(t.captureQuickSummary, { items: items.map((item) => item.spoken).join(', ') }) : '';
   };
-  void listAreas().then((list) => {
-    areas = list;
+  void Promise.all([listAreas(), listProjects()]).then(([areaList, projectList]) => {
+    areas = areaList;
+    projects = projectList;
     updateQuick();
   }, failed);
 
@@ -143,15 +155,20 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
     button.setAttribute('loading', '');
     try {
       if (type === 'task') {
-        const quick = parseQuickSyntax(title, { today: today(), areas: await listAreas() });
-        const areaId = quick.areaId ?? (await defaultAreaId(opts.areaId));
+        const [areaList, projectList] = await Promise.all([listAreas(), listProjects()]);
+        const quick = parseTask(title, today(), areaList, projectList);
+        const named = quick.target?.kind === 'project' ? projectList.find((p) => p.id === quick.target?.id) : undefined;
+        // A project given by the caller belongs to its area (looked up when the caller gave no area).
+        const given = opts.projectId ? await getProject(opts.projectId) : undefined;
+        const areaId = named?.areaId ?? quick.areaId ?? (await defaultAreaId(opts.areaId ?? given?.areaId));
         if (!areaId) throw new Error('capture: no active area');
+        // "@project" sets the project; "@area" naming another area than the given project's drops it.
+        const projectId = named?.id ?? (given && given.areaId === areaId ? given.id : null);
         if (quick.tagPaths.length > 0) await ensureTags(quick.tagPaths);
         await createTask({
           title: quick.title || title,
           areaId,
-          // A project given by the caller belongs to its area; "@" naming another area drops it.
-          projectId: quick.areaId && quick.areaId !== opts.areaId ? null : opts.projectId ?? null,
+          projectId,
           important: quick.important,
           urgent: quick.urgent,
           ...(quick.tagPaths.length > 0 ? { tagPaths: quick.tagPaths } : {}),

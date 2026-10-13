@@ -16,7 +16,8 @@ import { createContact, logContact } from '../repo/contacts.js';
 import { addToFocus } from '../repo/dayPlans.js';
 import { createHabit } from '../repo/habits.js';
 import { toggleLog } from '../repo/habitLogs.js';
-import { createSubtask, createTask } from '../repo/tasks.js';
+import { createProject } from '../repo/projects.js';
+import { completeTask, createSubtask, createTask } from '../repo/tasks.js';
 import { addDays, diffDays, isoAt, isoWeekday, startOfWeek, today } from '../util/date.js';
 
 export type SeedResult = 'created' | 'exists';
@@ -53,11 +54,31 @@ interface SeedPerson {
 export async function loadExampleData(): Promise<SeedResult> {
   const habitsExist = (await db.habits.filter((h) => h.name === t.seedHabitStretch).first()) !== undefined;
   const peopleExist = (await db.contacts.filter((c) => c.name === t.seedPersonAnna).first()) !== undefined;
-  if (habitsExist && peopleExist) return 'exists';
+  const projectsExist = (await db.projects.filter((p) => p.name === t.seedProjectBalcony).first()) !== undefined;
+  if (habitsExist && peopleExist && projectsExist) return 'exists';
   // Habits first: their default areas may already include "Beziehungen".
   if (!habitsExist) await seedHabitsAndTasks();
   if (!peopleExist) await seedPeople();
+  if (!projectsExist) await seedProjects();
   return 'created';
+}
+
+/** Phase 3: two projects with tasks in different list groups (one done), so PLANUNG shows plants and progress. */
+async function seedProjects(): Promise<void> {
+  const day = today();
+  const [first, second] = await listAreas();
+  if (!first) return;
+  const balcony = await createProject({ areaId: first.id, name: t.seedProjectBalcony });
+  const soil = await createTask({ title: t.seedTaskSoil, areaId: first.id, projectId: balcony.id });
+  await completeTask(soil.id);
+  await createTask({ title: t.seedTaskPlants, areaId: first.id, projectId: balcony.id, dueAt: isoAt(addDays(day, 2)), dueHasTime: 0 });
+  await createTask({ title: t.seedTaskWatering, areaId: first.id, projectId: balcony.id, dueAt: isoAt(addDays(day, 9)), dueHasTime: 0 });
+  await createTask({ title: t.seedTaskChairs, areaId: first.id, projectId: balcony.id });
+  const areaId = (second ?? first).id;
+  const taxes = await createProject({ areaId, name: t.seedProjectTaxes });
+  await createTask({ title: t.seedTaskReceipts, areaId, projectId: taxes.id, dueAt: isoAt(day, '18:00'), dueHasTime: 1 });
+  await createTask({ title: t.seedTaskForms, areaId, projectId: taxes.id, dueAt: isoAt(addDays(day, 5)), dueHasTime: 0 });
+  await createTask({ title: t.seedTaskInbox, areaId: first.id });
 }
 
 async function seedHabitsAndTasks(): Promise<void> {

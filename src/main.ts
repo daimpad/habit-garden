@@ -48,6 +48,7 @@ import {
 import * as einstellungenScreen from './screens/einstellungen.js';
 import * as heuteScreen from './screens/heute.js';
 import * as planungScreen from './screens/planung.js';
+import { planningContext } from './screens/planung.js';
 import { openCapture } from './screens/sheets/capture.js';
 import { openHabitSheet } from './screens/sheets/habit.js';
 import { openTaskSheet } from './screens/sheets/task.js';
@@ -232,8 +233,13 @@ function onFabClick(): void {
   if (!tab || overlayScreen) return;
   let sheet: OlSheet;
   try {
-    // TODO(phase-3): PLANUNG pre-fills the selected area and project (G1).
-    sheet = openCapture({ type: tab === 'wissen' ? 'note' : 'task' });
+    // G1: PLANUNG pre-fills the selected area and, on a project screen, the project.
+    const prefill = tab === 'planung' ? planningContext() : null;
+    sheet = openCapture({
+      type: tab === 'wissen' ? 'note' : 'task',
+      ...(prefill?.areaId ? { areaId: prefill.areaId } : {}),
+      ...(prefill?.projectId ? { projectId: prefill.projectId } : {}),
+    });
   } catch {
     return;
   }
