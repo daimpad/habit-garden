@@ -43,6 +43,7 @@ header('Content-Type: text/html; charset=utf-8');
 <link rel="stylesheet" href="/styles/base.css<?= $v ?>">
 <link rel="stylesheet" href="/styles/components.css<?= $v ?>">
 <link rel="stylesheet" href="/styles/screens.css<?= $v ?>">
+<script src="/app/theme-boot.js<?= $v ?>"></script>
 <script type="importmap"><?= $importMap ?></script>
 <script type="module" src="/app/main.js<?= $v ?>"></script>
 </head>

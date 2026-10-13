@@ -19,8 +19,40 @@
   --nav-height: 64px; --appbar-height: 56px; --touch: 48px;
   --shadow-raised: 0 4px 12px rgba(47,79,58,.25);
   --duration-crossfade: 120ms;
+  /* Shadow tint (box-shadows mix it with transparent). */
+  --color-shadow: #2F4F3A;
+  /* Habit Garden: meadow signs, name tags, badges on plant arches, moon and stars, evening card. */
+  --garden-sign-bg: #FBF6EC; --garden-sign-edge: #E4D6BD; --garden-post: #B89C7A;
+  --garden-tag-bg: rgba(255,255,255,.9); --garden-name-bg: rgba(255,255,255,.78); --garden-badge-bg: rgba(255,255,255,.92);
+  --garden-arch-glow: rgba(255,255,255,.95); --garden-soil: #7E9F72;
+  --garden-moon: #F6F0D2; --garden-moon-glow: rgba(246,240,210,.9); --garden-star: #FFFFFF;
+  --garden-evening-from: #EEEAF4; --garden-evening-to: #F8EEDF; --garden-evening-rule: rgba(47,79,58,.1);
+  /* Flora keeps its colours in both themes; only the meadow grass is calmer in the dark. */
+  --flora-sage: #9CB59A; --flora-outline: #2F4F3A; --garden-grass: #9CB59A;
 }
-[data-theme="dark"] { /* Phase 5: Overrides nach B.1 */ }
+/* Dunkel (B.1), "Nachtgarten". main.ts (and app/theme-boot.js before the first paint) resolves the
+   setting light / dark / system (prefers-color-scheme, live) to data-theme="light" | "dark" on <html>.
+   Text tokens keep ≥ 4.5 : 1 on bg, surface and surface-2; UI tokens ≥ 3 : 1. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #121214; --color-surface: #1A1F1B; --color-surface-2: #232A25; --color-border: #2E3630;
+  --color-text: #EEF2EA; --color-text-2: #A8B3AA; --color-text-3: #6F7A72;
+  --color-primary: #8FAE8B; --color-on-primary: #121214; --color-primary-soft: #1F2A22;
+  --color-sage: #4F6B4F; --color-sage-strong: #7FA07C; --color-clay: #C9826A; --color-sun: #E2B84E;
+  --color-warning-text: #D9A441; --color-danger-text: #D06C6C; --color-danger-soft: #2C1D1D; --color-info: #6E9BC8;
+  --color-scrim: rgba(0,0,0,.48); --color-overlay-hover: rgba(238,242,234,.06); --color-overlay-pressed: rgba(238,242,234,.10);
+  --color-focus: #8FAE8B;
+  --color-accent-text: #E39A74;
+  --heat-0: #232A25; --heat-1: #2F4A3C; --heat-2: #3D6A4E; --heat-3: #4A7C59; --heat-4: #8FAE8B;
+  --shadow-raised: 0 4px 12px rgba(0,0,0,.5);
+  --color-shadow: #000000;
+  --garden-sign-bg: #2A2B24; --garden-sign-edge: #45402F; --garden-post: #6E5D47;
+  --garden-tag-bg: rgba(26,31,27,.9); --garden-name-bg: rgba(26,31,27,.82); --garden-badge-bg: rgba(26,31,27,.9);
+  --garden-arch-glow: rgba(238,242,234,.07); --garden-soil: #18241B;
+  --garden-moon: #E8E2C4; --garden-moon-glow: rgba(232,226,196,.28); --garden-star: #D8DCE6;
+  --garden-evening-from: #22212C; --garden-evening-to: #29251F; --garden-evening-rule: rgba(238,242,234,.1);
+  --garden-grass: #6F8F6C;
+}
 @media (prefers-reduced-motion: reduce) { :root { --duration-fast: 0ms; --duration-base: 0ms; --duration-slow: 0ms; } }
 /* In-app setting "Animationen: reduziert" (html[data-motion="reduced"]) behaves like the media query. */
 :root[data-motion="reduced"] { --duration-fast: 0ms; --duration-base: 0ms; --duration-slow: 0ms; }

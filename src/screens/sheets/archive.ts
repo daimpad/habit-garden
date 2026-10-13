@@ -1,16 +1,19 @@
-// Archiv (A.2 P10 [Ext], opened from ⋯ in the PLANUNG root app bar): archived projects and archived
-// areas, each with "Reaktivieren".
+// Archiv (A.2 P10 [Ext], opened from ⋯ in the PLANUNG root app bar): archived projects, routines (S17)
+// and areas, each with "Reaktivieren".
 // Layout (full detent, history push):
 // - "Archivierte Projekte": grouped by area in area order (sortKey); each row shows the area's
 //   flower glyph, the project name and "Reaktivieren" (setProjectArchived(id, false)). The group
 //   heading names the area; an archived area is marked, with the hint that its projects reappear in
 //   PLANUNG once the area is active again. Projects whose area no longer exists go to "Ohne Bereich".
+// - "Archivierte Routinen" (Phase 5, S17): the area's flower (generic without area), name and
+//   "Reaktivieren" (setHabitArchived(id, 0)); the routine returns to HEUTE with its logs.
 // - "Archivierte Bereiche": flower, name and "Reaktivieren" (setAreaArchived(id, 0)).
 // - Empty state when neither list has entries.
-// Every reactivation confirms with a toast ("Projekt „…“ reaktiviert" / "Bereich „…“ reaktiviert").
+// Every reactivation confirms with a toast ("Projekt „…“ reaktiviert" / "Routine „…“ reaktiviert" /
+// "Bereich „…“ reaktiviert").
 //
 // Details of this implementation:
-// - Areas and projects stay live (liveQuery) while the sheet is open and are unsubscribed on close.
+// - Areas, projects and habits stay live (liveQuery) while the sheet is open and are unsubscribed on close.
 // - The body is rebuilt only when its visible content changes. When the focused row disappears
 //   (reactivated), focus moves to the "Reaktivieren" button now at the same position (or the last
 //   one); with nothing left it goes to the sheet dialog, so it never falls back to <body>.
@@ -23,8 +26,9 @@ import type { OlButton } from '../../components/ol-button.js';
 import { createSheet, type OlSheet } from '../../components/ol-sheet.js';
 import { showToast } from '../../components/ol-toast.js';
 import { fmt, t } from '../../i18n/de.js';
-import type { Area, FlowerId, Id, Project } from '../../model.js';
+import type { Area, FlowerId, Habit, Id, Project } from '../../model.js';
 import { areas$, setAreaArchived } from '../../repo/areas.js';
+import { habits$, setHabitArchived } from '../../repo/habits.js';
 import { allProjects$, setProjectArchived } from '../../repo/projects.js';
 import { h, render, type SafeHtml } from '../../util/dom.js';
 import { failed } from './task.js';
@@ -36,12 +40,13 @@ const NO_AREA = '';
 interface ProjectRow { id: Id; name: string; flower: FlowerId }
 interface Group { key: string; name: string; archived: boolean; projects: ProjectRow[] }
 interface AreaRow { id: Id; name: string; flower: FlowerId }
-interface View { groups: Group[]; areas: AreaRow[] }
+interface HabitRow { id: Id; name: string; flower: FlowerId }
+interface View { groups: Group[]; habits: HabitRow[]; areas: AreaRow[] }
 
 let uidSeq = 0;
 
-/** Pure: archived projects grouped by area (area order, "Ohne Bereich" last) and archived areas. */
-export function archiveView(areas: readonly Area[], projects: readonly Project[]): View {
+/** Pure: archived projects grouped by area (area order, "Ohne Bereich" last), archived habits and archived areas. */
+export function archiveView(areas: readonly Area[], projects: readonly Project[], habits: readonly Habit[] = []): View {
   const byArea = new Map<string, Project[]>();
   const known = new Set(areas.map((a) => a.id));
   for (const project of projects) {
@@ -67,12 +72,18 @@ export function archiveView(areas: readonly Area[], projects: readonly Project[]
     groups.push({ key: NO_AREA, name: t.noArea, archived: false, projects: loose.map((p) => ({ id: p.id, name: p.name, flower: 'generic' })) });
   }
   const archivedAreas = areas.filter((a) => a.archived === 1).map((a) => ({ id: a.id, name: a.name, flower: a.flower }));
-  return { groups, areas: archivedAreas };
+  const flowers = new Map(areas.map((a) => [a.id, a.flower]));
+  const archivedHabits = habits
+    .filter((hb) => hb.archived === 1)
+    .sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0))
+    .map((hb): HabitRow => ({ id: hb.id, name: hb.name, flower: (hb.areaId ? flowers.get(hb.areaId) : undefined) ?? 'generic' }));
+  return { groups, habits: archivedHabits, areas: archivedAreas };
 }
 
 class ArchiveSheet {
   private areas: Area[] | null = null;
   private projects: Project[] | null = null;
+  private habits: Habit[] | null = null;
   private readonly busy = new Set<string>();
   private signature: string | null = null;
   private subs: Sub[] = [];
@@ -105,6 +116,13 @@ class ArchiveSheet {
         },
         error: fail,
       }),
+      habits$(true).subscribe({
+        next: (list) => {
+          this.habits = list;
+          this.render();
+        },
+        error: fail,
+      }),
     );
   }
 
@@ -119,8 +137,8 @@ class ArchiveSheet {
 
   private render(): void {
     const root = this.root;
-    if (!this.areas || !this.projects || !root || !this.sheet.isConnected) return;
-    const view = archiveView(this.areas, this.projects);
+    if (!this.areas || !this.projects || !this.habits || !root || !this.sheet.isConnected) return;
+    const view = archiveView(this.areas, this.projects, this.habits);
     const signature = JSON.stringify(view);
     if (signature === this.signature) return;
     this.signature = signature;
@@ -131,7 +149,7 @@ class ArchiveSheet {
     const focusKey = focused?.dataset['key'] ?? null;
     const focusIndex = focused ? buttons().indexOf(focused) : -1;
 
-    const empty = view.groups.length === 0 && view.areas.length === 0;
+    const empty = view.groups.length === 0 && view.habits.length === 0 && view.areas.length === 0;
     const button = (key: string, name: string): SafeHtml =>
       h`<ol-button class="ol-archive__reactivate" variant="tonal" size="sm" label="${t.archiveReactivate}" data-key="${key}" data-name="${name}"></ol-button>`;
     const row = (key: string, name: string, flower: FlowerId): SafeHtml => h`<li class="ol-archive__row">
@@ -141,6 +159,7 @@ class ArchiveSheet {
 </li>`;
     const projectsId = `${this.uid}-projects`;
     const areasId = `${this.uid}-areas`;
+    const habitsId = `${this.uid}-habits`;
 
     render(root, h`
       ${view.groups.length > 0 ? h`<section class="ol-archive__section" aria-labelledby="${projectsId}">
@@ -153,6 +172,10 @@ class ArchiveSheet {
           <ul class="ol-archive__list">${group.projects.map((p) => row(`p:${p.id}`, p.name, p.flower))}</ul>
         </div>`;
         })}
+      </section>` : ''}
+      ${view.habits.length > 0 ? h`<section class="ol-archive__section" aria-labelledby="${habitsId}">
+        <h3 class="ol-label ol-archive__heading" id="${habitsId}">${t.archiveHabits}</h3>
+        <ul class="ol-archive__list">${view.habits.map((hb) => row(`h:${hb.id}`, hb.name, hb.flower))}</ul>
       </section>` : ''}
       ${view.areas.length > 0 ? h`<section class="ol-archive__section" aria-labelledby="${areasId}">
         <h3 class="ol-label ol-archive__heading" id="${areasId}">${t.archiveAreas}</h3>
@@ -188,6 +211,9 @@ class ArchiveSheet {
       if (key.startsWith('p:')) {
         await setProjectArchived(id, false);
         showToast(fmt(t.toastProjectReactivated, { name }));
+      } else if (key.startsWith('h:')) {
+        await setHabitArchived(id, 0);
+        showToast(fmt(t.toastHabitReactivated, { name }));
       } else {
         await setAreaArchived(id, 0);
         showToast(fmt(t.toastAreaReactivated, { name }));
@@ -200,7 +226,7 @@ class ArchiveSheet {
   }
 }
 
-/** "Archiv": archived projects (by area) and archived areas, each with "Reaktivieren". */
+/** "Archiv": archived projects (by area), habits and areas, each with "Reaktivieren". */
 export function openArchiveSheet(): OlSheet {
   const sheet = createSheet({ title: t.archiveTitle, history: 'push', detent: 'full' });
   new ArchiveSheet(sheet).start();

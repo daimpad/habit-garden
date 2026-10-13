@@ -151,6 +151,23 @@ function ensureSingleton(tag: 'ol-toast' | 'ol-particles'): void {
 // ---------------------------------------------------------------------------
 // Settings
 
+// Theme (B.1): the setting light / dark / system resolves to html[data-theme="light" | "dark"];
+// 'system' follows prefers-color-scheme live. theme-boot.js sets the same attribute before the first paint.
+const DARK_QUERY = '(prefers-color-scheme: dark)';
+let themeSetting: Profile['settings']['theme'] = 'light';
+let darkQuery: MediaQueryList | null = null;
+
+function applyTheme(): void {
+  if (!darkQuery && typeof window.matchMedia === 'function') {
+    darkQuery = window.matchMedia(DARK_QUERY);
+    darkQuery.addEventListener('change', applyTheme);
+  }
+  const dark = themeSetting === 'dark' || (themeSetting === 'system' && darkQuery?.matches === true);
+  const theme = dark ? 'dark' : 'light';
+  const root = document.documentElement;
+  if (root.dataset['theme'] !== theme) root.dataset['theme'] = theme;
+}
+
 function applySettings(settings: Profile['settings']): void {
   const root = document.documentElement;
   if (settings.animations === 'reduced') {
@@ -158,10 +175,16 @@ function applySettings(settings: Profile['settings']): void {
   } else if (root.dataset['motion'] !== undefined) {
     delete root.dataset['motion'];
   }
-  // TODO(phase-5): dark mode. Until then 'system' (and 'dark') render the light theme.
-  if (root.dataset['theme'] !== 'light') root.dataset['theme'] = 'light';
+  themeSetting = settings.theme;
+  applyTheme();
+  // Landschaft (H11): off = flat sky band without sun, moon and clouds (screens.css).
+  if (settings.landscape === 0) {
+    if (root.dataset['landscape'] !== 'off') root.dataset['landscape'] = 'off';
+  } else if (root.dataset['landscape'] !== undefined) {
+    delete root.dataset['landscape'];
+  }
   try {
-    // Pre-paint cache only; Profile.settings stays the source of truth (S38).
+    // Pre-paint cache only (read by app/theme-boot.js); Profile.settings stays the source of truth (S38).
     if (localStorage.getItem('theme') !== settings.theme) localStorage.setItem('theme', settings.theme);
   } catch {
     // Storage blocked: nothing to cache.

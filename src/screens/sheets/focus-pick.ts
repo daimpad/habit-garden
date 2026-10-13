@@ -15,17 +15,19 @@
 //   past DayPlan.
 // - Phase 2 (H7 evening card): `day` may be tomorrow; then title and group labels speak of tomorrow
 //   ("Morgen fällig", "Bis heute fällig").
+// - Phase 5 (day view, H8): `day` may lie further ahead; then the title names the date ("Fokus für
+//   Fr, 16.10.") and the groups read "Am Fr, 16.10. fällig" / "Vorher fällig".
 import { liveQuery, type Subscription } from 'dexie';
 import type { OlButton } from '../../components/ol-button.js';
 import type { OlInput } from '../../components/ol-input.js';
 import { createSheet, type OlSheet } from '../../components/ol-sheet.js';
 import { showToast } from '../../components/ol-toast.js';
-import { t } from '../../i18n/de.js';
+import { fmt, t } from '../../i18n/de.js';
 import { MAX_FOCUS, type Area, type Day, type Id, type Task } from '../../model.js';
 import { firstActiveArea, listAreas } from '../../repo/areas.js';
 import { addToFocus, createTaskInFocus, FocusFullError, getFocus } from '../../repo/dayPlans.js';
 import { focusCandidates, getTask, type FocusCandidates } from '../../repo/tasks.js';
-import { formatDayShort, formatTime, onDayChange, today } from '../../util/date.js';
+import { addDays, formatDayShort, formatTime, formatWeekdayShort, onDayChange, today } from '../../util/date.js';
 import { h, render, type SafeHtml } from '../../util/dom.js';
 
 type GroupKey = keyof FocusCandidates;
@@ -55,13 +57,21 @@ function req<T extends Element>(root: ParentNode, selector: string): T {
 
 export function openFocusPick(day: Day): OlSheet {
   const future = day > today();
-  const sheet = createSheet({ title: future ? t.focusPickTitleTomorrow : t.focusPickTitle, detent: 'full' });
+  const later = day > addDays(today(), 1);
+  const date = later ? fmt(t.captureQuickWeekdayDate, { weekday: formatWeekdayShort(day), date: formatDayShort(day) }) : '';
+  const title = later ? fmt(t.focusPickTitleDay, { date }) : future ? t.focusPickTitleTomorrow : t.focusPickTitle;
+  const groupLabel = (g: (typeof GROUPS)[number]): string => {
+    if (!later) return future ? g.future : g.label;
+    if (g.key === 'dueToday') return fmt(t.focusGroupDueOn, { date });
+    return g.key === 'overdue' ? t.focusGroupDueBefore : g.label;
+  };
+  const sheet = createSheet({ title, detent: 'full' });
   const key = sheet.sheetKey;
   render(sheet.bodyEl, h`<div class="ol-focus-pick">
     <ol-input class="ol-focus-pick__search" type="search" label="${t.focusSearchLabel}" autocomplete="off"></ol-input>
     <p class="ol-focus-pick__hint ol-body-s" hidden>${t.focusLimitHint}</p>
     ${GROUPS.map((g) => h`<section class="ol-focus-pick__group" data-group="${g.key}" aria-labelledby="${key}-${g.key}" hidden>
-      <h3 class="ol-label" id="${key}-${g.key}">${future ? g.future : g.label}</h3>
+      <h3 class="ol-label" id="${key}-${g.key}">${groupLabel(g)}</h3>
       <ul class="ol-focus-pick__list"></ul>
     </section>`)}
     <p class="ol-focus-pick__empty ol-body-s" hidden>${t.emptyFocusPickNone}</p>

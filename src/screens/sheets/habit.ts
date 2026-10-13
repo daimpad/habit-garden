@@ -18,7 +18,8 @@
 // - A done log before startDay moves startDay (S35, repo/habitLogs); undo restores it.
 // - timesPerWeek: streak and best streak are ISO weeks and carry the unit (S19).
 // - Sheet and editor use fit + full detent: the height follows the content up to 92 %.
-// - Un-archiving archived habits: TODO(phase-5) (S17); the menu offers "Archivieren" only for active ones.
+// - Archived habits (S17): the menu offers "Reaktivieren" instead of "Archivieren"; the Archiv sheet
+//   (PLANUNG ⋯ › Archiv, "Archivierte Routinen") lists them as well.
 import '../../components/ol-button.js';
 import '../../components/ol-chip.js';
 import '../../components/ol-heatmap.js';
@@ -340,6 +341,7 @@ class HabitSheet {
     if (!habit) return;
     const items: MenuItem[] = [{ label: t.actionEdit, icon: 'pencil', run: () => void openHabitEditor(habit.id) }];
     if (habit.archived === 0) items.push({ label: t.actionArchive, icon: 'archive', run: () => void this.archive() });
+    else items.push({ label: t.habitReactivate, icon: 'undo-2', run: () => void this.reactivate() });
     items.push({ label: t.actionDelete, icon: 'trash-2', danger: true, run: () => void this.confirmDelete() });
     openActionMenu(habit.name, items);
   };
@@ -350,6 +352,17 @@ class HabitSheet {
       await setHabitArchived(id, 1);
       this.sheet.close('action');
       showToast(t.toastHabitArchived, { action: { label: t.actionUndo, onAction: () => void setHabitArchived(id, 0).catch(failed) } });
+    } catch (err) {
+      failed(err);
+    }
+  }
+
+  private async reactivate(): Promise<void> {
+    const habit = this.habit;
+    if (!habit) return;
+    try {
+      await setHabitArchived(habit.id, 0);
+      showToast(fmt(t.toastHabitReactivated, { name: habit.name }));
     } catch (err) {
       failed(err);
     }

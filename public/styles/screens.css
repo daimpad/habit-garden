@@ -279,7 +279,7 @@
 /* --- Hero: sky by phase of the day, sun on an arc, hills, greeting, progress, meadow --- */
 .ol-hero {
   --sky-top: #E8F0E4; --sky-bottom: #F5F5EC; --sun: #F2C14E; --sun-core: #FFE7A3; --sun-glow: rgba(242, 193, 78, .42);
-  --hill-back: #DDE8D3; --hill-mid: #C9DCBE; --hill-front: #B5CFA6; --cloud: rgba(255, 255, 255, .85);
+  --hill-back: #DDE8D3; --hill-mid: #C9DCBE; --hill-front: #B5CFA6; --cloud: rgba(255, 255, 255, .85); --sky-flat: #EEF2E8;
   position: relative; isolation: isolate; overflow: hidden;
   margin: 0 calc(var(--space-4) * -1); padding: var(--space-2) var(--space-4) 0;
   border-radius: 0 0 28px 28px;
@@ -295,6 +295,19 @@
   --sky-top: #DADCEA; --sky-bottom: #ECEEEA; --hill-back: #CAD3C7; --hill-mid: #B7C6B3; --hill-front: #A6BC9D;
   --cloud: rgba(255, 255, 255, .4);
 }
+/* Nachtgarten (dark theme): night palette in every phase with a faint phase tint, the moon travels the
+   sun's arc; plants, flowers and butterflies keep their colours. */
+:root[data-theme="dark"] .ol-hero {
+  --sky-top: #141B2A; --sky-bottom: #1C2430; --sky-flat: #192029;
+  --hill-back: #1D2924; --hill-mid: #213026; --hill-front: #26382A; --cloud: rgba(200, 210, 225, .1);
+}
+:root[data-theme="dark"] .ol-hero[data-phase="morning"] { --sky-top: #1A1D2E; --sky-bottom: #2A2731; }
+:root[data-theme="dark"] .ol-hero[data-phase="day"] { --sky-top: #142231; --sky-bottom: #1B2A2F; }
+:root[data-theme="dark"] .ol-hero[data-phase="evening"] { --sky-top: #1D1A2C; --sky-bottom: #2C2330; }
+:root[data-theme="dark"] .ol-hero[data-phase="night"] {
+  --sky-top: #0F1526; --sky-bottom: #182031; --hill-back: #1A2521; --hill-mid: #1E2C23; --hill-front: #233427;
+  --cloud: rgba(200, 210, 225, .07);
+}
 @media (min-width: 760px) {
   .ol-hero { margin: var(--space-3) 0 0; padding: var(--space-4) var(--space-6) 0; border-radius: 28px; }
 }
@@ -307,28 +320,41 @@
   box-shadow: 0 0 0 14px color-mix(in srgb, var(--sun) 16%, transparent), 0 0 90px 36px var(--sun-glow);
   animation: ol-sun-breathe 7s ease-in-out infinite alternate;
 }
+/* Crescent: a disc in the moon colour minus a masked disc (same geometry as the former box-shadow moon). */
 .ol-hero__moon {
-  display: none; width: 46px; height: 46px; left: calc(var(--sun-x, .86) * 100% - 23px); top: 22px;
-  box-shadow: 12px 6px 0 0 #F6F0D2; filter: drop-shadow(0 0 18px rgba(246, 240, 210, .9));
+  display: none; width: 46px; height: 46px; left: calc(var(--sun-x, .86) * 100% - 11px); top: 28px;
+  filter: drop-shadow(0 0 18px var(--garden-moon-glow));
+}
+.ol-hero__moon::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--garden-moon);
+  -webkit-mask-image: radial-gradient(circle at 11px 17px, transparent 23px, #000 23.5px);
+  mask-image: radial-gradient(circle at 11px 17px, transparent 23px, #000 23.5px);
 }
 .ol-hero__stars {
   display: none; position: absolute; inset: 0 0 50% 40%;
   background:
-    radial-gradient(1.6px 1.6px at 12% 30%, #FFFFFF 99%, transparent),
-    radial-gradient(1.4px 1.4px at 38% 12%, #FFFFFF 99%, transparent),
-    radial-gradient(1.8px 1.8px at 64% 44%, #FFFFFF 99%, transparent),
-    radial-gradient(1.2px 1.2px at 82% 18%, #FFFFFF 99%, transparent),
-    radial-gradient(1.5px 1.5px at 52% 70%, #FFFFFF 99%, transparent);
+    radial-gradient(1.6px 1.6px at 12% 30%, var(--garden-star) 99%, transparent),
+    radial-gradient(1.4px 1.4px at 38% 12%, var(--garden-star) 99%, transparent),
+    radial-gradient(1.8px 1.8px at 64% 44%, var(--garden-star) 99%, transparent),
+    radial-gradient(1.2px 1.2px at 82% 18%, var(--garden-star) 99%, transparent),
+    radial-gradient(1.5px 1.5px at 52% 70%, var(--garden-star) 99%, transparent);
 }
 .ol-hero[data-phase="night"] .ol-hero__sun { display: none; }
 .ol-hero[data-phase="night"] :is(.ol-hero__moon, .ol-hero__stars) { display: block; }
+:root[data-theme="dark"] .ol-hero__sun { display: none; }
+:root[data-theme="dark"] .ol-hero__moon { display: block; top: calc(var(--sun-y, .2) * 150px + var(--space-2) + 13px); }
+:root[data-theme="dark"] .ol-hero[data-phase="night"] .ol-hero__moon { top: 28px; }
+:root[data-theme="dark"] .ol-hero[data-phase="evening"] .ol-hero__stars { display: block; opacity: .6; }
+/* Einstellungen › Darstellung › Landschaft aus: a calm flat sky band; hills, meadow and plants stay. */
+:root[data-landscape="off"] .ol-hero { background: var(--sky-flat); }
+:root[data-landscape="off"] .ol-hero__sky { display: none; }
 .ol-hero__cloud { position: absolute; fill: var(--cloud); animation: ol-cloud 26s ease-in-out infinite alternate; }
 .ol-hero__cloud--a { top: 54px; left: 46%; }
 .ol-hero__cloud--b { top: 118px; right: 12%; animation-duration: 34s; animation-direction: alternate-reverse; }
 /* Ground of the meadow: grows with the meadow; the hill crests sit on top of it. */
 .ol-hero__land {
   position: relative; margin: 84px calc(var(--space-4) * -1) 0; padding: var(--space-1) var(--space-4) var(--space-5);
-  background: linear-gradient(180deg, var(--hill-front) 0%, color-mix(in srgb, var(--hill-front) 80%, #7E9F72) 100%);
+  background: linear-gradient(180deg, var(--hill-front) 0%, color-mix(in srgb, var(--hill-front) 80%, var(--garden-soil)) 100%);
 }
 .ol-hero__hills { position: absolute; left: 0; right: 0; bottom: calc(100% - 1px); width: 100%; height: 110px; z-index: -1; }
 .ol-hero__hill--back { fill: var(--hill-back); }
@@ -385,14 +411,14 @@
 }
 .ol-meadow__sign {
   position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 140px;
-  padding: 4px 10px 4px 6px; border: 1px solid #E4D6BD; border-radius: 10px;
-  background: #FBF6EC; box-shadow: 0 2px 0 #E4D6BD;
+  padding: 4px 10px 4px 6px; border: 1px solid var(--garden-sign-edge); border-radius: 10px;
+  background: var(--garden-sign-bg); box-shadow: 0 2px 0 var(--garden-sign-edge);
   font-size: .75rem; line-height: 1rem; font-weight: 600; color: var(--color-text); text-wrap: balance;
 }
 @media (min-width: 760px) { .ol-meadow__sign { max-width: 220px; font-size: .8125rem; } }
 .ol-meadow__sign::after {
   content: ""; position: absolute; left: 50%; top: calc(100% + 2px); width: 3px; height: 12px; margin-left: -1.5px;
-  border-radius: 0 0 2px 2px; background: #B89C7A;
+  border-radius: 0 0 2px 2px; background: var(--garden-post);
 }
 .ol-meadow__sign-flower { display: inline-flex; flex: none; }
 .ol-meadow__sign-name { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -411,7 +437,7 @@
 .ol-meadow__plant .ol-plant__svg { width: var(--meadow-plant); height: auto; }
 .ol-meadow__tag {
   position: relative; display: -webkit-box; max-width: calc(var(--meadow-slot) + 14px); margin-top: 4px; padding: 1px 6px;
-  border-radius: 6px; background: rgba(255, 255, 255, .9); box-shadow: 0 1px 2px rgba(47, 79, 58, .2);
+  border-radius: 6px; background: var(--garden-tag-bg); box-shadow: 0 1px 2px color-mix(in srgb, var(--color-shadow) 20%, transparent);
   font-size: .6875rem; line-height: .875rem; font-weight: 600; color: var(--color-text); text-align: center;
   overflow: hidden; overflow-wrap: break-word; hyphens: auto; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   transform: rotate(-3deg);
@@ -419,10 +445,10 @@
 @media (min-width: 760px) { .ol-meadow__tag { font-size: .75rem; line-height: 1rem; padding: 2px 8px; } }
 .ol-meadow__slot[data-tilt] .ol-meadow__tag { transform: rotate(3deg); }
 .ol-meadow__tag::before {
-  content: ""; position: absolute; top: -5px; left: 50%; width: 1.5px; height: 7px; margin-left: -.75px; background: #B89C7A;
+  content: ""; position: absolute; top: -5px; left: 50%; width: 1.5px; height: 7px; margin-left: -.75px; background: var(--garden-post);
 }
 @media (hover: hover) {
-  .ol-meadow__plant:hover .ol-meadow__tag { background: var(--color-surface); box-shadow: 0 2px 6px rgba(47, 79, 58, .28); }
+  .ol-meadow__plant:hover .ol-meadow__tag { background: var(--color-surface); box-shadow: 0 2px 6px color-mix(in srgb, var(--color-shadow) 28%, transparent); }
 }
 @keyframes ol-sway { from { transform: rotate(-2.4deg); } to { transform: rotate(2.4deg); } }
 
@@ -439,7 +465,7 @@
 .ol-meadow__wings { display: block; line-height: 0; }
 .ol-meadow__wings .ol-butterfly__svg { width: var(--meadow-fly); height: auto; }
 .ol-meadow__name {
-  max-width: 64px; padding: 0 4px; border-radius: 4px; background: rgba(255, 255, 255, .78);
+  max-width: 64px; padding: 0 4px; border-radius: 4px; background: var(--garden-name-bg);
   font-size: .625rem; line-height: .875rem; font-weight: 600; color: var(--color-text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -469,7 +495,7 @@
   display: grid; gap: var(--space-3); align-content: start; min-width: 0; padding: var(--space-4);
   border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); border-radius: 24px;
   background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(47, 79, 58, .06), 0 10px 28px rgba(47, 79, 58, .08);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-shadow) 6%, transparent), 0 10px 28px color-mix(in srgb, var(--color-shadow) 8%, transparent);
 }
 .ol-garden-card__head { display: flex; align-items: flex-start; gap: var(--space-3); }
 .ol-garden-card__icon {
@@ -488,7 +514,7 @@
   height: 240px; padding-bottom: var(--space-2); overflow: hidden;
   border-radius: 50% 50% 18px 18px / 64% 64% 18px 18px;
   background:
-    radial-gradient(circle at 50% 30%, rgba(255, 255, 255, .95) 0%, rgba(255, 255, 255, 0) 58%),
+    radial-gradient(circle at 50% 30%, var(--garden-arch-glow) 0%, transparent 58%),
     linear-gradient(180deg, color-mix(in srgb, var(--tint) 16%, var(--color-surface)) 0%, color-mix(in srgb, var(--tint) 30%, var(--color-surface-2)) 100%);
 }
 .ol-garden-card__arch::after {
@@ -499,8 +525,8 @@
 .ol-garden-card__arch ol-plant { position: relative; z-index: 1; }
 .ol-garden-card__stage, .ol-garden-card__next {
   position: absolute; z-index: 2; bottom: var(--space-3); max-width: 42%;
-  padding: 5px 10px; border-radius: var(--radius-full); background: rgba(255, 255, 255, .92);
-  box-shadow: 0 1px 3px rgba(47, 79, 58, .14);
+  padding: 5px 10px; border-radius: var(--radius-full); background: var(--garden-badge-bg);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--color-shadow) 14%, transparent);
 }
 .ol-garden-card__stage {
   left: var(--space-3); font-size: .6875rem; line-height: 1rem; font-weight: 700; letter-spacing: .1em;
@@ -541,7 +567,7 @@
 /* Morgen vorbereiten (Phase 2, H7): evening card above "Fällig heute" */
 .ol-heute__evening {
   display: grid; gap: var(--space-2); margin-top: var(--space-5); padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
-  background: linear-gradient(135deg, #EEEAF4 0%, #F8EEDF 100%);
+  background: linear-gradient(135deg, var(--garden-evening-from) 0%, var(--garden-evening-to) 100%);
 }
 .ol-heute__evening-head { display: flex; align-items: flex-start; gap: var(--space-3); }
 .ol-heute__evening-icon {
@@ -550,7 +576,7 @@
 }
 .ol-heute__evening-text { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--space-1); padding-top: var(--space-2); }
 .ol-heute__evening-list { display: grid; margin-left: calc(40px + var(--space-3)); }
-.ol-heute__evening-row { display: flex; align-items: center; gap: var(--space-1); min-height: 48px; border-top: 1px solid rgba(47, 79, 58, .1); }
+.ol-heute__evening-row { display: flex; align-items: center; gap: var(--space-1); min-height: 48px; border-top: 1px solid var(--garden-evening-rule); }
 .ol-heute__evening-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .ol-heute__evening-actions { display: flex; margin-left: calc(40px + var(--space-3)); }
 
@@ -820,10 +846,10 @@
   --tint: var(--color-sage);
   display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 88px; padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3);
   border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); border-left: 4px solid var(--tint); border-radius: 18px;
-  background: var(--color-surface); box-shadow: 0 1px 2px rgba(47, 79, 58, .06), 0 6px 18px rgba(47, 79, 58, .07);
+  background: var(--color-surface); box-shadow: 0 1px 2px color-mix(in srgb, var(--color-shadow) 6%, transparent), 0 6px 18px color-mix(in srgb, var(--color-shadow) 7%, transparent);
   color: var(--color-text); font: inherit; text-align: left; cursor: pointer;
 }
-@media (hover: hover) { .ol-plan__project:hover { box-shadow: 0 2px 4px rgba(47, 79, 58, .08), 0 10px 24px rgba(47, 79, 58, .1); } }
+@media (hover: hover) { .ol-plan__project:hover { box-shadow: 0 2px 4px color-mix(in srgb, var(--color-shadow) 8%, transparent), 0 10px 24px color-mix(in srgb, var(--color-shadow) 10%, transparent); } }
 .ol-plan__project-plant {
   flex: none; padding: 4px 6px 0; border-radius: 999px 999px 12px 12px;
   background: color-mix(in srgb, var(--tint) 18%, var(--color-surface));
@@ -1212,7 +1238,7 @@
 }
 .ol-board__zone.is-drop-target {
   background: var(--color-primary-soft);
-  box-shadow: inset 0 0 0 2px var(--color-sage-strong), 0 6px 18px rgba(47, 79, 58, .1);
+  box-shadow: inset 0 0 0 2px var(--color-sage-strong), 0 6px 18px color-mix(in srgb, var(--color-shadow) 10%, transparent);
 }
 .ol-board__head { display: flex; align-items: center; gap: var(--space-2); min-height: 40px; padding: 0 var(--space-1) 0 var(--space-2); }
 .ol-board__head-icon { display: inline-flex; flex: none; color: var(--color-sage-strong); }
@@ -1236,7 +1262,7 @@
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; min-width: 0;
   padding: 0 0 0 var(--space-1); border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
   border-left: 4px solid var(--tint); border-radius: 14px; background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(47, 79, 58, .06), 0 4px 12px rgba(47, 79, 58, .06);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-shadow) 6%, transparent), 0 4px 12px color-mix(in srgb, var(--color-shadow) 6%, transparent);
   color: var(--color-text); list-style: none;
   touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
@@ -1332,10 +1358,10 @@
   position: fixed; z-index: 30; left: var(--ol-drag-left, 0); top: var(--ol-drag-top, 0); width: var(--ol-drag-w, auto);
   margin: 0; pointer-events: none; cursor: grabbing;
   transform: translate3d(var(--ol-drag-x, 0), var(--ol-drag-y, 0), 0) rotate(-1.5deg);
-  scale: 1.03; box-shadow: var(--shadow-raised), 0 18px 36px rgba(47, 79, 58, .18);
+  scale: 1.03; box-shadow: var(--shadow-raised), 0 18px 36px color-mix(in srgb, var(--color-shadow) 18%, transparent);
   animation: ol-drag-lift var(--duration-base) var(--ease-enter);
 }
-@keyframes ol-drag-lift { from { scale: 1; box-shadow: 0 1px 2px rgba(47, 79, 58, .06); } }
+@keyframes ol-drag-lift { from { scale: 1; box-shadow: 0 1px 2px color-mix(in srgb, var(--color-shadow) 6%, transparent); } }
 @media (prefers-reduced-motion: reduce) {
   .ol-drag-ghost { transform: translate3d(var(--ol-drag-x, 0), var(--ol-drag-y, 0), 0); scale: none; animation: none; }
   .ol-board__zone { transition: none; }
@@ -1429,7 +1455,7 @@
   display: grid; margin: 0; padding: var(--space-1); list-style: none;
   max-height: calc(6 * 44px + 2 * var(--space-1) + 2px); overflow-y: auto; overscroll-behavior: contain;
   border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface);
-  box-shadow: 0 6px 18px rgba(47, 79, 58, .12);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-shadow) 12%, transparent);
 }
 .ol-note__option {
   display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3);
@@ -1450,7 +1476,7 @@
   flex: 1 0 auto; width: 100%; min-height: 12rem; margin: 0; padding: var(--space-4);
   border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); border-radius: 18px;
   background: var(--color-surface); color: var(--color-text);
-  box-shadow: 0 1px 2px rgba(47, 79, 58, .06), 0 6px 18px rgba(47, 79, 58, .05);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-shadow) 6%, transparent), 0 6px 18px color-mix(in srgb, var(--color-shadow) 5%, transparent);
 }
 .ol-note__text {
   display: block; resize: none; overflow: hidden;
@@ -1475,7 +1501,7 @@
 .ol-note__toolbar {
   display: flex; align-items: center; min-width: 0; padding: 2px var(--space-1);
   border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); border-radius: 18px;
-  background: var(--color-surface); box-shadow: 0 1px 2px rgba(47, 79, 58, .06), 0 6px 18px rgba(47, 79, 58, .07);
+  background: var(--color-surface); box-shadow: 0 1px 2px color-mix(in srgb, var(--color-shadow) 6%, transparent), 0 6px 18px color-mix(in srgb, var(--color-shadow) 7%, transparent);
 }
 .ol-note__tools {
   display: flex; align-items: center; flex: 1 1 auto; min-width: 0;
@@ -1591,7 +1617,228 @@
 /* === /note-editor === */
 
 /* === review === */
+/* Rückblick (H9): entry in the hero, Sunday card "Deine Woche" in HEUTE, screen /heute/rueckblick. */
+.ol-hero__review {
+  justify-self: start; display: inline-flex; align-items: center; gap: var(--space-2);
+  min-height: 44px; margin-top: var(--space-1); padding: 0 var(--space-4) 0 var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent); border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent); color: var(--color-primary);
+  font: inherit; font-size: .875rem; font-weight: 600; cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--duration-fast) linear;
+}
+@media (hover: hover) { .ol-hero__review:hover { background-color: var(--color-surface); } }
+.ol-hero__review:active { background-color: var(--color-primary-soft); }
+
+.ol-heute > .ol-heute__review { max-width: 720px; }
+.ol-heute__review {
+  display: grid; gap: var(--space-2); margin-top: var(--space-5); padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  background: color-mix(in srgb, var(--color-sun) 14%, var(--color-surface));
+}
+.ol-heute__review-head { display: flex; align-items: flex-start; gap: var(--space-3); }
+.ol-heute__review-icon {
+  display: inline-grid; place-items: center; flex: none; width: 40px; height: 40px; margin-top: var(--space-1);
+  border-radius: 50%; background: var(--color-surface); color: var(--color-primary);
+}
+.ol-heute__review-text { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--space-1); padding-top: var(--space-2); }
+.ol-heute__review-actions { display: flex; margin-left: calc(40px + var(--space-3)); }
+
+.ol-review { padding-bottom: var(--space-5); }
+.ol-review[data-loading] .ol-review__body { visibility: hidden; }
+.ol-review__period { margin-top: var(--space-1); }
+.ol-review__card { display: grid; gap: var(--space-3); }
+.ol-review__hint { color: var(--color-text-2); }
+.ol-review__head-value { font-weight: 600; color: var(--color-primary); }
+
+/* KPI tiles: 2 columns, 4 from 600 px */
+.ol-review__kpis {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3);
+  margin: var(--space-4) 0 0; padding: 0; list-style: none;
+}
+@media (min-width: 600px) { .ol-review__kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.ol-review__kpi {
+  display: grid; align-content: start; gap: 2px; min-width: 0;
+  padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.ol-review__kpi:first-child { background: color-mix(in srgb, var(--color-sage) 18%, var(--color-surface)); }
+.ol-review__kpi-value {
+  font-size: 1.625rem; line-height: 2rem; font-weight: 700; letter-spacing: -.01em; color: var(--color-primary);
+  overflow-wrap: anywhere;
+}
+.ol-review__kpi-sub {
+  display: -webkit-box; overflow: hidden; overflow-wrap: anywhere; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
+/* Fulfilment rings (outer → inner = legend order) */
+.ol-review__rings-body { display: grid; gap: var(--space-4); align-items: center; }
+@media (min-width: 520px) { .ol-review__rings-body { grid-template-columns: auto minmax(0, 1fr); } }
+.ol-review__rings-figure { display: flex; justify-content: center; }
+.ol-review__rings-svg { display: block; width: min(200px, 100%); height: auto; }
+.ol-review__ring-track { fill: none; stroke: var(--color-surface-2); }
+.ol-review__ring-arc { fill: none; }
+.ol-review__ring-arc--on { stroke-linecap: round; }
+.ol-review__legend { display: grid; margin: 0; padding: 0; list-style: none; }
+.ol-review__legend-row {
+  display: flex; align-items: center; gap: var(--space-3); min-height: 48px; padding: var(--space-1) 0;
+  border-top: 1px solid var(--color-border);
+}
+.ol-review__legend-row:first-child { border-top: 0; }
+.ol-review__swatch { flex: none; display: block; width: 12px; height: 12px; }
+.ol-review__swatch--none { box-sizing: border-box; border: 1.5px dashed var(--color-text-3); border-radius: 50%; }
+.ol-review__legend-text { flex: 1 1 auto; min-width: 0; display: grid; }
+.ol-review__legend-name { font-weight: 500; overflow-wrap: anywhere; }
+.ol-review__legend-pct { flex: none; font-weight: 600; color: var(--color-primary); }
+
+/* Best streaks: mini plant of the reached stage, bar relative to the longest */
+.ol-review__streaks { display: grid; margin: 0; padding: 0; list-style: none; }
+.ol-review__streak { display: flex; align-items: flex-end; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--color-border); }
+.ol-review__streak:first-child { border-top: 0; padding-top: 0; }
+.ol-review__streak:last-child { padding-bottom: 0; }
+.ol-review__streak-plant { flex: none; display: inline-flex; justify-content: center; width: 40px; line-height: 0; }
+.ol-review__streak-main { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--space-1); }
+.ol-review__streak-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.ol-review__streak-name { min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.ol-review__streak-value { flex: none; font-weight: 600; color: var(--color-primary); }
+.ol-review__bar { position: relative; overflow: hidden; height: 8px; border-radius: var(--radius-full); background: var(--color-surface-2); }
+.ol-review__bar-fill {
+  position: absolute; inset: 0; border-radius: inherit; transform-origin: left center;
+  transform: scaleX(var(--fill, 0)); background: var(--color-sage-strong);
+}
+
+/* Weekday rhythm: bars grow from the bottom; the best day in sun colour, bold label and a text line */
+.ol-review__days {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-2);
+  margin: 0; padding: 0; list-style: none;
+}
+.ol-review__day { display: grid; justify-items: center; gap: var(--space-1); min-width: 0; }
+.ol-review__day-track {
+  position: relative; overflow: hidden; width: 100%; max-width: 36px; height: 96px;
+  border-radius: var(--radius-sm); background: var(--color-surface-2);
+}
+.ol-review__day-fill {
+  position: absolute; inset: 0; transform-origin: center bottom; transform: scaleY(var(--fill, 0));
+  background: var(--color-sage);
+}
+.ol-review__day[data-best] .ol-review__day-fill { background: var(--color-sun); }
+.ol-review__day[data-best] :is(.ol-review__day-label, .ol-review__day-value) { font-weight: 700; color: var(--color-text); }
+.ol-review__best { display: flex; align-items: center; gap: var(--space-2); }
+.ol-review__best-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--color-sun); }
+
+/* Mood trend: five levels, one dot per logged day, dashed average */
+.ol-review__mood-figure { display: grid; gap: var(--space-2); max-width: 520px; margin: 0; }
+.ol-review__mood-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.ol-review__mood-grid { stroke: var(--color-border); stroke-width: 1; }
+.ol-review__mood-axis { fill: var(--color-text-3); font-family: var(--font-sans); font-size: 10px; }
+.ol-review__mood-avg { stroke: var(--color-clay); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.ol-review__mood-line { fill: none; stroke: var(--color-primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ol-review__mood-dot { fill: var(--color-surface); stroke: var(--color-primary); stroke-width: 2; }
+.ol-review__mood-dates { display: flex; justify-content: space-between; padding-left: 5.6%; }
 /* === /review === */
 
 /* === day-calendar === */
+/* H8: date button in the HEUTE hero, calendar sheet (month grid with markers) and the day view
+   /heute/tag/:day. Colours only through tokens (light and dark). */
+
+/* HEUTE hero: the date is a button; padding + negative margin give a 48 px target without moving it. */
+.ol-hero__date-btn {
+  justify-self: start; display: inline-flex; align-items: center; flex-wrap: wrap; column-gap: .3em;
+  min-height: 48px; margin: -16px -8px; padding: 16px 8px;
+  border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer;
+  text-align: left; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) linear;
+}
+.ol-hero__date-btn .ol-icon { width: 1rem; height: 1rem; color: var(--color-text-2); }
+@media (hover: hover) { .ol-hero__date-btn:hover { background-color: var(--color-overlay-hover); } }
+.ol-hero__date-btn:active { background-color: var(--color-overlay-pressed); }
+
+/* Calendar sheet */
+.ol-cal { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-1); }
+.ol-cal__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin: 0 -12px; }
+.ol-cal__month { flex: 1 1 auto; margin: 0; text-align: center; font-size: 1.0625rem; line-height: 1.5rem; font-weight: 600; }
+.ol-cal__grid { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.ol-cal__grid th {
+  padding: 0 0 var(--space-1); font-size: .75rem; line-height: 1rem; font-weight: 500; color: var(--color-text-2); text-align: center;
+}
+.ol-cal__grid td { padding: 1px; text-align: center; vertical-align: top; }
+.ol-cal__day {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px;
+  width: 100%; min-height: 52px; margin: 0; padding: 4px 0;
+  border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-text);
+  font: inherit; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) linear;
+}
+@media (hover: hover) { .ol-cal__day:hover { background-color: var(--color-overlay-hover); } }
+.ol-cal__day:active { background-color: var(--color-overlay-pressed); }
+.ol-cal__day:focus-visible { outline-offset: -2px; }
+.ol-cal__num {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  font-size: .9375rem; line-height: 1; font-weight: 500;
+}
+.ol-cal__day[aria-current="date"] .ol-cal__num { background-color: var(--color-primary); color: var(--color-on-primary); font-weight: 600; }
+.ol-cal__day[data-selected]:not([aria-current="date"]) .ol-cal__num { box-shadow: inset 0 0 0 2px var(--color-primary); }
+.ol-cal__marks { display: flex; align-items: center; justify-content: center; gap: 2px; min-height: 12px; }
+
+/* Markers: due tasks (dot, count from 2 on), habits ring (done/due), mood pie (as on HEUTE). */
+.ol-cal__due {
+  display: inline-grid; place-items: center; flex: none; box-sizing: border-box;
+  min-width: 6px; height: 6px; border-radius: var(--radius-full); background-color: var(--color-clay);
+}
+.ol-cal__due[data-many="true"] {
+  min-width: 12px; height: 12px; padding: 0 2px;
+  font-size: .5625rem; line-height: 1; font-weight: 700; color: var(--color-on-primary); background-color: var(--color-warning-text);
+}
+.ol-cal__ring, .ol-cal__mood { flex: none; overflow: visible; }
+.ol-cal__ring-track { fill: none; stroke: var(--color-border); stroke-width: 2.5; }
+.ol-cal__ring-arc { fill: none; stroke: var(--color-sage-strong); stroke-width: 2.5; }
+.ol-cal__mood-bg { fill: var(--color-surface); }
+.ol-cal__mood-fill { fill: var(--color-info); }
+.ol-cal__mood-ring { fill: none; stroke: var(--color-info); stroke-width: 1.5; }
+.ol-cal__legend {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-1) var(--space-4);
+  margin: 0; padding: var(--space-2) 0 0; list-style: none; border-top: 1px solid var(--color-border);
+}
+.ol-cal__legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* Day view */
+.ol-day[data-loading] .ol-day__content { visibility: hidden; }
+.ol-day__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-1); }
+.ol-day__rel { margin: 0; color: var(--color-text-2); }
+.ol-day__card { padding: var(--space-1) var(--space-2); }
+.ol-day__list { display: grid; margin: 0; padding: 0; list-style: none; }
+.ol-day__list > li + li { border-top: 1px solid var(--color-border); }
+.ol-day__row { display: flex; align-items: center; gap: var(--space-1); min-height: 56px; }
+.ol-day__row--static { gap: var(--space-2); padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1); }
+.ol-day__status { flex: none; display: inline-grid; place-items: center; width: 32px; color: var(--color-text-3); }
+.ol-day__row[data-done] .ol-day__status { color: var(--color-sage-strong); }
+.ol-day__plant { flex: none; display: inline-flex; width: 32px; }
+.ol-day__flower { flex: none; display: inline-flex; padding: 0 4px; }
+.ol-day__title {
+  flex: 1 1 auto; min-width: 0; min-height: 48px; margin: 0; padding: var(--space-3) var(--space-2);
+  border: 0; border-radius: var(--radius-sm); background-color: transparent; color: var(--color-text);
+  font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent; transition: background-color var(--duration-fast) linear;
+}
+@media (hover: hover) { .ol-day__title:hover { background-color: var(--color-overlay-hover); } }
+.ol-day__title:active { background-color: var(--color-overlay-pressed); }
+.ol-day__row[data-done] .ol-day__title { text-decoration: line-through; color: var(--color-text-2); }
+.ol-day__row[data-status="skipped"] .ol-day__title { color: var(--color-text-2); }
+.ol-day__name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.ol-day__meta { flex: 0 1 auto; max-width: 40%; padding-right: var(--space-2); text-align: right; overflow-wrap: break-word; }
+.ol-day__none { margin: 0; padding: var(--space-3) var(--space-2); }
+.ol-day__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-1) var(--space-2); }
+.ol-day__list + .ol-day__actions, .ol-day__none + .ol-day__actions { border-top: 1px solid var(--color-border); }
+.ol-day__mood { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+/* The large mood glyph matches HEUTE (primary); the tiny calendar marker stays blue to stand apart from the ring. */
+.ol-day__mood .ol-cal__mood-fill { fill: var(--color-primary); }
+.ol-day__mood .ol-cal__mood-ring { stroke: var(--color-primary); stroke-width: 1; }
+.ol-day__journal { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-2); }
+.ol-day__excerpt { margin: 0; color: var(--color-text); overflow-wrap: anywhere; }
+.ol-day__link {
+  justify-self: start; display: inline-flex; align-items: center; gap: var(--space-2); min-height: 48px;
+  margin-left: calc(var(--space-2) * -1); padding: 0 var(--space-2); border-radius: var(--radius-sm);
+  color: var(--color-primary); font-weight: 500; text-decoration: none;
+}
+.ol-day__link:hover { text-decoration: underline; }
+.ol-day__empty { margin-top: var(--space-5); padding: var(--space-4); }
+.ol-day--invalid { padding-top: var(--space-4); }
 /* === /day-calendar === */

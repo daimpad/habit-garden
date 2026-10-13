@@ -18,6 +18,8 @@
 // - Saving a task parses again with the current day, areas and projects: title = parsed title (the raw
 //   text when nothing else is left), flags, project + its area / area / the default (a project given by
 //   the caller stays only while the area is its own), tags (ensureTags first), dueAt via isoAt.
+// - opts.dueDay (Phase 5, day view "Aufgabe für diesen Tag") pre-fills the due day of a task: it shows as
+//   the date chip and is saved unless the text names its own date.
 import '../../components/ol-button.js';
 import '../../components/ol-chip.js';
 import '../../components/ol-input.js';
@@ -43,7 +45,7 @@ import { openHabitEditor } from './habit.js';
 import { failed } from './task.js';
 
 export type CaptureType = 'task' | 'habit' | 'note';
-export interface CaptureOptions { type?: CaptureType; areaId?: Id; projectId?: Id | null }
+export interface CaptureOptions { type?: CaptureType; areaId?: Id; projectId?: Id | null; dueDay?: Day }
 
 const TYPES: ReadonlyArray<{ type: CaptureType; label: string; icon: string }> = [
   { type: 'task', label: t.captureTypeTask, icon: 'circle-check' },
@@ -98,6 +100,9 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
   let type: CaptureType = opts.type ?? 'task';
   let saving = false;
   const sheet = createSheet({ title: t.captureTitle, fit: true });
+  const prefillDue = opts.dueDay;
+  /** The pre-filled due day applies while the text names no date of its own. */
+  const withDue = (quick: QuickParse): QuickParse => (quick.dueDay || !prefillDue ? quick : { ...quick, dueDay: prefillDue });
   render(
     sheet.bodyEl,
     h`<div class="ol-capture">
@@ -126,7 +131,7 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
   const updateQuick = (): void => {
     const isTask = type === 'task';
     const base = today();
-    const items = isTask ? quickItems(parseTask(input.value, base, areas, projects), areas, projects, base) : [];
+    const items = isTask ? quickItems(withDue(parseTask(input.value, base, areas, projects)), areas, projects, base) : [];
     // The hint gives way to the chips: the fit sheet is at most half the screen high (S27).
     if (isTask && items.length === 0) input.setAttribute('helper', QUICK_HINT);
     else input.removeAttribute('helper');
@@ -156,7 +161,7 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
     try {
       if (type === 'task') {
         const [areaList, projectList] = await Promise.all([listAreas(), listProjects()]);
-        const quick = parseTask(title, today(), areaList, projectList);
+        const quick = withDue(parseTask(title, today(), areaList, projectList));
         const named = quick.target?.kind === 'project' ? projectList.find((p) => p.id === quick.target?.id) : undefined;
         // A project given by the caller belongs to its area (looked up when the caller gave no area).
         const given = opts.projectId ? await getProject(opts.projectId) : undefined;

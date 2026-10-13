@@ -30,7 +30,8 @@
 //   it lists tomorrow's focus (each removable) and opens the focus picker for tomorrow. Dismissing it
 //   stores the day in Profile.eveningCardDismissedFor, so it returns the next evening.
 // - Focus and due rows show the subtask progress "2/5" next to the title (Phase 2, decision 13.10.2026).
-// TODO(phase-5): tapping the date opens the calendar sheet (H8), review card (H9).
+// - The date in the hero is a button that opens the calendar sheet (H8, sheets/calendar.ts).
+// TODO(phase-5): review card (H9).
 import { liveQuery, type Observable, type Subscription } from 'dexie';
 import { butterfly, flower, petalColor } from '../components/flora.js';
 import type { CheckboxChange } from '../components/ol-checkbox.js';
@@ -59,6 +60,7 @@ import type { Route } from '../router.js';
 import { butterflyColor, contactStatuses, lastContactText, rhythmLabel, suggestions, type ContactStatus } from '../services/contacts.js';
 import { bestStreak, isScheduledOn, nextStage, stageFor, streak, weekProgress, type NextStage } from '../services/growth.js';
 import { backupCardState } from '../services/storage-hints.js';
+import { percent, showWeekCard, weekSummary } from '../services/review.js';
 import { takeRevealDue } from '../services/reminders.js';
 import {
   addDays, currentHour, formatDayFull, formatDayLong, formatDayShort, formatTime, formatWeekdayLong, now, nowIso, today,
@@ -71,6 +73,7 @@ import {
   applySky, dayPhase, greetingLine, greetingMarkup, hillsMarkup, liftButterfly, meadowPlant, skyMarkup, sunPosition, syncMeadow,
   type MeadowGroup, type MeadowPerson,
 } from './garden.js';
+import { openCalendar } from './sheets/calendar.js';
 import { openCapture, type CaptureType } from './sheets/capture.js';
 import { openFocusPick } from './sheets/focus-pick.js';
 import { openHabitEditor, rhythmText } from './sheets/habit.js';
@@ -733,14 +736,16 @@ class HeuteScreen {
               <ol-icon-button class="ol-heute__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
             </div>
             <h1 class="ol-hero__title">
-              <span class="ol-hero__date">${formatWeekdayLong(this.day)}, <span class="ol-hero__date-accent">${formatDayFull(this.day)}</span></span>
+              <button type="button" class="ol-hero__date ol-hero__date-btn" aria-haspopup="dialog" aria-describedby="heute-date-hint">${formatWeekdayLong(this.day)}, <span class="ol-hero__date-accent">${formatDayFull(this.day)}</span>${icon('calendar', 20)}</button>
               <span class="ol-hero__greeting"></span>
             </h1>
+            <span class="ol-visually-hidden" id="heute-date-hint">${t.calendarOpenHint}</span>
             <p class="ol-hero__line"></p>
             <div class="ol-hero__progress" hidden>
               <span class="ol-hero__bar" aria-hidden="true"><span class="ol-hero__bar-fill"></span></span>
               <span class="ol-hero__progress-text"><strong class="ol-hero__progress-count ol-num"></strong> ${t.heroProgressText}</span>
             </div>
+            <button type="button" class="ol-hero__review">${icon('bar-chart-3', 20)}<span>${t.reviewEntry}</span></button>
           </div>
           <div class="ol-hero__land">
             ${hillsMarkup()}
@@ -763,6 +768,19 @@ class HeuteScreen {
           <div class="ol-heute__backup-actions">
             <ol-button class="ol-heute__backup-export" variant="tonal" icon="download" label="${t.backupCardAction}"></ol-button>
             <ol-button class="ol-heute__backup-settings" variant="ghost" label="${t.backupCardSettings}"></ol-button>
+          </div>
+        </ol-card>
+        <ol-card class="ol-heute__review" hidden>
+          <div class="ol-heute__review-head">
+            <span class="ol-heute__review-icon" aria-hidden="true">${icon('bar-chart-3')}</span>
+            <div class="ol-heute__review-text">
+              <h2 class="ol-heading">${t.reviewWeekTitle}</h2>
+              <p class="ol-body-s ol-text-2"></p>
+            </div>
+            <ol-icon-button class="ol-heute__review-dismiss" icon="x" label="${fmt(t.cardDismissNamed, { label: t.reviewWeekTitle })}"></ol-icon-button>
+          </div>
+          <div class="ol-heute__review-actions">
+            <ol-button class="ol-heute__review-open" variant="tonal" label="${t.reviewWeekOpen}"></ol-button>
           </div>
         </ol-card>
         <div class="ol-heute__routines">
@@ -922,6 +940,15 @@ class HeuteScreen {
     req<HTMLElement>(this.view, '.ol-heute__settings').addEventListener('click', (event) => {
       if (event.currentTarget instanceof Element) this.navigate(event.currentTarget, '/einstellungen');
     });
+    // H8: the date opens the calendar sheet.
+    req<HTMLElement>(this.view, '.ol-hero__date-btn').addEventListener('click', () => {
+      this.rememberOpener();
+      try {
+        openCalendar(this.day);
+      } catch (err) {
+        console.error(err);
+      }
+    });
 
     // Erste Schritte
     els.steps.addEventListener('click', (event) => {
@@ -941,6 +968,17 @@ class HeuteScreen {
     els.backupDismiss.addEventListener('click', () => {
       this.els.focusHeading.focus({ preventScroll: true });
       updateProfile({ backupCardDismissedAt: nowIso() }).catch(() => showToast(t.toastError));
+    });
+
+    // Rückblick (H9): entry in the hero, Sunday card "Deine Woche"
+    const openReview = (event: Event): void => {
+      if (event.currentTarget instanceof Element) this.navigate(event.currentTarget, '/heute/rueckblick');
+    };
+    req<HTMLElement>(this.view, '.ol-hero__review').addEventListener('click', openReview);
+    req<HTMLElement>(this.view, '.ol-heute__review-open').addEventListener('click', openReview);
+    req<HTMLElement>(this.view, '.ol-heute__review-dismiss').addEventListener('click', () => {
+      this.els.focusHeading.focus({ preventScroll: true });
+      updateProfile({ reviewCardDismissedFor: this.day }).catch(() => showToast(t.toastError));
     });
 
     // Fokus
@@ -1412,6 +1450,23 @@ class HeuteScreen {
     const watered = shown.filter((hb) => this.habitDoneToday(hb, logs.get(hb.id) ?? [])).length;
     this.renderProgress(watered, shown.length);
     this.renderMeadow(active, logs);
+    this.renderReviewCard(active, logs);
+  }
+
+  /** Sunday card "Deine Woche" (H9): on Sundays with active routines, until dismissed for this ISO week. */
+  private renderReviewCard(active: readonly Habit[], logs: Map<Id, HabitLog[]>): void {
+    const card = req<HTMLElement>(this.view, '.ol-heute__review');
+    const profile = this.profile;
+    if (!profile || active.length === 0 || !showWeekCard(this.day, profile.reviewCardDismissedFor)) {
+      if (!card.hidden && card.contains(document.activeElement)) this.els.focusHeading.focus({ preventScroll: true });
+      card.hidden = true;
+      return;
+    }
+    const week = weekSummary(active, logs, this.day);
+    const pct = percent(week.rate);
+    setText(req<HTMLElement>(card, '.ol-heute__review-text p'),
+      pct === null ? t.reviewWeekTextNone : fmt(t.reviewWeekText, { done: week.done, pct }));
+    card.hidden = false;
   }
 
   // --- Hero (greeting, landscape, progress) and meadow ---

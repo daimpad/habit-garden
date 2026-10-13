@@ -10,6 +10,8 @@ export interface Profile {
   firstStepsDismissed?: FirstStepId[];
   /** Phase 2 (H7): the day whose evening card "Morgen vorbereiten" was dismissed. */
   eveningCardDismissedFor?: Day;
+  /** Phase 5 (H9): the Sunday whose card "Deine Woche" was dismissed (hidden for that ISO week). */
+  reviewCardDismissedFor?: Day;
   /** Phase 3 (P1/P2): PLANUNG tab state — selected area (absent = "Alle") and the view per area key. */
   planning?: PlanningState;
 }
@@ -69,11 +71,15 @@ export const DEFAULT_AREAS: ReadonlyArray<Pick<Area,'flower'|'name'|'tint'>> = [
 /** Custom area ("Eigener Bereich", C.3): generic flower in sage. */
 export const GENERIC_TINT = '#9CB59A';
 
-export const SCHEMA_VERSION = 1;
+/**
+ * Profile schema. 2 (Phase 5, H11): settings.landscape is a switch in Einstellungen with default 1;
+ * schema-1 profiles carry the old, never user-set default 0 and are read as 1 (repo/profile upgradeProfile).
+ */
+export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_SETTINGS: Profile['settings'] = {
   theme: 'light', dayStartHour: 5, eveningHour: 17, leftHanded: false,
-  reminderLeadMinutes: 10, animations: 'system', landscape: 0,
+  reminderLeadMinutes: 10, animations: 'system', landscape: 1,
 };
 
 export const MAX_FOCUS = 3;

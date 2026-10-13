@@ -39,3 +39,8 @@ export function linkMoodNote(day: Day, noteId: Id): Promise<void> {
     if (current && current.noteId !== noteId) await db.moodLogs.update(current.id, { noteId });
   });
 }
+
+/** liveQuery: all mood entries with day in [fromDay, toDay] (several per day possible, see newestMood). */
+export function moodsBetween$(fromDay: Day, toDay: Day): Observable<MoodLog[]> {
+  return liveQuery(async (): Promise<MoodLog[]> => (fromDay > toDay ? [] : db.moodLogs.where('day').between(fromDay, toDay, true, true).toArray()));
+}
