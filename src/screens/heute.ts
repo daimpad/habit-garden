@@ -54,7 +54,7 @@ import { habits$ } from '../repo/habits.js';
 import { mood$, setMood } from '../repo/moodLogs.js';
 import { noteCount$ } from '../repo/notes.js';
 import { profile$, updateProfile } from '../repo/profile.js';
-import { compareDue, completeTask, dueOn, getTask, reopenTask, subtaskProgress$ } from '../repo/tasks.js';
+import { compareDue, completeTask, dueOn, getTask, reopenTask, subtaskProgress$, type CompleteResult } from '../repo/tasks.js';
 import type { Route } from '../router.js';
 import { butterflyColor, contactStatuses, lastContactText, rhythmLabel, suggestions, type ContactStatus } from '../services/contacts.js';
 import { bestStreak, isScheduledOn, nextStage, stageFor, streak, weekProgress, type NextStage } from '../services/growth.js';
@@ -74,6 +74,7 @@ import { openFocusPick } from './sheets/focus-pick.js';
 import { openHabitEditor, rhythmText } from './sheets/habit.js';
 import { openJournal } from './sheets/journal.js';
 import { openPeopleSheet, openPersonSheet } from './sheets/people.js';
+import { doneMessage } from './sheets/task.js';
 
 type Period = Habit['period'];
 type MoodValue = 1 | 2 | 3 | 4 | 5;
@@ -1323,8 +1324,9 @@ class HeuteScreen {
       }
       return;
     }
+    let result: CompleteResult;
     try {
-      await completeTask(id);
+      result = await completeTask(id);
     } catch {
       this.focusOverride.delete(id);
       showToast(t.toastError);
@@ -1335,7 +1337,7 @@ class HeuteScreen {
     if (this.destroyed || this.checkSeq.get(id) !== seq) return;
     const current = this.focus?.tasks ?? [];
     const completesAll = current.length >= 1 && current.every((task) => this.focusDone(task));
-    showToast(t.toastDone, {
+    showToast(doneMessage(result), {
       action: {
         label: t.actionUndo,
         onAction: () => {
@@ -2136,8 +2138,9 @@ class HeuteScreen {
     this.leaving.set(id, entry);
     row.setAttribute('data-done', '');
     this.renderDue();
+    let result: CompleteResult;
     try {
-      await completeTask(id);
+      result = await completeTask(id);
     } catch {
       window.clearTimeout(entry.timer);
       this.leaving.delete(id);
@@ -2148,7 +2151,7 @@ class HeuteScreen {
       return;
     }
     if (this.destroyed || this.checkSeq.get(id) !== seq || entry.cancelled) return;
-    showToast(t.toastDone, { action: { label: t.actionUndo, onAction: () => this.undoDue(id) } });
+    showToast(doneMessage(result), { action: { label: t.actionUndo, onAction: () => this.undoDue(id) } });
   }
 
   private undoDue(id: Id): void {
