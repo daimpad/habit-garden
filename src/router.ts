@@ -23,6 +23,7 @@ import { appPath, appUrl } from './util/base.js';
 export type Tab = 'heute' | 'planung' | 'wissen';
 export type RouteName =
   | 'start' | 'heute' | 'planung' | 'planung-inbox' | 'planung-project'
+  | 'heute-review' | 'heute-day'
   | 'wissen' | 'wissen-note' | 'einstellungen' | 'aufgabe' | 'gewohnheit';
 
 export interface Route {
@@ -58,6 +59,8 @@ interface Pattern {
 const PATTERNS: readonly Pattern[] = [
   { name: 'start', parts: ['start'], tab: null },
   { name: 'heute', parts: ['heute'], tab: 'heute' },
+  { name: 'heute-review', parts: ['heute', 'rueckblick'], tab: 'heute' },
+  { name: 'heute-day', parts: ['heute', 'tag', ':day'], tab: 'heute' },
   { name: 'planung', parts: ['planung'], tab: 'planung' },
   { name: 'planung-inbox', parts: ['planung', 'inbox'], tab: 'planung' },
   { name: 'planung-project', parts: ['planung', 'p', ':projectId'], tab: 'planung' },
@@ -307,6 +310,9 @@ export function navigate(path: string, opts: NavigateOptions = {}): void {
 function parentHref(route: Route): string {
   if (route.overlay) return routeHref(base ?? homeRoute());
   switch (route.name) {
+    case 'heute-review':
+    case 'heute-day':
+      return '/heute';
     case 'planung-inbox':
     case 'planung-project':
       return '/planung';

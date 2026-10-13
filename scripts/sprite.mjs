@@ -19,6 +19,10 @@ export const ICONS = [
   'folder', 'folder-input', 'folder-plus', 'sunrise',
   // Note editor (Phase 4)
   'bold', 'italic', 'heading', 'list', 'list-ordered', 'list-todo', 'code', 'redo-2', 'pin', 'pin-off', 'eye', 'file-x', 'link', 'square-check',
+  // Rückblick (Phase 5)
+  'bar-chart-3',
+  // Kalender und Tagesansicht (Phase 5)
+  'chevron-left', 'circle',
 ];
 
 const parts = [];

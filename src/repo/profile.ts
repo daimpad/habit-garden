@@ -15,9 +15,26 @@ export function defaultProfile(): Profile {
   };
 }
 
+/**
+ * One-time upgrade of a stored or imported profile to SCHEMA_VERSION (in place, returns it).
+ * Schema 1 → 2: no UI could set settings.landscape before Phase 5, so its stored 0 is the old
+ * default and becomes 1 (on); a missing or invalid value is on as well. Reads upgrade on the fly
+ * (liveQuery cannot write); the next profile write stores the upgraded record.
+ */
+export function upgradeProfile(profile: Profile): Profile {
+  if (!(profile.schemaVersion >= 2)) {
+    profile.settings.landscape = 1;
+    profile.schemaVersion = SCHEMA_VERSION;
+  } else if (profile.settings.landscape !== 0 && profile.settings.landscape !== 1) {
+    profile.settings.landscape = 1;
+  }
+  return profile;
+}
+
 /** Stored profile, or an unsaved default profile (onboardingDone 0) before onboarding. */
 export async function getProfile(): Promise<Profile> {
-  return (await db.profile.get('profile')) ?? defaultProfile();
+  const stored = await db.profile.get('profile');
+  return stored ? upgradeProfile(stored) : defaultProfile();
 }
 
 /** liveQuery of the profile (default profile while none is stored). */
@@ -28,7 +45,7 @@ export function profile$(): Observable<Profile> {
 /** Read-modify-write of the stored profile (created from the default when missing). */
 function mutateProfile(fn: (profile: Profile) => void): Promise<void> {
   return db.transaction('rw', db.profile, async () => {
-    const profile = structuredClone((await db.profile.get('profile')) ?? defaultProfile());
+    const profile = upgradeProfile(structuredClone((await db.profile.get('profile')) ?? defaultProfile()));
     fn(profile);
     profile.key = 'profile';
     await db.profile.put(profile);
@@ -73,7 +90,7 @@ export function completeOnboarding(areas: ReadonlyArray<Pick<Area, 'name' | 'flo
   }
   return db.transaction('rw', db.profile, db.areas, async () => {
     const stamp = nowIso();
-    const profile = structuredClone((await db.profile.get('profile')) ?? defaultProfile());
+    const profile = upgradeProfile(structuredClone((await db.profile.get('profile')) ?? defaultProfile()));
     profile.onboardingDone = 1;
     await db.profile.put(profile);
     const existing = await db.areas.orderBy('sortKey').toArray();

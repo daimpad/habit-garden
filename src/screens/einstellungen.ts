@@ -14,8 +14,9 @@
 //   the UI preferences in localStorage, then location.replace('/start') under the base path (S40).
 // - Benachrichtigungen (S13): permission state (re-read on focus/visibility), default lead time, hint.
 // - Darstellung (S38): Profile.settings is the source of truth; 'theme' also goes to localStorage as the
-//   pre-paint cache. 'System' renders light until dark mode exists (TODO(phase-5)). main.ts applies
-//   data-motion and the FAB side from the profile.
+//   pre-paint cache (app/theme-boot.js). Thema Hell / Dunkel / System (System follows prefers-color-scheme
+//   live); Landschaft switches the sky of the HEUTE garden (H11). main.ts applies data-theme, data-motion,
+//   data-landscape and the FAB side from the profile.
 // - Bereiche: rename inline, archive/reactivate (the last active area stays active), create with a flower
 //   choice; the tint comes from DEFAULT_AREAS for that flower, GENERIC_TINT for 'generic'.
 //   Reorder (A.3): "Reihenfolge ändern" switches the rows from rename/archive to up/down buttons (48 px,
@@ -171,6 +172,8 @@ interface Els {
   seedBtn: OlButton;
   lead: HTMLSelectElement;
   theme: OlSegmented;
+  landscape: OlCheckbox;
+  landscapeText: HTMLElement;
   left: OlCheckbox;
   leftText: HTMLElement;
   animations: OlSegmented;
@@ -335,6 +338,7 @@ class SettingsScreen {
         <span class="ol-settings__label" id="settings-theme-label">${t.theme}</span>
         <ol-segmented class="ol-settings__theme" aria-labelledby="settings-theme-label">
           <button type="button" data-value="light">${t.themeLight}</button>
+          <button type="button" data-value="dark">${t.themeDark}</button>
           <button type="button" data-value="system">${t.themeSystem}</button>
         </ol-segmented>
       </div>
@@ -344,6 +348,13 @@ class SettingsScreen {
           <span class="ol-settings__hint" id="settings-left-hint">${t.leftHandedHint}</span>
         </div>
         <ol-checkbox class="ol-settings__left" label="${t.leftHanded}" aria-describedby="settings-left-hint"></ol-checkbox>
+      </div>
+      <div class="ol-settings__item ol-settings__switch">
+        <div class="ol-settings__switch-text ol-settings__landscape-text">
+          <span class="ol-settings__strong">${t.landscape}</span>
+          <span class="ol-settings__hint" id="settings-landscape-hint">${t.landscapeHint}</span>
+        </div>
+        <ol-checkbox class="ol-settings__landscape" label="${t.landscape}" aria-describedby="settings-landscape-hint"></ol-checkbox>
       </div>
       <div class="ol-settings__item">
         <span class="ol-settings__label" id="settings-motion-label">${t.animations}</span>
@@ -418,8 +429,10 @@ class SettingsScreen {
       seedBtn: req<OlButton>(v, '.ol-settings__seed'),
       lead: req<HTMLSelectElement>(v, '.ol-settings__lead'),
       theme: req<OlSegmented>(v, '.ol-settings__theme'),
+      landscape: req<OlCheckbox>(v, '.ol-settings__landscape'),
+      landscapeText: req<HTMLElement>(v, '.ol-settings__landscape-text'),
       left: req<OlCheckbox>(v, '.ol-settings__left'),
-      leftText: req<HTMLElement>(v, '.ol-settings__switch-text'),
+      leftText: req<HTMLElement>(v, '.ol-settings__switch-text:not(.ol-settings__landscape-text)'),
       animations: req<OlSegmented>(v, '.ol-settings__motion'),
       dayStart: req<HTMLSelectElement>(v, '.ol-settings__day-start'),
       evening: req<HTMLSelectElement>(v, '.ol-settings__evening'),
@@ -462,8 +475,7 @@ class SettingsScreen {
     els.evening.addEventListener('change', () => this.save({ eveningHour: Number(els.evening.value) }));
     els.theme.addEventListener('ol-change', (event) => {
       const value = (event as CustomEvent<SegmentedChange>).detail.value;
-      if (value !== 'light' && value !== 'system') return;
-      // TODO(phase-5): dark mode; until then 'system' renders the light theme (S38).
+      if (value !== 'light' && value !== 'dark' && value !== 'system') return;
       this.save({ theme: value });
       try {
         localStorage.setItem('theme', value);
@@ -480,6 +492,10 @@ class SettingsScreen {
     });
     // The text next to the switch toggles it as well (larger target, like a <label>).
     els.leftText.addEventListener('click', () => els.left.click());
+    els.landscape.addEventListener('ol-change', (event) => {
+      this.save({ landscape: (event as CustomEvent<CheckboxChange>).detail.checked ? 1 : 0 });
+    });
+    els.landscapeText.addEventListener('click', () => els.landscape.click());
 
     els.areaList.addEventListener('click', this.onAreaClick);
     els.reorderBtn.addEventListener('click', () => this.toggleReorder());
@@ -534,6 +550,7 @@ class SettingsScreen {
     const s = profile.settings;
     const els = this.els;
     setAttr(els.theme, 'value', s.theme);
+    if (els.landscape.checked !== (s.landscape === 1)) els.landscape.checked = s.landscape === 1;
     setAttr(els.animations, 'value', s.animations);
     if (els.left.checked !== s.leftHanded) els.left.checked = s.leftHanded;
     setSelect(els.lead, s.reminderLeadMinutes, (n) => fmt(t.minutesValue, { n }));

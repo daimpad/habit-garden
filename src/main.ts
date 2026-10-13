@@ -48,7 +48,9 @@ import {
   type Route, type RouteChange, type RouteName,
 } from './router.js';
 import * as einstellungenScreen from './screens/einstellungen.js';
+import * as dayScreen from './screens/day.js';
 import * as heuteScreen from './screens/heute.js';
+import * as reviewScreen from './screens/review.js';
 import * as planungScreen from './screens/planung.js';
 import { planningContext } from './screens/planung.js';
 import { openCapture } from './screens/sheets/capture.js';
@@ -60,7 +62,7 @@ import * as wissenScreen from './screens/wissen.js';
 import { wissenContext } from './screens/wissen.js';
 import { startReminders } from './services/reminders.js';
 import { appPath } from './util/base.js';
-import { onDayChange } from './util/date.js';
+import { isDay, onDayChange, today } from './util/date.js';
 import { h, motionReduced, render } from './util/dom.js';
 
 type ScreenMount = (view: HTMLElement, route: Route) => () => void;
@@ -71,6 +73,10 @@ function screenFor(name: RouteName): ScreenMount | null {
       return startScreen.mount;
     case 'heute':
       return heuteScreen.mount;
+    case 'heute-review':
+      return reviewScreen.mount;
+    case 'heute-day':
+      return dayScreen.mount;
     case 'planung':
     case 'planung-inbox':
     case 'planung-project':
@@ -145,6 +151,23 @@ function ensureSingleton(tag: 'ol-toast' | 'ol-particles'): void {
 // ---------------------------------------------------------------------------
 // Settings
 
+// Theme (B.1): the setting light / dark / system resolves to html[data-theme="light" | "dark"];
+// 'system' follows prefers-color-scheme live. theme-boot.js sets the same attribute before the first paint.
+const DARK_QUERY = '(prefers-color-scheme: dark)';
+let themeSetting: Profile['settings']['theme'] = 'light';
+let darkQuery: MediaQueryList | null = null;
+
+function applyTheme(): void {
+  if (!darkQuery && typeof window.matchMedia === 'function') {
+    darkQuery = window.matchMedia(DARK_QUERY);
+    darkQuery.addEventListener('change', applyTheme);
+  }
+  const dark = themeSetting === 'dark' || (themeSetting === 'system' && darkQuery?.matches === true);
+  const theme = dark ? 'dark' : 'light';
+  const root = document.documentElement;
+  if (root.dataset['theme'] !== theme) root.dataset['theme'] = theme;
+}
+
 function applySettings(settings: Profile['settings']): void {
   const root = document.documentElement;
   if (settings.animations === 'reduced') {
@@ -152,10 +175,16 @@ function applySettings(settings: Profile['settings']): void {
   } else if (root.dataset['motion'] !== undefined) {
     delete root.dataset['motion'];
   }
-  // TODO(phase-5): dark mode. Until then 'system' (and 'dark') render the light theme.
-  if (root.dataset['theme'] !== 'light') root.dataset['theme'] = 'light';
+  themeSetting = settings.theme;
+  applyTheme();
+  // Landschaft (H11): off = flat sky band without sun, moon and clouds (screens.css).
+  if (settings.landscape === 0) {
+    if (root.dataset['landscape'] !== 'off') root.dataset['landscape'] = 'off';
+  } else if (root.dataset['landscape'] !== undefined) {
+    delete root.dataset['landscape'];
+  }
   try {
-    // Pre-paint cache only; Profile.settings stays the source of truth (S38).
+    // Pre-paint cache only (read by app/theme-boot.js); Profile.settings stays the source of truth (S38).
     if (localStorage.getItem('theme') !== settings.theme) localStorage.setItem('theme', settings.theme);
   } catch {
     // Storage blocked: nothing to cache.
@@ -251,10 +280,15 @@ function onFabClick(): void {
   try {
     // G1: PLANUNG pre-fills the selected area and, on a project screen, the project.
     const prefill = tab === 'planung' ? planningContext() : null;
+    const base = baseRoute();
+    const dayParam = base.name === 'heute-day' ? base.params['day'] : undefined;
+    const futureDay = dayParam && isDay(dayParam) && dayParam > today() ? dayParam : undefined;
     sheet = openCapture({
       type: 'task',
       ...(prefill?.areaId ? { areaId: prefill.areaId } : {}),
       ...(prefill?.projectId ? { projectId: prefill.projectId } : {}),
+      // Day view of a future day (H8): the new task is due on that day.
+      ...(futureDay ? { dueDay: futureDay } : {}),
     });
   } catch {
     return;
@@ -290,6 +324,8 @@ function depthOf(route: Route): number {
     case 'planung-inbox':
     case 'planung-project':
     case 'wissen-note':
+    case 'heute-review':
+    case 'heute-day':
     case 'einstellungen':
       return 1;
     default:

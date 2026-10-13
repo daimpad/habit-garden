@@ -6,7 +6,8 @@
 // separate onboardings (different ids).
 // The tables contacts and contactLogs (people, Dexie schema version 2) were added without a new
 // format version: the change is additive, so files written before simply lack them and import
-// as empty tables. Format version and profile.schemaVersion therefore stay 1.
+// as empty tables. The format version therefore stays 1. profile.schemaVersion 2 (Phase 5) only changes
+// the meaning of settings.landscape; files with schema 1 are upgraded on import (repo/profile upgradeProfile).
 import { db, TABLES, type TableName } from '../db.js';
 import {
   SCHEMA_VERSION, DEFAULT_SETTINGS,
@@ -15,7 +16,7 @@ import {
   type Profile, type Project, type Recurrence,
   type Reminder, type Tag, type Task,
 } from '../model.js';
-import { defaultProfile, updateProfile } from '../repo/profile.js';
+import { defaultProfile, updateProfile, upgradeProfile } from '../repo/profile.js';
 import { ensureTags, normalizeTagPath, tagChain } from '../repo/tags.js';
 import { CONTACT_KINDS } from './contacts.js';
 import { compareIso, deriveDueDay, isDay, isoAt, nowIso, today } from '../util/date.js';
@@ -272,6 +273,7 @@ function validateProfile(value: unknown, path: string): Profile {
   setOpt(profile, 'lastExportAt', optIso(r, 'lastExportAt', path));
   setOpt(profile, 'backupCardDismissedAt', optIso(r, 'backupCardDismissedAt', path));
   setOpt(profile, 'eveningCardDismissedFor', optDay(r, 'eveningCardDismissedFor', path));
+  setOpt(profile, 'reviewCardDismissedFor', optDay(r, 'reviewCardDismissedFor', path));
   if (present(r.planning)) profile.planning = validatePlanning(r.planning, `${path}.planning`);
   if (present(r.firstStepsDismissed)) {
     const steps = strings(r.firstStepsDismissed, `${path}.firstStepsDismissed`);
@@ -280,7 +282,8 @@ function validateProfile(value: unknown, path: string): Profile {
     });
     profile.firstStepsDismissed = [...new Set(steps)] as FirstStepId[];
   }
-  return profile;
+  // Files with profile schema 1 carry landscape 0 as the old default (see upgradeProfile).
+  return upgradeProfile(profile);
 }
 
 /** PLANUNG tab state (Phase 3): optional area id and a view per area key ('all' or an area id). */

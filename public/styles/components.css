@@ -343,6 +343,7 @@ ol-plant { display: inline-block; position: relative; flex: none; line-height: 0
 .ol-plant__wobble, .ol-plant__grow { transform-box: view-box; transform-origin: 80px 141px; }
 .ol-plant__pot { fill: var(--color-clay); }
 .ol-plant__sun { fill: var(--color-sun); }
+.ol-plant__grass { stroke: var(--garden-grass); }
 .ol-plant__ghost { pointer-events: none; }
 /* === /ol-plant === */
 
@@ -350,9 +351,9 @@ ol-plant { display: inline-block; position: relative; flex: none; line-height: 0
 ol-flower { display: inline-block; flex: none; line-height: 0; vertical-align: middle; }
 .ol-flower__svg { display: block; overflow: visible; }
 /* Token colours inside flora SVG (custom properties are unreliable in presentation attributes). */
-.ol-flower__outline { stroke: var(--color-primary); }
+.ol-flower__outline { stroke: var(--flora-outline); }
 .ol-flower__sun { fill: var(--color-sun); }
-.ol-flower__sage { fill: var(--color-sage); }
+.ol-flower__sage { fill: var(--flora-sage); }
 /* === /ol-flower === */
 
 /* === ol-particles === */
@@ -374,7 +375,7 @@ ol-particles, ol-particles[popover] {
 }
 .ol-particles__p--petal {
   width: 9px; height: 13px; margin: -6.5px 0 0 -4.5px;
-  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; background: var(--c, var(--color-sage));
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; background: var(--c, var(--flora-sage));
 }
 .ol-particles__p--white { box-shadow: inset 0 0 0 1px var(--color-primary); }
 .ol-particles__p--spark {
@@ -383,7 +384,7 @@ ol-particles, ol-particles[popover] {
 }
 .ol-particles__p--leaf {
   width: 8px; height: 12px; margin: -6px 0 0 -4px;
-  border-radius: 0 100% 0 100%; background: var(--color-sage);
+  border-radius: 0 100% 0 100%; background: var(--flora-sage);
 }
 .ol-particles__p--leaf-strong { background: var(--color-sage-strong); }
 /* === /ol-particles === */
