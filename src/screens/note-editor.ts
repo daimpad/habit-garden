@@ -5,18 +5,20 @@
 // Quelltext · Vorschau and ⋯ (Anheften/Lösen, Archivieren, Als Markdown exportieren, Löschen; the actions with
 // their toasts and Rückgängig come from screens/note-actions.ts, after the pending changes are saved). Body: the whole note in a textarea (title =
 // first line; journal notes keep their fixed title, shown as a caption). Dock (sticky above the bottom nav or
-// the on-screen keyboard via visualViewport): `#` suggestions, the status „Speichert …“/„Gespeichert“
-// (aria-live polite) and the toolbar B I H • 1. ☐ ⟨⟩ # ↶ ↷.
+// the on-screen keyboard via visualViewport): `#` / `[[` suggestions, the status „Speichert …“/„Gespeichert“
+// (aria-live polite) and the toolbar B I H • 1. ☐ ⟨⟩ # 🔗 ☑ ↶ ↷. Below the text: „Rückverweise“ (notes that link
+// here, tasks whose linkedNoteIds contain this note), hidden when empty.
 //
 // Details of this implementation:
 // - Autosave: 500 ms after the last input; at once on tag changes, blur, visibilitychange (hidden), pagehide
 //   and unmount. While the caret ends a `#tag` that is still being typed, the debounced save waits up to
 //   2.5 s without input (a short pause in "#gar…" would otherwise store the stray tag "gar"); such a tag
-//   joins the head chips at the same moment. Saves run one after another (saveNoteContent derives title and tagPaths); a failed save is
-//   retried after 3 s and shows a calm status line.
+//   joins the head chips at the same moment. Saves run one after another (saveNoteContent derives title and
+//   tagPaths); a failed save is retried after 3 s and shows a calm status line.
 // - Live updates of the note (e.g. a journal append from HEUTE) replace the text only while the textarea is
 //   not focused and nothing is unsaved or being saved; the undo history starts anew then.
-// - Leaving an empty note (only whitespace, no explicit tags, not a journal note) deletes it silently.
+// - Leaving a note without text (only whitespace; explicit tags do not count, a note from a filtered list
+//   starts with them; journal notes excepted) deletes it silently.
 // - Undo/redo: own snapshot stack (value + selection), since programmatic edits (setRangeText) bypass the
 //   native history. Typing is coalesced into bursts (same kind, < 1 s apart, a typed space or newline ends
 //   the word); Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+Y and beforeinput historyUndo/historyRedo use it.
@@ -28,8 +30,17 @@
 //   offers up to six existing tag paths (prefix of the path or a segment). ArrowDown/Up choose
 //   (aria-activedescendant), Enter takes the chosen one (without a choice Enter stays a line break), Tab takes
 //   the chosen or first one, Escape closes it for this token; a tap inserts the full path plus a space.
+//   Offered are only paths in use: the tagPaths of all notes (archived ones included) and their ancestors.
+// - `[[` (or the toolbar's „Notiz verlinken“) opens the same listbox with linkCandidates (query = text after
+//   `[[`); Enter/Tab take the chosen or first note, a tap the tapped one: `[[query` becomes
+//   `[Titel](note:<id>)`. No match → a hint row. Escape closes and keeps the text.
+// - „Aufgabe aus Zeile“ (toolbar and ⋯): the caret's line becomes a task in the first active area (inbox: no
+//   project, no date) with linkedNoteIds [this note]; a plain line or list item turns into `- [ ] …` (task
+//   items stay, headings, quotes, tables and code lines are left as they are). Toast with Rückgängig: deletes
+//   the task and restores the line if it is unchanged.
 // - Vorschau: renderMarkdown() (sanitized) via raw(); task boxes toggle with click/Space/Enter
-//   (toggleTaskLine, saved at once), tags navigate to /wissen?tag=…, links open in a new tab.
+//   (toggleTaskLine, saved at once), tags navigate to /wissen?tag=…, links open in a new tab, note links open
+//   the note in the app (missing notes: not clickable, aria-disabled).
 // - main.ts focuses the screen's <h1> (visually hidden, the note title) right after mount; once the note is
 //   loaded the textarea takes the focus with the caret at the start.
 import type { Subscription } from 'dexie';
@@ -37,20 +48,26 @@ import '../components/ol-chip.js';
 import '../components/ol-empty-state.js';
 import '../components/ol-icon-button.js';
 import '../components/ol-segmented.js';
+import { showToast } from '../components/ol-toast.js';
 import { fmt, t } from '../i18n/de.js';
-import type { Id, Note, Tag } from '../model.js';
-import { deleteNote, getNote, note$, saveNoteContent, tags$ } from '../repo/notes.js';
+import type { Id, Note, Task } from '../model.js';
+import { firstActiveArea } from '../repo/areas.js';
+import { deleteNote, getNote, note$, notes$, saveNoteContent } from '../repo/notes.js';
+import { createTask, deleteTask, linkedTasks$ } from '../repo/tasks.js';
 import { normalizeTagPath, normalizeTagPaths } from '../repo/tags.js';
 import { back, type Route } from '../router.js';
 import {
-  continueList, cycleHeading, insertTagMark, renderMarkdown, suggestTags, tagTokenAt, toggleCode, toggleInline,
-  toggleLines, toggleTaskLine, type TagToken, type TextEdit,
+  applyEdit, continueList, cycleHeading, insertLinkMark, insertTagMark, linkTokenAt, renderMarkdown, suggestTags, tagTokenAt,
+  toggleCode, toggleInline, toggleLines, toggleTaskLine, type TagToken, type TextEdit,
 } from '../services/markdown.js';
-import { deriveTitle, explicitTags, inlineTags, tagQueryString } from '../services/notes.js';
+import {
+  backlinksOf, deriveTitle, explicitTags, inlineTags, lineAt, linkCandidates, noteLinkMarkdown, tagQueryString,
+  taskTitleFromLine,
+} from '../services/notes.js';
 import { emit, h, icon, raw, render, setVar, type SafeHtml } from '../util/dom.js';
 import { exportNotesMarkdown } from '../services/notes-export.js';
 import { archiveNote, deleteNoteAsked, togglePin } from './note-actions.js';
-import { openActionMenu } from './sheets/task.js';
+import { failed, openActionMenu } from './sheets/task.js';
 
 const SAVE_DELAY = 500;
 const RETRY_DELAY = 3000;
@@ -61,7 +78,7 @@ const SUGGEST_MAX = 6;
 const TAG_HOLD_MS = 2500;
 
 type Mode = 'source' | 'preview';
-type Tool = 'bold' | 'italic' | 'heading' | 'bullet' | 'ordered' | 'task' | 'code' | 'tag' | 'undo' | 'redo';
+type Tool = 'bold' | 'italic' | 'heading' | 'bullet' | 'ordered' | 'task' | 'code' | 'tag' | 'link' | 'taskline' | 'undo' | 'redo';
 type Status = '' | 'saving' | 'saved' | 'failed';
 
 interface ToolDef { tool: Tool; icon: string; label: string; keys?: string }
@@ -75,6 +92,8 @@ const FORMAT_TOOLS: readonly ToolDef[] = [
   { tool: 'task', icon: 'list-todo', label: t.noteToolTask },
   { tool: 'code', icon: 'code', label: t.noteToolCode },
   { tool: 'tag', icon: 'hash', label: t.noteToolTag },
+  { tool: 'link', icon: 'link', label: t.noteToolLink },
+  { tool: 'taskline', icon: 'square-check', label: t.noteToolTaskFromLine },
 ];
 const HISTORY_TOOLS: readonly ToolDef[] = [
   { tool: 'undo', icon: 'undo-2', label: t.noteToolUndo, keys: 'Control+Z Meta+Z' },
@@ -82,7 +101,15 @@ const HISTORY_TOOLS: readonly ToolDef[] = [
 ];
 
 interface Snap { value: string; start: number; end: number }
-interface Suggest { token: TagToken; items: string[]; active: number }
+/** One row of a suggestion listbox; a hint row (no match) cannot be chosen. */
+interface Option { key: string; label: string; icon: string; hint?: boolean }
+/** Open suggestions in the textarea: `#tag` (replace [start, end)) or `[[query` (replace [start, caret)). */
+interface Suggest { kind: 'tag' | 'note'; start: number; end: number; anchor: number; items: Option[]; active: number }
+/** A line turned into a task item by „Aufgabe aus Zeile“ (for Rückgängig). */
+interface LineChange { start: number; before: string; after: string }
+
+const TASK_ITEM = /^\s*(?:>\s*)*[-*+][ \t]+\[[ xX]\][ \t]/u;
+const NO_TASK_LINE = /^\s*(?:>|\||#{1,6}\s|`{3,}|~{3,})|^ {4}/u;
 
 let seq = 0;
 
@@ -110,6 +137,10 @@ function isMod(event: KeyboardEvent): boolean {
   return event.ctrlKey || event.metaKey;
 }
 
+function tagOptions(paths: readonly string[]): Option[] {
+  return paths.map((path) => ({ key: path, label: path, icon: 'hash' }));
+}
+
 /** Text of a list item without its nested lists (accessible name of a task box). */
 function itemText(li: Element | null): string {
   if (!li) return '';
@@ -135,7 +166,13 @@ class NoteEditor {
   private missing = false;
   private body = '';
   private explicit: string[] = [];
+  /** Tag paths in use (all notes' tagPaths and their ancestors): the suggestions. */
   private tagPaths: string[] = [];
+  private allNotes: Note[] = [];
+  /** Ids of all notes (for missing note links in the preview); null until loaded. */
+  private noteIds: Set<string> | null = null;
+  private linkedTasks: Task[] = [];
+  private backlinksKey = '';
   private mode: Mode = 'source';
 
   private savedSig = '';
@@ -152,8 +189,8 @@ class NoteEditor {
   private lastEditAt = 0;
 
   private suggest: Suggest | null = null;
-  /** '#' position whose suggestions were closed with Escape (until the caret leaves that token). */
-  private dismissedAt: number | null = null;
+  /** `kind:anchor` of the suggestions closed with Escape (until the caret leaves that token). */
+  private dismissed: string | null = null;
   private tagItems: string[] = [];
   private tagActive = -1;
   private tagsKey = '';
@@ -174,6 +211,7 @@ class NoteEditor {
   private readonly statusEl: HTMLElement;
   private readonly toolbar: HTMLElement;
   private readonly goneEl: HTMLElement;
+  private readonly backlinksEl: HTMLElement;
 
   constructor(private readonly view: HTMLElement, private readonly id: Id) {
     this.renderSkeleton();
@@ -194,6 +232,7 @@ class NoteEditor {
     this.statusEl = req(v, '.ol-note__status');
     this.toolbar = req(v, '.ol-note__toolbar');
     this.goneEl = req(v, '.ol-note__gone');
+    this.backlinksEl = req(v, '.ol-note__backlinks');
     this.bind();
   }
 
@@ -205,10 +244,14 @@ class NoteEditor {
         next: (note) => this.guard(() => this.onNote(note)),
         error: (err: unknown) => console.error(err),
       }));
-      this.subs.push(tags$().subscribe({
-        next: (tags: Tag[]) => this.guard(() => {
-          this.tagPaths = tags.map((tag) => tag.path);
-          if (!this.tagForm.hidden) this.updateTagSuggestions();
+      this.subs.push(notes$(true).subscribe({
+        next: (notes: Note[]) => this.guard(() => this.onNotes(notes)),
+        error: (err: unknown) => console.error(err),
+      }));
+      this.subs.push(linkedTasks$(this.id).subscribe({
+        next: (tasks: Task[]) => this.guard(() => {
+          this.linkedTasks = tasks;
+          this.renderBacklinks();
         }),
         error: (err: unknown) => console.error(err),
       }));
@@ -230,8 +273,8 @@ class NoteEditor {
       window.clearTimeout(this.saveTimer);
       return;
     }
-    if (note.kind !== 'journal' && this.body.trim() === '' && this.explicit.length === 0) {
-      // An untouched (or emptied) note is not kept.
+    if (note.kind !== 'journal' && this.body.trim() === '') {
+      // A note without text is not kept (explicit tags alone come from a filtered list).
       window.clearTimeout(this.saveTimer);
       const id = this.id;
       void this.chain.then(() => deleteNote(id)).catch((err: unknown) => console.error(err));
@@ -284,6 +327,10 @@ class NoteEditor {
             autocapitalize="sentences" aria-autocomplete="list" aria-controls="${id}-suggest"></textarea>
           <div class="ol-note__preview ol-md" hidden></div>
         </div>
+        <section class="ol-note__backlinks" aria-labelledby="${id}-backlinks" hidden>
+          <h2 class="ol-label" id="${id}-backlinks">${t.noteBacklinks}</h2>
+          <ul class="ol-note__backlink-list"></ul>
+        </section>
         <div class="ol-note__dock">
           <ul class="ol-note__listbox ol-note__suggest" id="${id}-suggest" role="listbox" aria-label="${t.noteTagSuggestions}" hidden></ul>
           <p class="ol-note__status ol-caption" role="status" aria-live="polite"></p>
@@ -338,12 +385,20 @@ class NoteEditor {
       list.addEventListener('mousedown', (event) => event.preventDefault());
     }
     this.listen(this.suggestEl, 'click', (event) => {
-      const path = this.optionPath(event);
-      if (path) this.acceptSuggest(path);
+      const key = this.optionKey(event);
+      if (key) this.acceptSuggest(key);
     });
     this.listen(this.tagListbox, 'click', (event) => {
-      const path = this.optionPath(event);
-      if (path) this.commitTag(path, true);
+      const key = this.optionKey(event);
+      if (key) this.commitTag(key, true);
+    });
+    this.listen(this.backlinksEl, 'click', (event) => {
+      const button = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-path]') : null;
+      const path = button?.dataset['path'];
+      if (button && path) {
+        void this.flush();
+        emit(button, 'ol-navigate', { path });
+      }
     });
 
     // Toolbar
@@ -770,6 +825,10 @@ class NoteEditor {
       this.redo();
       return;
     }
+    if (tool === 'taskline') {
+      void this.taskFromLine();
+      return;
+    }
     const ta = this.ta;
     const value = ta.value;
     const s = ta.selectionStart;
@@ -793,7 +852,11 @@ class NoteEditor {
         break;
       case 'tag':
         edit = insertTagMark(value, s, e);
-        this.dismissedAt = null;
+        this.dismissed = null;
+        break;
+      case 'link':
+        edit = insertLinkMark(value, s, e);
+        this.dismissed = null;
         break;
     }
     this.apply(edit);
@@ -885,7 +948,8 @@ class NoteEditor {
       render(el, h`<p class="ol-note__preview-empty">${t.notePreviewEmpty}</p>`);
       return;
     }
-    render(el, raw(renderMarkdown(this.body)));
+    render(el, raw(renderMarkdown(this.body, this.noteIds ? { notes: this.noteIds } : {})));
+    for (const link of el.querySelectorAll<HTMLElement>('.ol-md-note--missing')) link.title = t.noteLinkMissing;
     for (const tag of el.querySelectorAll<HTMLElement>('.ol-md-tag')) {
       tag.setAttribute('role', 'link');
       tag.tabIndex = 0;
@@ -903,6 +967,15 @@ class NoteEditor {
     if (check) {
       const line = Number(check.dataset['line']);
       this.toggleTask(line);
+      return;
+    }
+    const link = target?.closest<HTMLElement>('.ol-md-note');
+    if (link) {
+      event.preventDefault();
+      const id = link.dataset['note'];
+      if (!id || link.classList.contains('ol-md-note--missing')) return;
+      void this.flush();
+      emit(link, 'ol-navigate', { path: `/wissen/n/${encodeURIComponent(id)}` });
       return;
     }
     const tag = target?.closest<HTMLElement>('.ol-md-tag');
@@ -982,7 +1055,7 @@ class NoteEditor {
     const items = suggestTags(this.tagPaths, this.tagInput.value, exclude, SUGGEST_MAX);
     if (items.join('\n') !== this.tagItems.join('\n')) this.tagActive = -1;
     this.tagItems = items;
-    this.renderOptions(this.tagListbox, this.tagInput, items, this.tagActive);
+    this.renderOptions(this.tagListbox, this.tagInput, tagOptions(items), this.tagActive);
   }
 
   private onTagKey(event: KeyboardEvent): void {
@@ -990,11 +1063,11 @@ class NoteEditor {
     if (event.key === 'ArrowDown' && n > 0) {
       event.preventDefault();
       this.tagActive = (this.tagActive + 1) % n;
-      this.renderOptions(this.tagListbox, this.tagInput, this.tagItems, this.tagActive);
+      this.renderOptions(this.tagListbox, this.tagInput, tagOptions(this.tagItems), this.tagActive);
     } else if (event.key === 'ArrowUp' && n > 0) {
       event.preventDefault();
       this.tagActive = this.tagActive <= 0 ? n - 1 : this.tagActive - 1;
-      this.renderOptions(this.tagListbox, this.tagInput, this.tagItems, this.tagActive);
+      this.renderOptions(this.tagListbox, this.tagInput, tagOptions(this.tagItems), this.tagActive);
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const chosen = this.tagItems[this.tagActive];
@@ -1006,7 +1079,7 @@ class NoteEditor {
     }
   }
 
-  // --- `#` autocomplete in the textarea ---
+  // --- `#` and `[[` suggestions in the textarea ---
 
   private updateSuggest(): void {
     const ta = this.ta;
@@ -1015,25 +1088,42 @@ class NoteEditor {
       this.closeSuggest();
       return;
     }
-    const token = tagTokenAt(ta.value, ta.selectionStart);
-    if (!token) {
-      this.dismissedAt = null;
+    const caret = ta.selectionStart;
+    const next = this.linkSuggest(caret) ?? this.tagSuggest(caret);
+    if (!next) {
+      this.dismissed = null;
       this.closeSuggest();
       return;
     }
-    if (this.dismissedAt === token.hash) {
-      this.closeSuggest();
-      return;
-    }
-    const items = suggestTags(this.tagPaths, token.query, new Set(), SUGGEST_MAX);
-    if (items.length === 0) {
+    if (this.dismissed === `${next.kind}:${next.anchor}`) {
       this.closeSuggest();
       return;
     }
     const prev = this.suggest;
-    const active = prev && prev.items.join('\n') === items.join('\n') ? prev.active : -1;
-    this.suggest = { token, items, active };
-    this.renderOptions(this.suggestEl, ta, items, active);
+    const same = prev !== null && prev.kind === next.kind && prev.items.map((o) => o.key).join('\n') === next.items.map((o) => o.key).join('\n');
+    next.active = same ? prev.active : -1;
+    this.suggest = next;
+    this.renderOptions(this.suggestEl, ta, next.items, next.active);
+  }
+
+  private linkSuggest(caret: number): Suggest | null {
+    const token = linkTokenAt(this.ta.value, caret);
+    if (!token) return null;
+    const notes = linkCandidates(this.allNotes.filter((n) => n.archived === 0), token.query, this.id, SUGGEST_MAX);
+    const items: Option[] = notes.length > 0
+      ? notes.map((n) => ({ key: n.id, label: n.title, icon: 'notebook-pen' }))
+      : [{ key: '', label: t.noteLinkNone, icon: 'search', hint: true }];
+    this.suggestEl.setAttribute('aria-label', t.noteLinkSuggestions);
+    return { kind: 'note', start: token.start, end: caret, anchor: token.start, items, active: -1 };
+  }
+
+  private tagSuggest(caret: number): Suggest | null {
+    const token: TagToken | null = tagTokenAt(this.ta.value, caret);
+    if (!token) return null;
+    const paths = suggestTags(this.tagPaths, token.query, new Set(), SUGGEST_MAX);
+    if (paths.length === 0) return null;
+    this.suggestEl.setAttribute('aria-label', t.noteTagSuggestions);
+    return { kind: 'tag', start: token.start, end: token.end, anchor: token.hash, items: tagOptions(paths), active: -1 };
   }
 
   private closeSuggest(): void {
@@ -1046,49 +1136,66 @@ class NoteEditor {
   private onSuggestKey(event: KeyboardEvent): boolean {
     const s = this.suggest;
     if (!s || event.altKey || isMod(event)) return false;
-    const n = s.items.length;
+    const choosable = s.items.map((o, i) => (o.hint ? -1 : i)).filter((i) => i >= 0);
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (choosable.length === 0) return false;
       event.preventDefault();
-      s.active = event.key === 'ArrowDown' ? (s.active + 1) % n : s.active <= 0 ? n - 1 : s.active - 1;
+      const at = choosable.indexOf(s.active);
+      const n = choosable.length;
+      const next = event.key === 'ArrowDown' ? (at + 1) % n : at <= 0 ? n - 1 : at - 1;
+      s.active = choosable[next] ?? -1;
       this.renderOptions(this.suggestEl, this.ta, s.items, s.active);
       return true;
     }
-    if (event.key === 'Enter' && !event.shiftKey && s.active >= 0) {
+    // `#`: Enter only takes an option chosen with the arrows (else it is a line break); `[[`: the first one.
+    const pick = s.active >= 0 ? s.active : s.kind === 'note' ? choosable[0] ?? -1 : -1;
+    if (event.key === 'Enter' && !event.shiftKey && pick >= 0) {
       event.preventDefault();
-      this.acceptSuggest(s.items[s.active] ?? '');
+      this.acceptSuggest(s.items[pick]?.key ?? '');
       return true;
     }
-    if (event.key === 'Tab' && !event.shiftKey) {
+    if (event.key === 'Tab' && !event.shiftKey && choosable.length > 0) {
       event.preventDefault();
-      this.acceptSuggest(s.items[Math.max(0, s.active)] ?? '');
+      this.acceptSuggest(s.items[s.active >= 0 ? s.active : choosable[0] ?? 0]?.key ?? '');
       return true;
     }
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      this.dismissedAt = s.token.hash;
+      this.dismissed = `${s.kind}:${s.anchor}`;
       this.closeSuggest();
       return true;
     }
     return false;
   }
 
-  /** Replaces the `#token` with the full path and a space. */
-  private acceptSuggest(path: string): void {
+  /** `#token` → full path plus a space; `[[query` → `[Titel](note:<id>)`. */
+  private acceptSuggest(key: string): void {
     const s = this.suggest;
-    if (!s || path === '') return;
-    const { start, end } = s.token;
+    if (!s || key === '') return;
     const ta = this.ta;
-    const spaced = ta.value[end] === ' ';
-    const caret = start + path.length + 1;
+    let text: string;
+    let caret: number;
+    if (s.kind === 'tag') {
+      const spaced = ta.value[s.end] === ' ';
+      text = spaced ? key : `${key} `;
+      caret = s.start + key.length + 1;
+    } else {
+      const note = this.allNotes.find((n) => n.id === key);
+      if (!note) return;
+      text = noteLinkMarkdown(note.title, note.id);
+      caret = s.start + text.length;
+    }
     this.closeSuggest();
-    this.apply({ start, end, text: spaced ? path : `${path} `, selStart: caret, selEnd: caret });
+    this.apply({ start: s.start, end: s.end, text, selStart: caret, selEnd: caret });
     this.closeSuggest();
   }
 
-  private renderOptions(list: HTMLElement, owner: HTMLElement, items: readonly string[], active: number): void {
+  private renderOptions(list: HTMLElement, owner: HTMLElement, items: readonly Option[], active: number): void {
     const base = list.id;
-    render(list, h`${items.map((path, i) => h`<li class="ol-note__option" role="option" id="${base}-${i}" data-path="${path}" aria-selected="${i === active ? 'true' : 'false'}">${icon('hash', 20)}<span>${path}</span></li>`)}`);
+    render(list, h`${items.map((o, i) => (o.hint
+      ? h`<li class="ol-note__option ol-note__option--hint" role="option" id="${base}-${i}" aria-disabled="true" aria-selected="false">${icon(o.icon, 20)}<span>${o.label}</span></li>`
+      : h`<li class="ol-note__option" role="option" id="${base}-${i}" data-key="${o.key}" aria-selected="${i === active ? 'true' : 'false'}">${icon(o.icon, 20)}<span>${o.label}</span></li>`))}`);
     list.hidden = items.length === 0;
     if (owner.getAttribute('role') === 'combobox') owner.setAttribute('aria-expanded', items.length > 0 ? 'true' : 'false');
     if (active >= 0 && items.length > 0) {
@@ -1099,9 +1206,99 @@ class NoteEditor {
     }
   }
 
-  private optionPath(event: Event): string | undefined {
+  private optionKey(event: Event): string | undefined {
     const option = event.target instanceof Element ? event.target.closest<HTMLElement>('[role="option"]') : null;
-    return option?.dataset['path'];
+    return option?.dataset['key'];
+  }
+
+  // --- All notes: tag paths, link targets, backlinks ---
+
+  private onNotes(notes: Note[]): void {
+    this.allNotes = notes;
+    const paths = new Set<string>();
+    for (const note of notes) {
+      for (const path of note.tagPaths) {
+        const parts = path.split('/');
+        for (let i = 1; i <= parts.length; i++) paths.add(parts.slice(0, i).join('/'));
+      }
+    }
+    this.tagPaths = [...paths].sort((a, b) => a.localeCompare(b, 'de'));
+    const ids = new Set(notes.map((n) => n.id));
+    const changed = this.noteIds === null || ids.size !== this.noteIds.size || [...ids].some((id) => !this.noteIds?.has(id));
+    this.noteIds = ids;
+    if (changed && this.mode === 'preview') this.renderPreview();
+    if (!this.tagForm.hidden) this.updateTagSuggestions();
+    this.renderBacklinks();
+  }
+
+  private renderBacklinks(): void {
+    const notes = backlinksOf(this.allNotes, this.id);
+    const tasks = this.linkedTasks;
+    const key = JSON.stringify([notes.map((n) => [n.id, n.title]), tasks.map((x) => [x.id, x.title, x.status])]);
+    if (key === this.backlinksKey) return;
+    this.backlinksKey = key;
+    this.backlinksEl.hidden = notes.length + tasks.length === 0;
+    const row = (path: string, glyph: string, title: string, kind: string): SafeHtml => h`<li><button type="button" class="ol-note__backlink" data-path="${path}">
+      <span class="ol-note__backlink-icon" aria-hidden="true">${icon(glyph, 20)}</span>
+      <span class="ol-note__backlink-text"><span class="ol-note__backlink-title">${title}</span><span class="ol-note__backlink-kind ol-caption">${kind}</span></span>
+      <span class="ol-note__backlink-chevron" aria-hidden="true">${icon('chevron-right', 20)}</span>
+    </button></li>`;
+    render(req(this.backlinksEl, '.ol-note__backlink-list'), h`${notes.map((n) => row(`/wissen/n/${encodeURIComponent(n.id)}`, 'notebook-pen', n.title || t.wissenUntitled, t.noteBacklinkNote))}${
+      tasks.map((x) => row(`/aufgabe/${encodeURIComponent(x.id)}`, x.status === 'done' ? 'circle-check' : 'square-check', x.title, x.status === 'done' ? t.noteBacklinkTaskDone : t.noteBacklinkTask))}`);
+  }
+
+  // --- „Aufgabe aus Zeile“ ---
+
+  private async taskFromLine(): Promise<void> {
+    const line = lineAt(this.body, this.ta.selectionStart);
+    const title = taskTitleFromLine(line.text);
+    if (title === '') {
+      showToast(t.noteTaskLineEmpty);
+      return;
+    }
+    try {
+      const area = await firstActiveArea();
+      if (!area) {
+        showToast(t.noteTaskNoArea);
+        return;
+      }
+      const task = await createTask({ title, areaId: area.id, linkedNoteIds: [this.id] });
+      const change = this.markTaskLine(line);
+      showToast(t.toastNoteTaskCreated, { action: { label: t.actionUndo, onAction: () => void this.undoTaskFromLine(task.id, change) } });
+    } catch (err) {
+      failed(err);
+    }
+  }
+
+  /** Turns the line into `- [ ] …` when it is plain text or a list item (and still unchanged). */
+  private markTaskLine(line: { start: number; end: number; text: string }): LineChange | null {
+    if (this.destroyed || this.body.slice(line.start, line.end) !== line.text) return null;
+    if (TASK_ITEM.test(line.text) || NO_TASK_LINE.test(line.text)) return null;
+    const caret = Math.min(Math.max(this.ta.selectionStart, line.start), line.end);
+    const edit = toggleLines(this.body, caret, caret, 'task');
+    if (applyEdit(this.body, edit) === this.body) return null;
+    this.apply(edit);
+    void this.flush();
+    return { start: line.start, before: line.text, after: edit.text };
+  }
+
+  private async undoTaskFromLine(taskId: Id, change: LineChange | null): Promise<void> {
+    try {
+      await deleteTask(taskId);
+      if (!change) return;
+      const end = change.start + change.after.length;
+      if (!this.destroyed) {
+        if (this.body.slice(change.start, end) !== change.after) return;
+        this.apply({ start: change.start, end, text: change.before, selStart: change.start, selEnd: change.start });
+        void this.flush();
+        return;
+      }
+      const note = await getNote(this.id);
+      if (!note || note.body.slice(change.start, end) !== change.after) return;
+      await saveNoteContent(this.id, note.body.slice(0, change.start) + change.before + note.body.slice(end), explicitTags(note));
+    } catch (err) {
+      failed(err);
+    }
   }
 
   // --- ⋯ menu (shared note actions, screens/note-actions.ts) ---
@@ -1113,6 +1310,7 @@ class NoteEditor {
       note.pinned === 1
         ? { label: t.noteUnpin, icon: 'pin-off', run: () => void this.pin() }
         : { label: t.notePin, icon: 'pin', run: () => void this.pin() },
+      { label: t.noteToolTaskFromLine, icon: 'square-check', run: () => void this.taskFromLine() },
       { label: t.noteArchive, icon: 'archive', run: () => void this.archive() },
       { label: t.noteExportMarkdown, icon: 'download', run: () => void this.exportMarkdown() },
       { label: t.actionDelete, icon: 'trash-2', danger: true, run: () => void this.remove() },

@@ -1437,6 +1437,8 @@
 }
 .ol-note__option .ol-icon { color: var(--color-text-2); }
 @media (hover: hover) { .ol-note__option:hover { background-color: var(--color-overlay-hover); } }
+.ol-note__option--hint { color: var(--color-text-2); cursor: default; }
+@media (hover: hover) { .ol-note__option--hint:hover { background-color: transparent; } }
 .ol-note__option[aria-selected="true"] {
   background-color: var(--color-primary-soft); color: var(--color-primary); font-weight: 600;
   box-shadow: inset 0 0 0 1px var(--color-primary);
@@ -1499,6 +1501,26 @@
 .ol-note__tool[aria-disabled="true"] { opacity: .38; cursor: default; }
 .ol-note__gone { margin-top: var(--space-4); }
 
+/* Rückverweise: notes linking here and linked tasks, below the text */
+.ol-note__backlinks { margin-top: var(--space-5); }
+.ol-note__backlinks > .ol-label { margin-bottom: var(--space-2); }
+.ol-note__backlink-list {
+  display: grid; padding: var(--space-1); border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); background: var(--color-surface);
+}
+.ol-note__backlink-list > li + li { box-shadow: 0 -1px 0 color-mix(in srgb, var(--color-border) 60%, transparent); }
+.ol-note__backlink {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 52px; padding: var(--space-1) var(--space-3);
+  border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-text); font: inherit; text-align: left; cursor: pointer;
+}
+@media (hover: hover) { .ol-note__backlink:hover { background-color: var(--color-overlay-hover); } }
+.ol-note__backlink:active { background-color: var(--color-overlay-pressed); }
+.ol-note__backlink-icon { display: inline-flex; flex: none; color: var(--color-primary); }
+.ol-note__backlink-text { display: grid; flex: 1 1 auto; min-width: 0; }
+.ol-note__backlink-title { overflow-wrap: anywhere; }
+.ol-note__backlink-kind { color: var(--color-text-2); }
+.ol-note__backlink-chevron { display: inline-flex; flex: none; color: var(--color-text-2); }
+
 /* Rendered Markdown (services/markdown.ts) */
 .ol-md { font-size: 1rem; line-height: 1.625; color: var(--color-text); }
 .ol-md > :first-child { margin-top: 0; }
@@ -1548,6 +1570,10 @@
 }
 @media (hover: hover) { .ol-md-check:hover { border-color: var(--color-primary); } }
 .ol-md-check:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+/* Note links: in-app, solid underline in primary; a missing target is muted and not clickable */
+.ol-md a.ol-md-note { text-decoration-thickness: 2px; text-decoration-color: color-mix(in srgb, var(--color-primary) 45%, transparent); font-weight: 500; }
+.ol-md a.ol-md-note--missing { color: var(--color-text-2); text-decoration: line-through; font-weight: 400; cursor: default; }
 
 /* Inline tags */
 .ol-md-tag {
