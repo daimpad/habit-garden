@@ -23,6 +23,8 @@ export const ICONS = [
   'bar-chart-3',
   // Kalender und Tagesansicht (Phase 5)
   'chevron-left', 'circle',
+  // Garten-Insel Teil 2 (overall chip of the balance view)
+  'trending-up',
 ];
 
 const parts = [];

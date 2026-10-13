@@ -61,10 +61,13 @@ import { noteCount$ } from '../repo/notes.js';
 import { profile$, updateProfile } from '../repo/profile.js';
 import { compareDue, completeTask, dueOn, getTask, reopenTask, subtaskProgress$, type CompleteResult } from '../repo/tasks.js';
 import type { Route } from '../router.js';
-import { butterflyColor, contactStatuses, lastContactText, rhythmLabel, suggestions, type ContactStatus } from '../services/contacts.js';
+import {
+  butterflyColor, closeness, contactStatuses, lastContactText, rhythmLabel, suggestions, type ContactStatus,
+} from '../services/contacts.js';
 import { bestStreak, isScheduledOn, nextStage, stageFor, streak, weekProgress } from '../services/growth.js';
 import {
-  assignPlaces, decorLevel, fillSlots, flourishLevel, keimiLine, placeLabel,
+  assignPlaces, balancePercent, balanceState, balanceWord, decorLevel, fillSlots, flourishLevel, keimiLine, percentText,
+  pickPeople, placeLabel, shortAreaName,
 } from '../services/island.js';
 import { backupCardState } from '../services/storage-hints.js';
 import { percent, showWeekCard, weekSummary } from '../services/review.js';
@@ -78,7 +81,7 @@ import { attachSwipe } from '../util/swipe.js';
 import { exportWithNotice } from './export-flow.js';
 import {
   applyHabitToggle, applySky, dayPhase, greetingLine, greetingMarkup, Island, islandMarkup, nextText, skyMarkup, sunPosition,
-  todayStatus, type DayPhase, type IslandPerson, type IslandSpot, type IslandView,
+  todayStatus, type DayPhase, type IslandPerson, type IslandPill, type IslandSpot, type IslandView,
 } from './garden.js';
 import { openCalendar } from './sheets/calendar.js';
 import { openCapture, type CaptureType } from './sheets/capture.js';
@@ -507,6 +510,7 @@ class HeuteScreen {
     this.subs.length = 0;
     this.logsSub?.unsubscribe();
     this.logsSub = null;
+    this.island.destroy();
     this.progressSub?.unsubscribe();
     this.progressSub = null;
     for (const timer of this.timers) window.clearTimeout(timer);
@@ -1020,20 +1024,25 @@ class HeuteScreen {
     els.routineEmptyState.addEventListener('ol-action', () => this.capture('habit'));
     els.gardenAdd.addEventListener('click', () => this.capture('habit'));
 
-    // Insel: a place opens its sheet, a butterfly its person, a tap on Keimi's bubble hides it for today.
+    // Insel: a place or its balance pill opens the place sheet, a figure its person, "+n" all people, a tap
+    // on Keimi's bubble hides it for today.
     els.island.addEventListener('click', (event) => {
       const target = event.target instanceof Element ? event.target : null;
       if (!target) return;
-      const placeButton = target.closest<HTMLElement>('.ol-isl__place');
+      const placeButton = target.closest<HTMLElement>('.ol-isl__place, .ol-isl__pill[data-place]');
       const spot = placeButton?.dataset['place'];
       if (spot) {
         this.openPlace(spot as IslandSpot);
         return;
       }
-      const flyer = target.closest<HTMLElement>('.ol-isl__butterfly');
-      const id = flyer?.closest<HTMLElement>('li[data-id]')?.dataset['id'];
+      const figure = target.closest<HTMLElement>('.ol-isl__fig');
+      const id = figure?.closest<HTMLElement>('li[data-id]')?.dataset['id'];
       if (id) {
         this.openPerson(id);
+        return;
+      }
+      if (target.closest('.ol-isl__more-people')) {
+        this.openPeople();
         return;
       }
       if (target.closest('.ol-isl__bubble')) this.island.hideBubble();
@@ -1541,20 +1550,35 @@ class HeuteScreen {
     return out;
   }
 
-  private islandPeople(): IslandPerson[] {
+  /** The people as figures (services/island pickPeople: at most five, overdue first) and how many are left out. */
+  private islandPeople(): { people: IslandPerson[]; more: number } {
     const contacts = this.contacts;
     const logs = this.contactLogs;
-    if (!contacts || !logs) return [];
-    return contactStatuses(contacts, logs, this.day).map((status) => {
-      const fresh = !status.due || this.contactedNow.has(status.contact.id);
-      return {
+    if (!contacts || !logs) return { people: [], more: 0 };
+    const list = contactStatuses(contacts, logs, this.day).map((found) => {
+      // Contacted just now (optimistic until the log arrives): as if contacted today.
+      const status: ContactStatus = this.contactedNow.has(found.contact.id)
+        ? { ...found, lastDay: this.day, daysSince: 0, dueIn: found.contact.rhythmDays, due: false, contactedToday: true }
+        : found;
+      const pct = fmt(t.reviewPercent, { n: closeness(status) });
+      const state: IslandPerson['state'] = status.due ? 'due' : 'fresh';
+      const lower = (text: string): string => text.charAt(0).toLocaleLowerCase('de') + text.slice(1);
+      const person: IslandPerson & { urgency: number } = {
         id: status.contact.id,
         name: status.contact.name,
         color: butterflyColor(status.contact),
-        state: fresh ? 'fresh' : 'due',
-        last: lastContactText(status),
+        state,
+        pct,
+        label: fmt(t.islandPersonAria, {
+          name: status.contact.name, last: lower(lastContactText(status)), rhythm: lower(rhythmLabel(status.contact.rhythmDays)), pct,
+        }),
+        urgency: state === 'fresh' ? (status.contactedToday ? 1 : 0)
+          : status.daysSince === null ? Number.POSITIVE_INFINITY : (status.daysSince - status.contact.rhythmDays) / status.contact.rhythmDays,
       };
+      return person;
     });
+    const { shown, more } = pickPeople(list);
+    return { people: shown.map(({ urgency: _urgency, ...person }) => person), more };
   }
 
   private phase(): DayPhase {
@@ -1597,18 +1621,43 @@ class HeuteScreen {
     }
     // Places row by row, left to right (back, middle, front of the island) for a sensible tab order.
     const ORDER: readonly IslandSpot[] = ['work', 'home', 'bonds', 'health', 'wealth', 'growth', 'extra', 'leisure'];
+    // Balance (Teil 2): fulfilment over the last 30 days with the Rückblick rules, per place and overall.
+    const logsShown = new Map(active.map((habit) => [habit.id, this.shownLogs(habit)] as const));
+    const balanceOf = (list: readonly Habit[]): number | null => balancePercent(list, logsShown, day);
+    const withBalance = (place: string, list: readonly Habit[], pct: number | null): string => (list.length === 0 ? place
+      : fmt(t.islandWithBalance, { place, balance: pct === null ? t.islandBalanceNone : fmt(t.islandBalanceAria, { pct: percentText(pct) }) }));
+    const pills: IslandPill[] = [];
     for (const key of ORDER) {
       const list = spots.get(key);
       if (!list) continue;
       const all = list.flatMap((c) => c.habits);
       const { done, scheduled } = counts(all);
-      const name = key === 'extra' ? t.islandMoreAreas : list[0]?.name ?? '';
-      placeList.push({ key, label: placeLabel(name, done, scheduled, all.length) });
+      const first = list[0];
+      const name = key === 'extra' ? t.islandMoreAreas : first?.name ?? '';
+      const label = placeLabel(name, done, scheduled, all.length);
+      placeList.push({ key, label });
+      const pct = all.length === 0 ? null : balanceOf(all);
+      pills.push({
+        key,
+        short: key === 'extra' || !first ? t.islandShortMore : shortAreaName(first.name, first.flower),
+        pct: percentText(pct),
+        tint: key === 'extra' || !first ? GENERIC_TINT : first.tint,
+        label: withBalance(label, all, pct),
+      });
     }
+    const totalPct = balanceOf(active);
+    const word = balanceWord(balanceState(totalPct));
+    const total = {
+      text: fmt(t.islandTotal, { state: word }),
+      detail: totalPct === null ? '' : fmt(t.islandTotalDetail, { pct: percentText(totalPct) }),
+    };
     const summary = candidates.map((c) => {
       const { done, scheduled } = counts(c.habits);
-      return placeLabel(c.name, done, scheduled, c.habits.length);
+      return withBalance(placeLabel(c.name, done, scheduled, c.habits.length), c.habits, c.habits.length === 0 ? null : balanceOf(c.habits));
     });
+    if (active.length > 0) {
+      summary.push(totalPct === null ? t.islandSummaryTotalNone : fmt(t.islandSummaryTotal, { pct: percentText(totalPct), state: word }));
+    }
 
     const phase = this.phase();
     const shown = active.filter((hb) => isScheduledOn(hb, day));
@@ -1623,7 +1672,8 @@ class HeuteScreen {
 
     this.spots = spots;
     this.candidates = byKey;
-    this.island.update({ art, places: placeList, summary, people: this.islandPeople(), bubble });
+    const { people, more } = this.islandPeople();
+    this.island.update({ art, places: placeList, summary, people, morePeople: more, pills, total, bubble });
     this.renderPlaceSheet();
   }
 
@@ -1960,7 +2010,7 @@ class HeuteScreen {
     if (row.contains(document.activeElement)) moveFocusFrom(row, () => this.els.peopleHeading);
     this.renderPeople();
     this.renderRoutines();
-    this.island.lift(id);
+    this.island.hop(id);
     vibrate(HAPTIC.tick);
     try {
       const result = await logContact(id, this.day);

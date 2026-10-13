@@ -647,14 +647,18 @@ const BEDS: Readonly<Partial<Record<PlaceKey | 'extra', string>>> = {
 };
 
 /**
- * Anchors in viewBox units: Keimi's feet and head (speech bubble), a point above each place (labels in
- * Teil 2), the people's tree and the total chip.
+ * Anchors in viewBox units: Keimi's feet and head (speech bubble), the preferred centre of each place's
+ * balance pill (Teil 2; the screen moves a pill to the nearest free spot if it would overlap) and of the
+ * overall chip.
  */
 export const ANCHORS = {
   keimi: [298, 390], keimiHead: [298, 318],
-  home: [300, 90], work: [140, 146], bonds: [476, 68], health: [120, 286],
-  wealth: [486, 226], leisure: [452, 400], growth: [122, 400], extra: [242, 330], total: [300, 482],
+  home: [300, 92], work: [140, 146], bonds: [476, 62], health: [112, 238],
+  wealth: [500, 338], leisure: [466, 400], growth: [118, 396], extra: [242, 330], total: [300, 466],
 } as const satisfies Record<string, Pt>;
+
+/** Keimi's body (feet to leaf tips) in viewBox units [x, y, width, height]; labels keep clear of it. */
+export const KEIMI_BOX: readonly [number, number, number, number] = [270, 312, 58, 82];
 
 /**
  * Tap areas over each place in viewBox units [x, y, width, height] (each side at least 74 units, about
@@ -672,13 +676,54 @@ export const HIT_BOXES: Readonly<Record<PlaceKey | 'extra', readonly [number, nu
 };
 
 /**
- * Where people (butterflies) are, in viewBox units: those in rhythm flutter in the air around the big
- * tree, those overdue rest pale on its crown (clear of Keimi's bubble and of the place centres).
+ * Where people stand (feet, viewBox units), Teil 2: five slots from the bench outwards (people in rhythm
+ * take them from the bench on, overdue people from the far end, services/island figureSlots); `more` is
+ * the "+n" for people beyond PEOPLE_MAX. The slots keep at least 46 units between figures (24 px at
+ * 320 px), stay clear of Keimi's bubble and the buildings, and were chosen (by a layout simulation) so
+ * that a pill fits next to each figure for up to three people at 320 and 390 px and for five people on
+ * wide screens; with five people on a phone the pills usually do not all fit and then stay hidden.
  */
-export const PEOPLE_SPOTS: { fresh: readonly Pt[]; due: readonly Pt[] } = {
-  fresh: [[400, 52], [460, 40], [522, 56], [372, 104], [576, 110], [352, 160]],
-  due: [[430, 104], [494, 100], [414, 158], [530, 146], [526, 204], [574, 190]],
+export const PEOPLE_SPOTS: { slots: readonly Pt[]; more: Pt } = {
+  slots: [[510, 198], [450, 198], [540, 276], [396, 198], [372, 366]],
+  more: [584, 206],
 };
+
+/** Mixes a colour with a dark earth tone (k = 0..1). */
+function darken(hex: string, k: number): string {
+  const n = parseInt(hex6(hex).slice(1), 16);
+  const to = [0x3a, 0x2a, 0x1e];
+  const c = [n >> 16, (n >> 8) & 255, n & 255].map((v, i) => Math.round(v + ((to[i] ?? 0) - v) * k));
+  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+const FIG_BODY = 'M16 14.5C23.5 14.5 27.5 21 27.5 27.5C27.5 34 22.5 37 16 37C9.5 37 4.5 34 4.5 27.5C4.5 21 8.5 14.5 16 14.5Z';
+
+/**
+ * A person as a small sprout figure (Keimi's family): round body in the person's colour, two leaves, a
+ * simple face. In rhythm the leaves stand up and it smiles; overdue the leaves droop and the mouth is
+ * level (shape, not only colour). Sleeping eyes at night (.i-night / .i-day like the island). viewBox
+ * 0 0 32 40, feet at (16, 38); aria-hidden (the button carries the name).
+ */
+export function sproutFigure(color: string, state: 'fresh' | 'due'): string {
+  const tint = safeTint(color);
+  const body = lighten(tint, 0.3);
+  const line = darken(tint, 0.45);
+  const leaves = state === 'fresh'
+    ? '<path class="f-leaf" d="M16 11.5C13 6.5 8.5 5 5 7C7.5 10.5 11.5 12 16 11.5Z"/><path class="f-leaf" d="M16 11C18 5 23 3 27.5 5C25.5 9.5 21 11.5 16 11Z"/>'
+    : '<path class="f-leaf" d="M16 12C12 11 8 13 6.5 17C10.5 17 14 15 16 12Z"/><path class="f-leaf" d="M16 12C20 11 24 13 25.5 17C21.5 17 18 15 16 12Z"/>';
+  const mouth = state === 'fresh' ? 'M14 28.6q2 2 4 0' : 'M14.3 29.3h3.4';
+  return '<svg class="ol-isl__fig-svg" viewBox="0 0 32 40" width="32" height="40" aria-hidden="true" focusable="false">'
+    + '<ellipse class="f-sh" cx="16" cy="38.2" rx="10" ry="2"/>'
+    + `<g class="f-art"><g class="f-leaves"><path class="f-stem" d="M16 15.5V11.5" stroke-width="1.5" stroke-linecap="round"/>${leaves}</g>`
+    + `<ellipse cx="11.5" cy="36.6" rx="3.3" ry="2" fill="${line}"/><ellipse cx="20.5" cy="36.6" rx="3.3" ry="2" fill="${line}"/>`
+    + `<path d="${FIG_BODY}" fill="${body}" stroke="${line}" stroke-width=".9"/>`
+    + '<ellipse cx="16" cy="31" rx="7" ry="3.8" fill="#FFFFFF" opacity=".28"/>'
+    + '<g class="i-day"><circle cx="12.4" cy="25" r="1.6" fill="#2B3A2E"/><circle cx="19.6" cy="25" r="1.6" fill="#2B3A2E"/><circle cx="12.9" cy="24.4" r=".55" fill="#FFFFFF"/><circle cx="20.1" cy="24.4" r=".55" fill="#FFFFFF"/></g>'
+    + '<path class="i-night" d="M10.8 25q1.6 1.4 3.2 0M18 25q1.6 1.4 3.2 0" stroke="#2B3A2E" stroke-width="1.1" fill="none" stroke-linecap="round"/>'
+    + '<ellipse cx="9.8" cy="28.4" rx="2" ry="1.2" fill="#F2A39A" opacity=".75"/><ellipse cx="22.2" cy="28.4" rx="2" ry="1.2" fill="#F2A39A" opacity=".75"/>'
+    + `<path d="${mouth}" stroke="#2B3A2E" stroke-width="1.1" fill="none" stroke-linecap="round"/></g>`
+    + '</svg>';
+}
 
 function plant(x: number, y: number, { stage, wet }: IslandPlant, flowerId: FlowerId, tint: string): Drawable {
   const head = stage === 4 ? use(`f-${flowerId}`, ' transform="translate(-8.6 -30.6) scale(.72)"') : '';
