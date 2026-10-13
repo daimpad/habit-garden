@@ -13,6 +13,9 @@
 //   <span class="ol-md-tag" data-tag="a/b">#a/b</span> (data-tag normalized like stored tag paths).
 // - Links: only relative links and http(s), mailto, tel; target="_blank" rel="noopener noreferrer".
 //   Images are rendered as links (img-src 'self' would block remote images).
+// - Note links (W5) `[Titel](note:<id>)` become in-app links <a class="ol-md-note" href="#" data-note="<id>">
+//   (no new tab; the editor's preview navigates). With `notes` (ids of existing notes) given, a link to a
+//   missing note becomes <a class="ol-md-note ol-md-note--missing" role="link" aria-disabled="true"> without href.
 // - Headings are shifted one level down (the editor page owns the <h1>); table alignment becomes a class
 //   (ol-md-align-left|center|right) instead of markdown-it's style attribute.
 import MarkdownIt from 'markdown-it';
@@ -25,6 +28,7 @@ const TAG_AT = /#([\p{L}][\p{L}\p{N}_-]*(?:\/[\p{L}\p{N}_-]+)*)/gu;
 const TAG_BEFORE = /[\s(\[{,;]/u;
 const TASK_PREFIX = /^\[([ xX])\](?:[ \t]+|$)/u;
 const SAFE_SCHEME = /^(?:https?|mailto|tel):/iu;
+const NOTE_HREF = /^note:([A-Za-z0-9_-]+)$/u;
 const ANY_SCHEME = /^[a-z][a-z0-9+.-]*:/iu;
 
 function escHtml(text: string): string {
@@ -34,6 +38,7 @@ function escHtml(text: string): string {
 /** Only scheme-less (relative) links and http(s), mailto, tel. */
 export function isSafeLink(url: string): boolean {
   const value = url.trim();
+  if (NOTE_HREF.test(value)) return true;
   return ANY_SCHEME.test(value) ? SAFE_SCHEME.test(value) : true;
 }
 
@@ -201,6 +206,22 @@ function createParser(): MarkdownIt {
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
   renderer.rules.link_open = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
+    const note = NOTE_HREF.exec(token?.attrGet('href') ?? '')?.[1];
+    if (token && note) {
+      const known = knownNotes(env);
+      const missing = known !== null && !known.has(note);
+      token.attrs = (token.attrs ?? []).filter(([name]) => name !== 'href' && name !== 'title');
+      if (missing) {
+        token.attrSet('class', 'ol-md-note ol-md-note--missing');
+        token.attrSet('role', 'link');
+        token.attrSet('aria-disabled', 'true');
+      } else {
+        token.attrSet('href', '#');
+        token.attrSet('class', 'ol-md-note');
+      }
+      token.attrSet('data-note', note);
+      return self.renderToken(tokens, idx, options);
+    }
     if (token) {
       token.attrSet('target', '_blank');
       token.attrSet('rel', 'noopener noreferrer');
@@ -220,15 +241,26 @@ function createParser(): MarkdownIt {
 
 let parser: MarkdownIt | null = null;
 
+export interface RenderOptions {
+  /** Ids of the existing notes; note links to other ids render as missing. Without it all count as existing. */
+  notes?: ReadonlySet<string>;
+}
+
+function knownNotes(env: unknown): ReadonlySet<string> | null {
+  if (typeof env !== 'object' || env === null) return null;
+  const notes = (env as RenderOptions).notes;
+  return notes instanceof Set ? notes : null;
+}
+
 /** Markdown → HTML with the transformations above. NOT sanitized: use renderMarkdown() for the DOM. */
-export function markdownToHtml(source: string): string {
+export function markdownToHtml(source: string, opts: RenderOptions = {}): string {
   parser ??= createParser();
-  return parser.render(source);
+  return parser.render(source, { notes: opts.notes });
 }
 
 /** Markdown → sanitized HTML for raw() (browser only: DOMPurify needs a DOM). */
-export function renderMarkdown(source: string): string {
-  return DOMPurify.sanitize(markdownToHtml(source), {
+export function renderMarkdown(source: string, opts: RenderOptions = {}): string {
+  return DOMPurify.sanitize(markdownToHtml(source, opts), {
     ADD_ATTR: ['target'],
     FORBID_ATTR: ['style'],
     FORBID_TAGS: ['style', 'img', 'svg', 'math', 'form', 'input', 'button', 'iframe'],
@@ -451,6 +483,33 @@ export function tagTokenAt(value: string, caret: number): TagToken | null {
   while (end < value.length && TAG_CHAR.test(value[end] ?? '')) end++;
   if (inCode(value, hash)) return null;
   return { hash, start, end, query };
+}
+
+export interface LinkToken { start: number; query: string }
+
+/**
+ * The `[[query` the caret is right after on its line (note link picker): start = index of `[[`. The query
+ * holds no brackets and at most 80 characters; none inside code.
+ */
+export function linkTokenAt(value: string, caret: number): LinkToken | null {
+  const lineStart = lineStartOf(value, caret);
+  const before = value.slice(lineStart, caret);
+  const at = before.lastIndexOf('[[');
+  if (at < 0) return null;
+  const query = before.slice(at + 2);
+  if (/[[\]]/u.test(query) || query.length > 80) return null;
+  const start = lineStart + at;
+  if (inCode(value, start)) return null;
+  return { start, query };
+}
+
+/** The toolbar's "Notiz verlinken": `[[` at the caret (a selection becomes the query), caret after it. */
+export function insertLinkMark(value: string, selStart: number, selEnd: number): TextEdit {
+  const s = Math.min(selStart, selEnd);
+  const e = Math.max(selStart, selEnd);
+  const selected = value.slice(s, e);
+  const text = `[[${selected.includes('\n') ? '' : selected.replace(/[[\]]/gu, '')}`;
+  return { start: s, end: e, text, selStart: s + text.length, selEnd: s + text.length };
 }
 
 /**

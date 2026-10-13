@@ -330,6 +330,14 @@ export function task$(id: Id): Observable<Task | undefined> {
   return liveQuery(() => db.tasks.get(id));
 }
 
+/** liveQuery: tasks whose linkedNoteIds contain noteId (Rückverweise of a note), open ones first, then by creation. */
+export function linkedTasks$(noteId: Id): Observable<Task[]> {
+  return liveQuery(async () => {
+    const rows = await db.tasks.filter((t) => t.linkedNoteIds?.includes(noteId) === true).toArray();
+    return rows.sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done') || compareIso(a.createdAt, b.createdAt));
+  });
+}
+
 /** Tasks for the given ids, in the given order; missing ids are skipped. */
 export function tasksByIds$(ids: readonly Id[]): Observable<Task[]> {
   const keys = [...ids];

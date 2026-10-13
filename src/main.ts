@@ -55,6 +55,7 @@ import { openCapture } from './screens/sheets/capture.js';
 import { openHabitSheet } from './screens/sheets/habit.js';
 import { openTaskSheet } from './screens/sheets/task.js';
 import * as startScreen from './screens/start.js';
+import * as noteEditorScreen from './screens/note-editor.js';
 import * as wissenScreen from './screens/wissen.js';
 import { wissenContext } from './screens/wissen.js';
 import { startReminders } from './services/reminders.js';
@@ -75,8 +76,9 @@ function screenFor(name: RouteName): ScreenMount | null {
     case 'planung-project':
       return planungScreen.mount;
     case 'wissen':
-    case 'wissen-note':
       return wissenScreen.mount;
+    case 'wissen-note':
+      return noteEditorScreen.mount;
     case 'einstellungen':
       return einstellungenScreen.mount;
     default:

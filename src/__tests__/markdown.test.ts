@@ -4,10 +4,11 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
-  applyEdit, continueList, cycleHeading, insertTagMark, isSafeLink, markdownToHtml, suggestTags, tagTokenAt, toggleCode,
+  applyEdit, continueList, cycleHeading, insertLinkMark, insertTagMark, isSafeLink, linkTokenAt, markdownToHtml, suggestTags,
+  tagTokenAt, toggleCode,
   toggleInline, toggleLines, toggleTaskLine, type TextEdit,
 } from '../services/markdown.js';
-import { inlineTags } from '../services/notes.js';
+import { inlineTags, noteLinkMarkdown, noteLinks } from '../services/notes.js';
 
 const tagsIn = (html: string): string[] => [...html.matchAll(/data-tag="([^"]*)"/gu)].map((m) => m[1] ?? '');
 
@@ -332,5 +333,59 @@ describe('suggestTags', () => {
     assert.equal(suggestTags(paths, '').length, 6);
     assert.deepEqual(suggestTags(paths, 'garten', new Set(['garten/beet'])), ['garten/balkon']);
     assert.deepEqual(suggestTags(paths, 'xyz'), []);
+  });
+});
+
+describe('note links', () => {
+  test('rendered as in-app links without new tab', () => {
+    const html = markdownToHtml('Siehe [Balkon – Ideen](note:n-1_a).');
+    assert.match(html, /<a href="#" class="ol-md-note" data-note="n-1_a">Balkon – Ideen<\/a>/u);
+    assert.ok(!html.includes('target='));
+    assert.ok(!html.includes('note:'));
+  });
+
+  test('missing notes: no href, aria-disabled', () => {
+    const html = markdownToHtml('[Da](note:a) [Weg](note:b)', { notes: new Set(['a']) });
+    assert.match(html, /<a href="#" class="ol-md-note" data-note="a">Da<\/a>/u);
+    assert.match(html, /<a class="ol-md-note ol-md-note--missing" role="link" aria-disabled="true" data-note="b">Weg<\/a>/u);
+  });
+
+  test('invalid ids and other schemes stay unsafe', () => {
+    assert.equal(isSafeLink('note:abc-1'), true);
+    assert.equal(isSafeLink('note:a/b'), false);
+    assert.equal(isSafeLink('note:'), false);
+    assert.ok(!/<a /u.test(markdownToHtml('[x](note:a"b)')));
+  });
+
+  test('noteLinkMarkdown round trip: escaped brackets render as text, noteLinks finds the id', () => {
+    const md = noteLinkMarkdown('Liste [alt]', 'id9');
+    assert.deepEqual(noteLinks(md), ['id9']);
+    assert.match(markdownToHtml(md), /<a href="#" class="ol-md-note" data-note="id9">Liste \[alt\]<\/a>/u);
+  });
+
+  test('tags inside the link text are not tags', () => {
+    assert.ok(!markdownToHtml('[#thema](note:x)').includes('ol-md-tag'));
+  });
+});
+
+describe('linkTokenAt / insertLinkMark', () => {
+  test('finds [[query before the caret on the line', () => {
+    assert.deepEqual(linkTokenAt('Siehe [[Bal', 11), { start: 6, query: 'Bal' });
+    assert.deepEqual(linkTokenAt('[[', 2), { start: 0, query: '' });
+    assert.deepEqual(linkTokenAt('a\n[[x y', 7), { start: 2, query: 'x y' });
+  });
+
+  test('no token: closed, other line, brackets, code', () => {
+    assert.equal(linkTokenAt('[[x]] weiter', 12), null);
+    assert.equal(linkTokenAt('[[x\nneu', 7), null);
+    assert.equal(linkTokenAt('[[a[b', 5), null);
+    assert.equal(linkTokenAt('`[[code', 7), null);
+    assert.equal(linkTokenAt('kein Link', 9), null);
+  });
+
+  test('insertLinkMark: [[ at the caret, a one-line selection becomes the query', () => {
+    assert.equal(show('Text ', insertLinkMark('Text ', 5, 5)), 'Text [[|');
+    assert.equal(show('Balkon', insertLinkMark('Balkon', 0, 6)), '[[Balkon|');
+    assert.equal(show('a\nb', insertLinkMark('a\nb', 0, 3)), '[[|');
   });
 });

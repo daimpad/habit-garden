@@ -1369,8 +1369,6 @@
    on-screen keyboard (--ol-note-kb from visualViewport). Same calm cards as PLANUNG. */
 .ol-view:has(> .ol-note) { padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom)); }
 :root:has(.ol-view > .ol-note) { scroll-padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 136px); }
-/* The FAB ("+ Notiz") has no task here and would cover the toolbar. */
-:root:has(.ol-view > .ol-note) ol-fab { display: none; }
 @media (min-width: 900px) {
   .ol-view:has(> .ol-note) { padding-bottom: 0; }
   :root:has(.ol-view > .ol-note) { scroll-padding-bottom: 136px; }

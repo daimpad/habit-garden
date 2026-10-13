@@ -18,7 +18,7 @@ export const ICONS = [
   // Planung (Phase 3)
   'folder', 'folder-input', 'folder-plus', 'sunrise',
   // Note editor (Phase 4)
-  'bold', 'italic', 'heading', 'list', 'list-ordered', 'list-todo', 'code', 'redo-2', 'pin', 'pin-off', 'eye', 'file-x',
+  'bold', 'italic', 'heading', 'list', 'list-ordered', 'list-todo', 'code', 'redo-2', 'pin', 'pin-off', 'eye', 'file-x', 'link', 'square-check',
 ];
 
 const parts = [];
