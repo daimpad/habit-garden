@@ -276,10 +276,10 @@
 .ol-view[data-screen="heute"] { max-width: 1120px; }
 .ol-heute > :is(.ol-heute__first, .ol-heute__backup, .ol-heute__people, .ol-heute__focus, .ol-heute__mood-section, .ol-heute__evening, .ol-heute__due) { max-width: 720px; }
 
-/* --- Hero: sky by phase of the day, sun on an arc, hills, greeting, progress, meadow --- */
+/* --- Hero: sky by phase of the day, sun on an arc, greeting, progress, Garten-Insel (section "island") --- */
 .ol-hero {
   --sky-top: #E8F0E4; --sky-bottom: #F5F5EC; --sun: #F2C14E; --sun-core: #FFE7A3; --sun-glow: rgba(242, 193, 78, .42);
-  --hill-back: #DDE8D3; --hill-mid: #C9DCBE; --hill-front: #B5CFA6; --cloud: rgba(255, 255, 255, .85); --sky-flat: #EEF2E8;
+  --cloud: rgba(255, 255, 255, .85); --sky-flat: #EEF2E8;
   position: relative; isolation: isolate; overflow: hidden;
   margin: 0 calc(var(--space-4) * -1); padding: var(--space-2) var(--space-4) 0;
   border-radius: 0 0 28px 28px;
@@ -289,23 +289,22 @@
 .ol-hero[data-phase="day"] { --sky-top: #DFEDEE; --sky-bottom: #F3F6EC; }
 .ol-hero[data-phase="evening"] {
   --sky-top: #FAE0C2; --sky-bottom: #F8EEDF; --sun: #EFA048; --sun-core: #FFD08A; --sun-glow: rgba(239, 160, 72, .5);
-  --hill-back: #DCDDC2; --hill-mid: #C7D3B2; --hill-front: #B0C79C;
 }
 .ol-hero[data-phase="night"] {
-  --sky-top: #DADCEA; --sky-bottom: #ECEEEA; --hill-back: #CAD3C7; --hill-mid: #B7C6B3; --hill-front: #A6BC9D;
+  --sky-top: #DADCEA; --sky-bottom: #ECEEEA;
   --cloud: rgba(255, 255, 255, .4);
 }
 /* Nachtgarten (dark theme): night palette in every phase with a faint phase tint, the moon travels the
    sun's arc; plants, flowers and butterflies keep their colours. */
 :root[data-theme="dark"] .ol-hero {
   --sky-top: #141B2A; --sky-bottom: #1C2430; --sky-flat: #192029;
-  --hill-back: #1D2924; --hill-mid: #213026; --hill-front: #26382A; --cloud: rgba(200, 210, 225, .1);
+  --cloud: rgba(200, 210, 225, .1);
 }
 :root[data-theme="dark"] .ol-hero[data-phase="morning"] { --sky-top: #1A1D2E; --sky-bottom: #2A2731; }
 :root[data-theme="dark"] .ol-hero[data-phase="day"] { --sky-top: #142231; --sky-bottom: #1B2A2F; }
 :root[data-theme="dark"] .ol-hero[data-phase="evening"] { --sky-top: #1D1A2C; --sky-bottom: #2C2330; }
 :root[data-theme="dark"] .ol-hero[data-phase="night"] {
-  --sky-top: #0F1526; --sky-bottom: #182031; --hill-back: #1A2521; --hill-mid: #1E2C23; --hill-front: #233427;
+  --sky-top: #0F1526; --sky-bottom: #182031;
   --cloud: rgba(200, 210, 225, .07);
 }
 @media (min-width: 760px) {
@@ -345,26 +344,19 @@
 :root[data-theme="dark"] .ol-hero__moon { display: block; top: calc(var(--sun-y, .2) * 150px + var(--space-2) + 13px); }
 :root[data-theme="dark"] .ol-hero[data-phase="night"] .ol-hero__moon { top: 28px; }
 :root[data-theme="dark"] .ol-hero[data-phase="evening"] .ol-hero__stars { display: block; opacity: .6; }
-/* Einstellungen › Darstellung › Landschaft aus: a calm flat sky band; hills, meadow and plants stay. */
+/* Einstellungen › Darstellung › Landschaft aus: a calm flat sky band; the island stays (without its clouds). */
 :root[data-landscape="off"] .ol-hero { background: var(--sky-flat); }
 :root[data-landscape="off"] .ol-hero__sky { display: none; }
 .ol-hero__cloud { position: absolute; fill: var(--cloud); animation: ol-cloud 26s ease-in-out infinite alternate; }
 .ol-hero__cloud--a { top: 54px; left: 46%; }
 .ol-hero__cloud--b { top: 118px; right: 12%; animation-duration: 34s; animation-direction: alternate-reverse; }
-/* Ground of the meadow: grows with the meadow; the hill crests sit on top of it. */
-.ol-hero__land {
-  position: relative; margin: 84px calc(var(--space-4) * -1) 0; padding: var(--space-1) var(--space-4) var(--space-5);
-  background: linear-gradient(180deg, var(--hill-front) 0%, color-mix(in srgb, var(--hill-front) 80%, var(--garden-soil)) 100%);
-}
-.ol-hero__hills { position: absolute; left: 0; right: 0; bottom: calc(100% - 1px); width: 100%; height: 110px; z-index: -1; }
-.ol-hero__hill--back { fill: var(--hill-back); }
-.ol-hero__hill--mid { fill: var(--hill-mid); }
-.ol-hero__hill--front { fill: var(--hill-front); }
 @keyframes ol-sun-breathe { from { transform: scale(1); } to { transform: scale(1.06); } }
 @keyframes ol-cloud { from { transform: translateX(-24px); } to { transform: translateX(28px); } }
 
-.ol-hero__content { position: relative; z-index: 1; display: grid; gap: var(--space-2); }
-.ol-hero__top { display: flex; align-items: center; justify-content: space-between; min-height: 48px; margin-right: -12px; }
+.ol-hero__body { display: grid; }
+.ol-hero__content { position: relative; z-index: 1; display: grid; gap: var(--space-2); align-content: start; }
+.ol-hero__top { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; min-height: 48px; margin-right: -12px; pointer-events: none; }
+.ol-hero__top > * { pointer-events: auto; }
 .ol-hero__brand { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 600; color: var(--color-primary); }
 .ol-hero__brand-mark {
   display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
@@ -394,99 +386,6 @@
 }
 .ol-hero__progress-text { color: var(--color-text-2); }
 .ol-hero__progress-count { color: var(--color-primary); }
-
-/* Meadow: one group per area (sign above), plants growing from the ground with a hanging name tag. */
-.ol-meadow {
-  --meadow-plant: 72px; --meadow-slot: 78px; --meadow-fly: 30px;
-  position: relative; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center;
-  gap: var(--space-3);
-}
-@media (min-width: 760px) {
-  .ol-meadow { --meadow-plant: 104px; --meadow-slot: 118px; --meadow-fly: 38px; gap: var(--space-4) var(--space-6); }
-  .ol-hero__land { margin-left: calc(var(--space-6) * -1); margin-right: calc(var(--space-6) * -1); padding-left: var(--space-6); padding-right: var(--space-6); }
-}
-.ol-meadow__group {
-  flex: none; display: flex; flex-direction: column; align-items: center;
-  min-width: calc(var(--people, 0) * (var(--meadow-fly) + 6px));
-}
-.ol-meadow__sign {
-  position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 140px;
-  padding: 4px 10px 4px 6px; border: 1px solid var(--garden-sign-edge); border-radius: 10px;
-  background: var(--garden-sign-bg); box-shadow: 0 2px 0 var(--garden-sign-edge);
-  font-size: .75rem; line-height: 1rem; font-weight: 600; color: var(--color-text); text-wrap: balance;
-}
-@media (min-width: 760px) { .ol-meadow__sign { max-width: 220px; font-size: .8125rem; } }
-.ol-meadow__sign::after {
-  content: ""; position: absolute; left: 50%; top: calc(100% + 2px); width: 3px; height: 12px; margin-left: -1.5px;
-  border-radius: 0 0 2px 2px; background: var(--garden-post);
-}
-.ol-meadow__sign-flower { display: inline-flex; flex: none; }
-.ol-meadow__sign-name { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.ol-meadow__bed { position: relative; align-self: stretch; margin-top: 14px; }
-.ol-meadow__group[data-people] .ol-meadow__bed { padding-top: calc(var(--meadow-fly) + 18px); }
-.ol-meadow__group[data-resting] .ol-meadow__bed { padding-bottom: calc(var(--meadow-fly) + 18px); }
-.ol-meadow__plants { display: flex; justify-content: center; }
-.ol-meadow__slot { display: flex; justify-content: center; width: var(--meadow-slot); }
-.ol-meadow__plant {
-  display: flex; flex-direction: column; align-items: center; width: 100%; min-height: 48px;
-  margin: 0; padding: 0 0 var(--space-1); border: 0; border-radius: var(--radius-md); background: none; color: inherit;
-  font: inherit; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-}
-.ol-meadow__slot--seed .ol-meadow__plant { cursor: default; opacity: .9; }
-.ol-meadow__plant ol-plant { transform-origin: 50% 94%; animation: ol-sway 5.6s ease-in-out var(--sway-delay, 0s) infinite alternate; }
-.ol-meadow__plant .ol-plant__svg { width: var(--meadow-plant); height: auto; }
-.ol-meadow__tag {
-  position: relative; display: -webkit-box; max-width: calc(var(--meadow-slot) + 14px); margin-top: 4px; padding: 1px 6px;
-  border-radius: 6px; background: var(--garden-tag-bg); box-shadow: 0 1px 2px color-mix(in srgb, var(--color-shadow) 20%, transparent);
-  font-size: .6875rem; line-height: .875rem; font-weight: 600; color: var(--color-text); text-align: center;
-  overflow: hidden; overflow-wrap: break-word; hyphens: auto; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  transform: rotate(-3deg);
-}
-@media (min-width: 760px) { .ol-meadow__tag { font-size: .75rem; line-height: 1rem; padding: 2px 8px; } }
-.ol-meadow__slot[data-tilt] .ol-meadow__tag { transform: rotate(3deg); }
-.ol-meadow__tag::before {
-  content: ""; position: absolute; top: -5px; left: 50%; width: 1.5px; height: 7px; margin-left: -.75px; background: var(--garden-post);
-}
-@media (hover: hover) {
-  .ol-meadow__plant:hover .ol-meadow__tag { background: var(--color-surface); box-shadow: 0 2px 6px color-mix(in srgb, var(--color-shadow) 28%, transparent); }
-}
-@keyframes ol-sway { from { transform: rotate(-2.4deg); } to { transform: rotate(2.4deg); } }
-
-/* Butterflies (people): in rhythm they fly and flap in their colour, overdue they rest pale on the ground. */
-.ol-meadow__butterflies { position: absolute; inset: 0; pointer-events: none; }
-.ol-meadow__flyer { position: absolute; left: var(--bx, 50%); top: 10px; translate: -50% 0; pointer-events: auto; }
-.ol-meadow__flyer[data-high] { top: -10px; }
-.ol-meadow__flyer[data-state="due"] { top: auto; bottom: 0; }
-.ol-meadow__butterfly {
-  display: flex; flex-direction: column; align-items: center; min-width: 44px; min-height: 44px;
-  margin: 0; padding: 2px; border: 0; border-radius: var(--radius-md); background: none; color: inherit;
-  font: inherit; cursor: pointer; touch-action: manipulation;
-}
-.ol-meadow__wings { display: block; line-height: 0; }
-.ol-meadow__wings .ol-butterfly__svg { width: var(--meadow-fly); height: auto; }
-.ol-meadow__name {
-  max-width: 64px; padding: 0 4px; border-radius: 4px; background: var(--garden-name-bg);
-  font-size: .625rem; line-height: .875rem; font-weight: 600; color: var(--color-text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.ol-butterfly__wing { transform-box: view-box; transform-origin: 16px 14px; }
-.ol-meadow__flyer[data-state="fresh"] .ol-meadow__butterfly { animation: ol-flutter 8s ease-in-out var(--bd, 0s) infinite; }
-.ol-meadow__flyer[data-state="fresh"] .ol-butterfly__wing { animation: ol-flap .34s ease-in-out infinite alternate; }
-.ol-meadow__flyer[data-state="due"] .ol-meadow__wings { opacity: .85; filter: saturate(.4) brightness(1.04); }
-.ol-meadow__flyer[data-state="due"] .ol-butterfly__wing { transform: scaleX(.72); }
-.ol-meadow__flyer[data-lift] .ol-meadow__butterfly { animation: ol-lift 1.5s cubic-bezier(.2, .8, .3, 1) both; }
-@keyframes ol-flap { from { transform: scaleX(1); } to { transform: scaleX(.28); } }
-@keyframes ol-flutter {
-  0%, 100% { transform: translate(0, 0) rotate(-6deg); }
-  25% { transform: translate(12px, -9px) rotate(5deg); }
-  50% { transform: translate(-3px, -15px) rotate(-3deg); }
-  75% { transform: translate(-13px, -5px) rotate(6deg); }
-}
-@keyframes ol-lift {
-  0% { transform: translateY(26px) scale(.9); }
-  45% { transform: translateY(-28px) scale(1.18) rotate(-8deg); }
-  100% { transform: none; }
-}
 
 /* --- Garden cards (routines) --- */
 .ol-garden-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-4); }
@@ -598,12 +497,12 @@
 .ol-heute__contacted { flex: none; }
 .ol-heute__people-empty { display: grid; justify-items: start; gap: var(--space-3); padding: var(--space-3) var(--space-2); }
 
-/* Continuous garden motion stops with reduced motion (system or in-app). */
+/* Continuous garden motion stops with reduced motion (system or in-app); the island's own motion: section "island". */
 @media (prefers-reduced-motion: reduce) {
-  .ol-hero__sun, .ol-hero__cloud, .ol-meadow__plant ol-plant, .ol-meadow__butterfly, .ol-butterfly__wing { animation: none !important; }
+  .ol-hero__sun, .ol-hero__cloud { animation: none !important; }
   .ol-hero__bar-fill { transition: none; }
 }
-:root[data-motion="reduced"] :is(.ol-hero__sun, .ol-hero__cloud, .ol-meadow__plant ol-plant, .ol-meadow__butterfly, .ol-butterfly__wing) { animation: none !important; }
+:root[data-motion="reduced"] :is(.ol-hero__sun, .ol-hero__cloud) { animation: none !important; }
 :root[data-motion="reduced"] .ol-hero__bar-fill { transition: none; }
 
 /* Reduced motion (system or in-app): no scaling, no colour/offset transitions. */
@@ -616,6 +515,211 @@
 :root[data-motion="reduced"] .ol-heute__title { transition: none; }
 :root[data-motion="reduced"] .ol-heute__mood[aria-checked="true"] .ol-heute__mood-svg { transform: none; }
 /* === /heute === */
+
+/* === island === */
+/* Garten-Insel in the HEUTE hero (Teil 1, 13.10.2026): the SVG from components/island.ts with transparent
+   place buttons, Keimi's speech bubble and the people (butterflies) laid over it in viewBox fractions
+   (--x/--y/--w/--h set by screens/garden.ts). Colour tokens --isl-* in tokens.css (light and dark).
+   Phone: the island fills the width under the hero text; ≥ 900 px: right of the greeting. */
+/* The island lies above the hero text (its sky overlaps the text's last row); only its controls take pointers. */
+.ol-isl { position: relative; z-index: 2; margin: -44px -22px -6px; pointer-events: none; }
+.ol-isl__place, .ol-isl__flyer, .ol-isl__bubble { pointer-events: auto; }
+.ol-isl__stage { position: relative; aspect-ratio: 600 / 560; }
+.ol-isl__art { position: absolute; inset: 0; }
+.ol-isl__svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--font-sans); }
+@media (min-width: 600px) and (max-width: 899px) {
+  .ol-isl { justify-self: center; width: min(100% + 44px, 600px); margin: -36px auto -6px; }
+}
+@media (min-width: 900px) {
+  .ol-hero__body { grid-template-columns: minmax(0, 1fr) minmax(0, 620px); align-items: start; margin-top: -40px; }
+  .ol-hero__body > .ol-hero__content { align-self: center; padding: 40px 0 var(--space-5); }
+  .ol-isl { margin: -24px -20px -18px 0; }
+}
+
+/* Light, night and evening: the dark theme ("Nachtgarten") and the hero's night phase light the windows,
+   the lantern and the fireflies; the evening warms the light. Flowers keep their colours. */
+:root:not([data-theme="dark"]) .ol-hero[data-phase="evening"] .ol-isl { --isl-light: var(--isl-evening-light); --isl-lit-a: .75; }
+:root:not([data-theme="dark"]) .ol-hero[data-phase="night"] .ol-isl { --isl-light: var(--isl-moonlight); --isl-window: var(--isl-window-lit); --isl-lit-a: 1; --isl-smoke-a: .4; }
+.ol-isl__svg .i-night { display: none; }
+:root[data-theme="dark"] .ol-isl__svg .i-night, .ol-hero[data-phase="night"] .ol-isl__svg .i-night { display: inline; }
+:root[data-theme="dark"] .ol-isl__svg .i-day, .ol-hero[data-phase="night"] .ol-isl__svg .i-day { display: none; }
+:root[data-landscape="off"] .ol-isl__svg .i-cloudset { display: none; }
+
+/* SVG fills (every shade derived from the base tokens with color-mix) */
+.ol-isl__svg .i-grass { fill: var(--isl-grass); }
+.ol-isl__svg .i-grass-hi { fill: color-mix(in oklab, var(--isl-grass) 68%, var(--isl-light)); }
+.ol-isl__svg .i-lip { fill: color-mix(in oklab, var(--isl-grass) 62%, var(--isl-shadow)); }
+.ol-isl__svg .i-bank { fill: color-mix(in oklab, var(--isl-grass) 60%, var(--isl-earth)); }
+.ol-isl__svg .i-bed { fill: color-mix(in oklab, var(--isl-earth) 78%, var(--isl-shadow)); opacity: .55; }
+.ol-isl__svg .i-soil { fill: color-mix(in oklab, var(--isl-earth) 72%, var(--isl-shadow)); opacity: .7; }
+.ol-isl__svg .i-soil-hi { fill: color-mix(in oklab, var(--isl-earth) 85%, var(--isl-shadow)); }
+.ol-isl__svg .i-wet { fill: color-mix(in oklab, var(--isl-earth) 50%, var(--isl-shadow)); opacity: .8; }
+.ol-isl__svg .i-rock { fill: var(--isl-rock); }
+.ol-isl__svg .i-water-hi { fill: color-mix(in oklab, var(--isl-water) 50%, var(--isl-light)); }
+.ol-isl__svg .i-water-lo { fill: color-mix(in oklab, var(--isl-water) 70%, var(--isl-shadow)); }
+.ol-isl__svg .i-pad { fill: color-mix(in oklab, var(--isl-leaf) 80%, var(--isl-light)); }
+.ol-isl__svg .i-fol { fill: var(--isl-foliage); }
+.ol-isl__svg .i-fol-lo { fill: color-mix(in oklab, var(--isl-foliage) 72%, var(--isl-shadow)); }
+.ol-isl__svg .i-path { fill: var(--isl-path); }
+.ol-isl__svg .i-path-lo { fill: color-mix(in oklab, var(--isl-path) 70%, var(--isl-earth)); }
+.ol-isl__svg .i-wood { fill: var(--isl-wood); }
+.ol-isl__svg .i-wood-hi { fill: color-mix(in oklab, var(--isl-wood) 60%, var(--isl-light)); }
+.ol-isl__svg .i-wood-lo { fill: color-mix(in oklab, var(--isl-wood) 70%, var(--isl-shadow)); }
+.ol-isl__svg .i-roof-lo { fill: color-mix(in oklab, var(--isl-roof) 75%, var(--isl-shadow)); }
+.ol-isl__svg .i-wall { fill: var(--isl-wall); }
+.ol-isl__svg .i-wall-lo { fill: color-mix(in oklab, var(--isl-wall) 80%, var(--isl-shadow)); }
+.ol-isl__svg .i-stone { fill: var(--isl-stone); }
+.ol-isl__svg .i-stone-hi { fill: color-mix(in oklab, var(--isl-stone) 60%, var(--isl-light)); }
+.ol-isl__svg .i-stone-lo { fill: color-mix(in oklab, var(--isl-stone) 72%, var(--isl-shadow)); }
+.ol-isl__svg .i-win { fill: var(--isl-window); }
+.ol-isl__svg .i-lamp { fill: var(--isl-glow); }
+.ol-isl__svg .i-leaf { fill: var(--isl-leaf); }
+.ol-isl__svg .i-leaf-lo { fill: color-mix(in oklab, var(--isl-leaf) 78%, var(--isl-shadow)); }
+.ol-isl__svg .i-keimi { fill: var(--isl-keimi); }
+.ol-isl__svg .i-keimi-hi { fill: color-mix(in oklab, var(--isl-keimi) 45%, var(--isl-keimi-light)); }
+.ol-isl__svg .i-keimi-lo { fill: color-mix(in oklab, var(--isl-keimi) 70%, var(--isl-leaf)); }
+.ol-isl__svg .i-shade { fill: var(--isl-shadow); }
+.ol-isl__svg .i-cloud { fill: var(--isl-cloud); }
+.ol-isl__svg .i-smoke { fill: var(--isl-smoke); opacity: var(--isl-smoke-a); }
+.ol-isl__svg .i-moonlight { fill: var(--isl-light); opacity: .6; }
+.ol-isl__svg .i-cloudset { opacity: var(--isl-cloud-a); }
+.ol-isl__svg .i-lit { opacity: var(--isl-lit-a); }
+.ol-isl__svg .i-more rect { fill: var(--isl-label-bg); }
+.ol-isl__svg .i-more text { fill: var(--color-text-2); font-size: 10px; font-weight: 600; }
+
+/* SVG strokes; k-* elements have no fill (filled and stroked shapes re-declare it) */
+.ol-isl__svg :is([class^="k-"], [class*=" k-"]) { fill: none; }
+.ol-isl__svg .k-path { stroke: var(--isl-path); }
+.ol-isl__svg .k-path-lo { stroke: color-mix(in oklab, var(--isl-path) 70%, var(--isl-earth)); }
+.ol-isl__svg .k-water { stroke: var(--isl-water); }
+.ol-isl__svg .k-water-hi { stroke: color-mix(in oklab, var(--isl-water) 40%, var(--isl-light)); }
+.ol-isl__svg .k-bank { stroke: color-mix(in oklab, var(--isl-grass) 60%, var(--isl-earth)); }
+.ol-isl__svg .k-wood { stroke: var(--isl-wood); }
+.ol-isl__svg .k-wood-lo { stroke: color-mix(in oklab, var(--isl-wood) 65%, var(--isl-shadow)); }
+.ol-isl__svg .k-roof-lo { stroke: color-mix(in oklab, var(--isl-roof) 72%, var(--isl-shadow)); }
+.ol-isl__svg .k-stone-lo { stroke: color-mix(in oklab, var(--isl-stone) 70%, var(--isl-shadow)); }
+.ol-isl__svg .k-earth-lo { stroke: color-mix(in oklab, var(--isl-earth) 70%, var(--isl-shadow)); }
+.ol-isl__svg .k-root { stroke: color-mix(in oklab, var(--isl-earth) 55%, var(--isl-leaf)); }
+.ol-isl__svg .k-grass-lo { stroke: color-mix(in oklab, var(--isl-grass) 70%, var(--isl-shadow)); }
+.ol-isl__svg .k-fol { stroke: color-mix(in oklab, var(--isl-foliage) 60%, var(--isl-shadow)); }
+.ol-isl__svg .k-leaf { stroke: var(--isl-leaf); }
+.ol-isl__svg .k-stem { stroke: color-mix(in oklab, var(--isl-leaf) 75%, var(--isl-shadow)); }
+.ol-isl__svg .k-keimi { stroke: color-mix(in oklab, var(--isl-leaf) 85%, var(--isl-shadow)); }
+.ol-isl__svg .k-leafvein { stroke: color-mix(in oklab, var(--isl-leaf) 50%, var(--isl-light)); }
+.ol-isl__svg .k-cream { stroke: var(--isl-cream); }
+.ol-isl__svg .i-keimi.k-keimi { fill: var(--isl-keimi); }
+.ol-isl__svg .i-leaf.k-keimi { fill: var(--isl-leaf); }
+
+/* Gradient stops */
+.ol-isl__svg .s-grass-hi { stop-color: color-mix(in oklab, var(--isl-grass) 62%, var(--isl-light)); }
+.ol-isl__svg .s-grass { stop-color: var(--isl-grass); }
+.ol-isl__svg .s-grass-lo { stop-color: color-mix(in oklab, var(--isl-grass) 80%, var(--isl-shadow)); }
+.ol-isl__svg .s-earth { stop-color: var(--isl-earth); }
+.ol-isl__svg .s-earth-lo { stop-color: color-mix(in oklab, var(--isl-earth) 78%, var(--isl-shadow)); }
+.ol-isl__svg .s-rock { stop-color: var(--isl-rock); }
+.ol-isl__svg .s-water { stop-color: var(--isl-water); }
+.ol-isl__svg .s-water-hi { stop-color: color-mix(in oklab, var(--isl-water) 55%, var(--isl-light)); }
+.ol-isl__svg .s-water-lo { stop-color: color-mix(in oklab, var(--isl-water) 72%, var(--isl-shadow)); }
+.ol-isl__svg .s-fol { stop-color: var(--isl-foliage); }
+.ol-isl__svg .s-fol-hi { stop-color: color-mix(in oklab, var(--isl-foliage) 62%, var(--isl-light)); }
+.ol-isl__svg .s-fol-lo { stop-color: color-mix(in oklab, var(--isl-foliage) 74%, var(--isl-shadow)); }
+.ol-isl__svg .s-roof { stop-color: var(--isl-roof); }
+.ol-isl__svg .s-roof-hi { stop-color: color-mix(in oklab, var(--isl-roof) 75%, var(--isl-light)); }
+.ol-isl__svg .s-shadow { stop-color: var(--isl-shadow); }
+.ol-isl__svg .s-glow { stop-color: var(--isl-glow); }
+.ol-isl__svg .s-keimi { stop-color: var(--isl-keimi); }
+.ol-isl__svg .s-keimi-hi { stop-color: color-mix(in oklab, var(--isl-keimi) 50%, var(--isl-keimi-light)); }
+.ol-isl__svg .s-keimi-lo { stop-color: color-mix(in oklab, var(--isl-keimi) 72%, var(--isl-leaf)); }
+.ol-isl__svg .s-cloud { stop-color: var(--isl-cloud); }
+.ol-isl__svg .s-cloud-lo { stop-color: var(--isl-cloud-shade); }
+
+/* Places: transparent buttons over the artwork (≥ 70 viewBox units, about 50 px on a 390 px phone). */
+.ol-isl__places { position: absolute; inset: 0; }
+.ol-isl__place, .ol-isl__flyer, .ol-isl__bubble { position: absolute; left: calc(var(--x, 0) * 100%); top: calc(var(--y, 0) * 100%); }
+.ol-isl__place {
+  width: calc(var(--w, 0) * 100%); height: calc(var(--h, 0) * 100%); margin: 0; padding: 0;
+  border: 0; border-radius: 40%; background: transparent; cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) {
+  .ol-isl__place:hover { background: radial-gradient(closest-side, color-mix(in srgb, var(--isl-light) 42%, transparent), transparent); }
+}
+.ol-isl__place:active { background: radial-gradient(closest-side, color-mix(in srgb, var(--isl-light) 60%, transparent), transparent); }
+.ol-isl__place:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: var(--radius-lg); }
+
+/* Keimi's speech bubble above its head (tap hides it for the day). */
+.ol-isl__bubble {
+  z-index: 3; transform: translate(-50%, calc(-100% - 10px)); width: max-content; max-width: min(200px, 64%);
+  margin: 0; padding: 7px 11px 8px; border: 0; border-radius: 16px;
+  background: var(--isl-bubble-bg); color: var(--color-text); font-size: .75rem; line-height: 1.05rem; font-weight: 500;
+  text-align: center; text-wrap: balance; cursor: pointer; touch-action: manipulation;
+  box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--isl-shadow) 45%, transparent), 0 1px 2px color-mix(in srgb, var(--isl-shadow) 15%, transparent);
+}
+.ol-isl__bubble[hidden] { display: none; }
+.ol-isl__bubble::after {
+  content: ""; position: absolute; left: calc(50% - 7px); bottom: -6px; width: 14px; height: 14px;
+  background: inherit; border-radius: 0 0 4px 0; transform: rotate(45deg);
+}
+.ol-isl__bubble:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+@media (min-width: 900px) {
+  .ol-isl__bubble { max-width: 250px; padding: 9px 14px 10px; font-size: .875rem; line-height: 1.25rem; }
+}
+
+/* People: in rhythm they flutter in their colour around the big tree, overdue they rest pale on its crown. */
+.ol-isl__people { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.ol-isl__flyer { translate: -50% -50%; pointer-events: auto; }
+.ol-isl__butterfly {
+  display: grid; place-items: center; width: 40px; height: 40px; margin: 0; padding: 0; border: 0;
+  border-radius: 50%; background: none; color: inherit; cursor: pointer; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.ol-isl__butterfly:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 0; }
+.ol-isl__wings { display: block; line-height: 0; }
+.ol-isl__wings .ol-butterfly__svg { width: 24px; height: auto; }
+@media (min-width: 900px) { .ol-isl__wings .ol-butterfly__svg { width: 28px; } }
+.ol-butterfly__wing { transform-box: view-box; transform-origin: 16px 14px; }
+.ol-isl__flyer[data-state="fresh"] .ol-isl__butterfly { animation: ol-flutter 8s ease-in-out var(--bd, 0s) infinite; }
+.ol-isl__flyer[data-state="fresh"] .ol-butterfly__wing { animation: ol-flap .34s ease-in-out infinite alternate; }
+.ol-isl__flyer[data-state="due"] .ol-isl__wings { opacity: .85; filter: saturate(.4) brightness(1.04); }
+.ol-isl__flyer[data-state="due"] .ol-butterfly__wing { transform: scaleX(.72); }
+.ol-isl__flyer[data-lift] .ol-isl__butterfly { animation: ol-lift 1.5s cubic-bezier(.2, .8, .3, 1) both; }
+@keyframes ol-flap { from { transform: scaleX(1); } to { transform: scaleX(.28); } }
+@keyframes ol-flutter {
+  0%, 100% { transform: translate(0, 0) rotate(-6deg); }
+  25% { transform: translate(10px, -7px) rotate(5deg); }
+  50% { transform: translate(-3px, -12px) rotate(-3deg); }
+  75% { transform: translate(-10px, -4px) rotate(6deg); }
+}
+@keyframes ol-lift {
+  0% { transform: translateY(26px) scale(.9); }
+  45% { transform: translateY(-28px) scale(1.18) rotate(-8deg); }
+  100% { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ol-isl__butterfly, .ol-butterfly__wing { animation: none !important; }
+}
+:root[data-motion="reduced"] :is(.ol-isl__butterfly, .ol-butterfly__wing) { animation: none !important; }
+
+/* Place sheet (sheets/place.ts): the area's routines with plant, stage and watering toggle. */
+.ol-place { display: grid; gap: var(--space-4); padding-bottom: var(--space-2); }
+.ol-place__group { display: grid; gap: var(--space-1); }
+.ol-place__heading { padding-top: var(--space-1); }
+.ol-place__list { display: grid; }
+.ol-place__row { display: flex; align-items: center; gap: var(--space-2); min-height: 64px; border-top: 1px solid var(--color-border); }
+.ol-place__row:first-child { border-top: 0; }
+.ol-place__plant { flex: none; width: 44px; }
+.ol-place__text { flex: 1 1 auto; min-width: 0; display: grid; }
+.ol-place__name {
+  justify-self: start; max-width: 100%; min-height: 32px; margin: 0 0 0 calc(var(--space-2) * -1); padding: var(--space-1) var(--space-2) 0;
+  border: 0; border-radius: var(--radius-sm); background: none; color: var(--color-primary);
+  font-weight: 600; text-align: left; overflow-wrap: anywhere; cursor: pointer; touch-action: manipulation;
+}
+@media (hover: hover) { .ol-place__name:hover { background-color: var(--color-overlay-hover); } }
+.ol-place__meta { color: var(--color-text-2); }
+.ol-place__toggle { flex: none; }
+.ol-place__off { flex: none; padding: 0 var(--space-3); color: var(--color-text-2); }
+.ol-place__empty { display: grid; justify-items: start; gap: var(--space-3); padding: var(--space-2) 0; }
+/* === /island === */
 
 /* === focus-pick === */
 .ol-focus-pick { display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-1); }
@@ -1164,7 +1268,7 @@
 /* === people === */
 /* People list ("Personen"): per person one button with the butterfly, the name and "last contact ·
    rhythm" (≥ 56 px), and a compact "Kontaktiert" on the right. Due people show a pale butterfly, as
-   in the meadow. The bottom padding keeps the last row clear of a toast. */
+   on the island. The bottom padding keeps the last row clear of a toast. */
 .ol-people { display: flex; flex-direction: column; padding: var(--space-1) 0 calc(var(--touch) + var(--space-4)); }
 .ol-people__list { display: grid; }
 .ol-people__list[hidden] { display: none; }

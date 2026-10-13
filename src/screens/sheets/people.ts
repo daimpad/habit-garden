@@ -1,6 +1,6 @@
 // People sheets ("Personen"): the list of all people and the person editor.
 // List (full detent, history push): header action "Person hinzufügen"; one row per active person,
-// due people first, then by name: butterfly glyph (pale while due, like in the meadow), name,
+// due people first, then by name: butterfly glyph (pale while due, like on the island), name,
 // "last contact · rhythm" and a compact "Kontaktiert" button that logs today (toast with
 // "Rückgängig"). The name button opens the editor. Empty state with the same action.
 // Editor (fit up to the full detent, history push): name, rhythm (radio chips), note; for an existing

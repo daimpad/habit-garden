@@ -98,11 +98,24 @@ function evenAngles(count: number, offset = 0): number[] {
   return Array.from({ length: count }, (_, i) => offset + (360 / count) * i);
 }
 
+/**
+ * A ray at each angle. With `ref` (compact markup for the island) the first ray is a path with id `ref`
+ * and the others are rotated <use> copies of it.
+ */
+function ring(d: string, angles: readonly number[], ref?: string): string {
+  if (!ref) return angles.map((a) => radial(d, a)).join('');
+  const first = angles[0] ?? 0;
+  return angles.map((a, i) => (i === 0
+    ? `<path id="${ref}"${radial(d, a).slice(5)}`
+    : `<use href="#${ref}" transform="rotate(${num(a - first)} ${C} ${C})"/>`)).join('');
+}
+
 /** White rays: one outline layer underneath, white fills on top, so neighbouring rays stay separated. */
-function whiteRays(d: string, angles: readonly number[], outline: number): string {
-  const rays = angles.map((a) => radial(d, a)).join('');
-  return `<g class="ol-flower__outline" fill="none" stroke="${PRIMARY}" stroke-width="${num(outline)}" stroke-linejoin="round">${rays}</g>`
-    + `<g fill="${WHITE}">${rays}</g>`;
+function whiteRays(d: string, angles: readonly number[], outline: number, ref?: string): string {
+  const open = `<g class="ol-flower__outline" fill="none" stroke="${PRIMARY}" stroke-width="${num(outline)}" stroke-linejoin="round">`;
+  if (ref) return `${open}<g id="${ref}w">${ring(d, angles, ref)}</g></g><use href="#${ref}w" fill="${WHITE}"/>`;
+  const rays = ring(d, angles);
+  return `${open}${rays}</g><g fill="${WHITE}">${rays}</g>`;
 }
 
 function sunDisc(cx: number, cy: number, r: number): string {
@@ -137,54 +150,59 @@ const PASSIFLORA_CENTRE = [-90, 30, 150]
   .map((a) => `<circle cx="${num(C + Math.cos(rad(a)) * 1.25)}" cy="${num(C + Math.sin(rad(a)) * 1.25)}" r="1.2"/>`)
   .join('');
 
-/** Glyph content in the 24 × 24 coordinate system (no <svg> wrapper). */
-function flowerBody(id: FlowerId, outline: number): string {
+/**
+ * Glyph content in the 24 × 24 coordinate system (no <svg> wrapper); `outline` is the width of the
+ * outline layer under white rays in glyph units. `ids` (island, components/island.ts): unique id prefix
+ * for compact markup in which repeated rays are <use> copies.
+ */
+export function flowerBody(id: FlowerId, outline: number, ids?: string): string {
+  const ref = (key: string): string | undefined => (ids ? `${ids}${key}` : undefined);
   switch (id) {
     case 'bellis': {
       // 13 short rounded rays, outer third pink.
       const angles = evenAngles(13);
       const tip = roundRayTip(2.5, 7, 0.6, 1, 5.5);
-      return whiteRays(roundRay(2.5, 7, 0.6, 1), angles, outline)
-        + `<g fill="#E9A8B8">${angles.map((a) => radial(tip, a)).join('')}</g>`
+      return whiteRays(roundRay(2.5, 7, 0.6, 1), angles, outline, ref('a'))
+        + `<g fill="#E9A8B8">${ring(tip, angles, ref('b'))}</g>`
         + sunDisc(C, C, 3);
     }
     case 'calendula': {
       // Two rows of 8, offset by 22.5°, inner row shorter.
       const outer = roundRay(2.5, 9, 0.8, 1.25);
       const inner = roundRay(2.5, 7.6, 0.8, 1.25);
-      return `<g fill="#E8963E">${evenAngles(8).map((a) => radial(outer, a)).join('')}${evenAngles(8, 22.5).map((a) => radial(inner, a)).join('')}</g>`
+      return `<g fill="#E8963E">${ring(outer, evenAngles(8), ref('a'))}${ring(inner, evenAngles(8, 22.5), ref('b'))}</g>`
         + `<circle cx="${C}" cy="${C}" r="3" fill="#8A4B1F"/>`;
     }
     case 'helianthus': {
       const ray = pointedRay(4.5, 9, 1);
-      return `<g class="ol-flower__sun" fill="${SUN}">${evenAngles(20).map((a) => radial(ray, a)).join('')}</g>`
+      return `<g class="ol-flower__sun" fill="${SUN}">${ring(ray, evenAngles(20), ref('a'))}</g>`
         + `<circle cx="${C}" cy="${C}" r="5" fill="#5A3A22"/>${HELIANTHUS_DOTS}`;
     }
     case 'centaurea': {
       const ray = toothedRay(2, 9, 0.8, 2.6);
-      return `<g fill="#4C6FB3">${evenAngles(8).map((a) => radial(ray, a)).join('')}</g>`
+      return `<g fill="#4C6FB3">${ring(ray, evenAngles(8), ref('a'))}</g>`
         + `<circle cx="${C}" cy="${C}" r="2.5" fill="#2B3A6B"/>`;
     }
     case 'passiflora': {
       const ray = ovalRay(2, 9, 2.1);
-      return `<g fill="#B89BD1">${evenAngles(10).map((a) => radial(ray, a)).join('')}</g>`
+      return `<g fill="#B89BD1">${ring(ray, evenAngles(10), ref('a'))}</g>`
         + PASSIFLORA_CORONA
         + `<g class="ol-flower__sage" fill="${SAGE}">${PASSIFLORA_CENTRE}</g>`;
     }
     case 'matricaria': {
       // 12 narrow rays, each tilted up to 20° towards the bottom (hanging), raised centre.
       const angles = evenAngles(12).map((a) => a + 20 * Math.sin(rad(a)));
-      return whiteRays(roundRay(2.5, 8.6, 0.55, 0.9), angles, outline)
+      return whiteRays(roundRay(2.5, 8.6, 0.55, 0.9), angles, outline, ref('a'))
         + `<ellipse class="ol-flower__sun" cx="${C}" cy="${C - 1}" rx="3" ry="4" fill="${SUN}"/>`;
     }
     case 'leucanthemum': {
       // 21 long, flat, narrow rays around a wide centre.
-      return whiteRays(roundRay(3.5, 9, 0.5, 0.75), evenAngles(21), outline) + sunDisc(C, C, 4);
+      return whiteRays(roundRay(3.5, 9, 0.5, 0.75), evenAngles(21), outline, ref('a')) + sunDisc(C, C, 4);
     }
     case 'generic':
     default: {
       const ray = ovalRay(3, 9, 2.3);
-      return `<g class="ol-flower__sage" fill="${SAGE}">${evenAngles(8).map((a) => radial(ray, a)).join('')}</g>`
+      return `<g class="ol-flower__sage" fill="${SAGE}">${ring(ray, evenAngles(8), ref('a'))}</g>`
         + sunDisc(C, C, 3.5);
     }
   }
@@ -319,7 +337,7 @@ export function plant(stage: Stage, flowerId: FlowerId, tint: string, size = 120
 }
 
 // ---------------------------------------------------------------------------
-// Butterfly (one per person in the meadow), viewBox 0 0 32 28, body on x = 16.
+// Butterfly (one per person on the island), viewBox 0 0 32 28, body on x = 16.
 
 const BUTTERFLY_BODY = '#3B2F2A';
 const WING_UPPER = 'M15.2 12.5C11 2.5 2.6 1.8 2.4 8.4C2.3 13.4 8.6 15.2 15.2 14.4Z';
