@@ -21,14 +21,23 @@
   --duration-crossfade: 120ms;
   /* Shadow tint (box-shadows mix it with transparent). */
   --color-shadow: #2F4F3A;
-  /* Habit Garden: meadow signs, name tags, badges on plant arches, moon and stars, evening card. */
-  --garden-sign-bg: #FBF6EC; --garden-sign-edge: #E4D6BD; --garden-post: #B89C7A;
-  --garden-tag-bg: rgba(255,255,255,.9); --garden-name-bg: rgba(255,255,255,.78); --garden-badge-bg: rgba(255,255,255,.92);
-  --garden-arch-glow: rgba(255,255,255,.95); --garden-soil: #7E9F72;
+  /* Habit Garden: badges on plant arches, moon and stars, evening card. */
+  --garden-badge-bg: rgba(255,255,255,.92);
+  --garden-arch-glow: rgba(255,255,255,.95);
   --garden-moon: #F6F0D2; --garden-moon-glow: rgba(246,240,210,.9); --garden-star: #FFFFFF;
   --garden-evening-from: #EEEAF4; --garden-evening-to: #F8EEDF; --garden-evening-rule: rgba(47,79,58,.1);
   /* Flora keeps its colours in both themes; only the meadow grass is calmer in the dark. */
   --flora-sage: #9CB59A; --flora-outline: #2F4F3A; --garden-grass: #9CB59A;
+  /* Garten-Insel (screens.css "island"): base colours; every shade is derived with color-mix().
+     light = what highlights mix towards (sun), shadow = what shades mix towards, glow = windows, lantern, fireflies. */
+  --isl-grass: #A8CB86; --isl-earth: #C99670; --isl-rock: #9C7A6E; --isl-water: #88C6D6; --isl-foliage: #7DAE68;
+  --isl-path: #F2E1BF; --isl-wood: #BF8C62; --isl-roof: #D47F5F; --isl-wall: #FCF4E4; --isl-stone: #D9D1C3;
+  --isl-window: #DCEDF0; --isl-window-lit: #FFD98A; --isl-leaf: #5E9150; --isl-keimi: #CBE59E; --isl-keimi-light: #FFFDF2;
+  --isl-cloud: #FFFFFF; --isl-cloud-shade: #E9E2F0; --isl-cream: #FFF6E4;
+  --isl-light: #FFFBEA; --isl-evening-light: #FFE3C2; --isl-moonlight: #E2E7F5;
+  --isl-shadow: #4A3826; --isl-glow: #FFD27A; --isl-smoke: #F6F2EC;
+  --isl-bubble-bg: #FFFFFF; --isl-label-bg: rgba(255,255,255,.9);
+  --isl-cloud-a: 1; --isl-lit-a: .45; --isl-smoke-a: .9;
 }
 /* Dunkel (B.1), "Nachtgarten". main.ts (and app/theme-boot.js before the first paint) resolves the
    setting light / dark / system (prefers-color-scheme, live) to data-theme="light" | "dark" on <html>.
@@ -46,12 +55,20 @@
   --heat-0: #232A25; --heat-1: #2F4A3C; --heat-2: #3D6A4E; --heat-3: #4A7C59; --heat-4: #8FAE8B;
   --shadow-raised: 0 4px 12px rgba(0,0,0,.5);
   --color-shadow: #000000;
-  --garden-sign-bg: #2A2B24; --garden-sign-edge: #45402F; --garden-post: #6E5D47;
-  --garden-tag-bg: rgba(26,31,27,.9); --garden-name-bg: rgba(26,31,27,.82); --garden-badge-bg: rgba(26,31,27,.9);
-  --garden-arch-glow: rgba(238,242,234,.07); --garden-soil: #18241B;
+  --garden-badge-bg: rgba(26,31,27,.9);
+  --garden-arch-glow: rgba(238,242,234,.07);
   --garden-moon: #E8E2C4; --garden-moon-glow: rgba(232,226,196,.28); --garden-star: #D8DCE6;
   --garden-evening-from: #22212C; --garden-evening-to: #29251F; --garden-evening-rule: rgba(238,242,234,.1);
   --garden-grass: #6F8F6C;
+  /* Garten-Insel at night: lit windows, moonlight; flowers keep their colours. */
+  --isl-grass: #4C7056; --isl-earth: #6B5142; --isl-rock: #4A3F48; --isl-water: #2F5B78; --isl-foliage: #3D6A4E;
+  --isl-path: #9C9480; --isl-wood: #7F6049; --isl-roof: #87503F; --isl-wall: #B5AE9E; --isl-stone: #858A8C;
+  --isl-window: #FFCB6B; --isl-window-lit: #FFCB6B; --isl-leaf: #4E8452; --isl-keimi: #A9CC86; --isl-keimi-light: #E8F2D8;
+  --isl-cloud: #9AA8C2; --isl-cloud-shade: #6C7894; --isl-cream: #E8DCC4;
+  --isl-light: #C6D4EE; --isl-evening-light: #C6D4EE; --isl-moonlight: #C6D4EE;
+  --isl-shadow: #0B1222; --isl-glow: #FFC75E; --isl-smoke: #C6D4EE;
+  --isl-bubble-bg: #232A25; --isl-label-bg: rgba(26,31,27,.9);
+  --isl-cloud-a: .2; --isl-lit-a: 1; --isl-smoke-a: .16;
 }
 @media (prefers-reduced-motion: reduce) { :root { --duration-fast: 0ms; --duration-base: 0ms; --duration-slow: 0ms; } }
 /* In-app setting "Animationen: reduziert" (html[data-motion="reduced"]) behaves like the media query. */

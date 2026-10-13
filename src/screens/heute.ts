@@ -19,7 +19,10 @@
 // - The missed-reminders toast ("Fällig heute", S13/D.5.3) reveals that section once the data is
 //   complete: the list expands, scrolls into view and its heading takes focus.
 // - Habit Garden redesign (decision of 12.10.2026): a hero with date, greeting by time of day, watering
-//   progress, landscape and the meadow of all areas (screens/garden.ts) replaces the app bar; routines are
+//   progress and landscape replaces the app bar; since 13.10.2026 the Garten-Insel (screens/garden.ts,
+//   components/island.ts, services/island.ts) replaces the flat meadow: every area has a place whose
+//   flourish follows its routines, a tap on a place opens its sheet (sheets/place.ts) with the same
+//   toggle flow as the cards, Keimi says one short sentence (services/island keimiLine); routines are
 //   large cards (plant in an arch, stage, "Noch n Tage bis …", streak, "Heute gießen", 12-week heatmap);
 //   "Melde dich bei" suggests up to three people whose contact rhythm is due (services/contacts.ts).
 //   Order: hero, first steps, backup, routines, people, focus, mood, due today.
@@ -34,6 +37,7 @@
 // - Sundays show the card "Deine Woche" (H9) and the hero offers "Rückblick" at any time (screens/review.ts).
 import { liveQuery, type Observable, type Subscription } from 'dexie';
 import { butterfly, flower, petalColor } from '../components/flora.js';
+import type { IslandArea } from '../components/island.js';
 import type { CheckboxChange } from '../components/ol-checkbox.js';
 import type { HabitToggleChange } from '../components/ol-habit-toggle.js';
 import type { OlHeatmap, ToggleDayDetail } from '../components/ol-heatmap.js';
@@ -45,7 +49,7 @@ import { fmt, stageName, t } from '../i18n/de.js';
 import {
   DEFAULT_SETTINGS, GENERIC_TINT, MAX_FOCUS,
   type Area, type Contact, type ContactLog, type Day, type FirstStepId, type FlowerId, type Habit, type HabitLog,
-  type Id, type MoodLog, type Profile, type Task,
+  type Id, type MoodLog, type Profile, type Stage, type Task,
 } from '../model.js';
 import { areas$ } from '../repo/areas.js';
 import { contactLogs$, contacts$, logContact, undoLogContact } from '../repo/contacts.js';
@@ -58,7 +62,10 @@ import { profile$, updateProfile } from '../repo/profile.js';
 import { compareDue, completeTask, dueOn, getTask, reopenTask, subtaskProgress$, type CompleteResult } from '../repo/tasks.js';
 import type { Route } from '../router.js';
 import { butterflyColor, contactStatuses, lastContactText, rhythmLabel, suggestions, type ContactStatus } from '../services/contacts.js';
-import { bestStreak, isScheduledOn, nextStage, stageFor, streak, weekProgress, type NextStage } from '../services/growth.js';
+import { bestStreak, isScheduledOn, nextStage, stageFor, streak, weekProgress } from '../services/growth.js';
+import {
+  assignPlaces, decorLevel, fillSlots, flourishLevel, keimiLine, placeLabel,
+} from '../services/island.js';
 import { backupCardState } from '../services/storage-hints.js';
 import { percent, showWeekCard, weekSummary } from '../services/review.js';
 import { takeRevealDue } from '../services/reminders.js';
@@ -70,8 +77,8 @@ import { attachLongPress } from '../util/long-press.js';
 import { attachSwipe } from '../util/swipe.js';
 import { exportWithNotice } from './export-flow.js';
 import {
-  applySky, dayPhase, greetingLine, greetingMarkup, hillsMarkup, liftButterfly, meadowPlant, skyMarkup, sunPosition, syncMeadow,
-  type MeadowGroup, type MeadowPerson,
+  applyHabitToggle, applySky, dayPhase, greetingLine, greetingMarkup, Island, islandMarkup, nextText, skyMarkup, sunPosition,
+  todayStatus, type DayPhase, type IslandPerson, type IslandSpot, type IslandView,
 } from './garden.js';
 import { openCalendar } from './sheets/calendar.js';
 import { openCapture, type CaptureType } from './sheets/capture.js';
@@ -79,6 +86,7 @@ import { openFocusPick } from './sheets/focus-pick.js';
 import { openHabitEditor, rhythmText } from './sheets/habit.js';
 import { openJournal } from './sheets/journal.js';
 import { openPeopleSheet, openPersonSheet } from './sheets/people.js';
+import { openPlaceSheet, type PlaceGroupData, type PlaceSheet } from './sheets/place.js';
 import { doneMessage } from './sheets/task.js';
 
 type Period = Habit['period'];
@@ -98,10 +106,10 @@ const DIALOG_SETTLE_MS = 400;
 const REVEAL_TIMEOUT_MS = 800;
 const HEAT_WEEKS = 12;
 const PEOPLE_MAX = 3;
-/** Flower of the area whose meadow group hosts the butterflies ("Beziehungen"). */
-const PEOPLE_FLOWER: FlowerId = 'helianthus';
-const PEOPLE_GROUP = 'people';
+/** Island candidate for routines without (active) area. */
 const NO_AREA_GROUP = 'none';
+/** Island ids are unique per mount (two islands never share gradients). */
+let islandSeq = 0;
 const RING_R = 11.5;
 const RING_C = 2 * Math.PI * RING_R;
 const EASE_ENTER = 'cubic-bezier(0,0,0,1)';
@@ -139,6 +147,9 @@ interface Leaving {
 
 interface RoutineSection { section: HTMLElement; list: HTMLElement; counter: HTMLElement }
 
+/** An area (or the routines without area) as it appears on the island. */
+interface IslandCandidate { key: string; areaId: Id | null; name: string; flower: FlowerId; tint: string; habits: Habit[] }
+
 /** The focused element that opened a sheet, with its row position (focus fallback, 5.12.c). */
 interface Opener { list: HTMLElement | null; index: number; inRoutines: boolean }
 
@@ -150,7 +161,7 @@ interface Els {
   progress: HTMLElement;
   progressFill: HTMLElement;
   progressCount: HTMLElement;
-  meadow: HTMLElement;
+  island: HTMLElement;
   gardenAdd: HTMLElement;
   people: HTMLElement;
   peopleHeading: HTMLElement;
@@ -299,28 +310,10 @@ function periodOf(habit: Habit): Period {
   return habit.period === 'morning' || habit.period === 'evening' ? habit.period : 'any';
 }
 
-function todayStatus(logs: readonly HabitLog[], day: Day): HabitLog['status'] | undefined {
-  let status: HabitLog['status'] | undefined;
-  for (const log of logs) if (log.day === day && (log.status === 'done' || status === undefined)) status = log.status;
-  return status;
-}
-
 /** "17 Tage", "1 Tag", "3 Wochen" for a streak value in the habit's unit. */
 function countText(habit: Habit, n: number): string {
   if (habit.schedule.kind === 'timesPerWeek') return n === 1 ? t.streakWeeksOne : fmt(t.streakWeeks, { n });
   return n === 1 ? t.dayCountOne : fmt(t.dayCount, { n });
-}
-
-/** "Noch 2 Tage bis Blätter" (daily every day), "Noch 2× gießen bis …" (other rhythms), weeks for timesPerWeek. */
-function nextText(habit: Habit, next: NextStage): string {
-  if (next.next === null) return t.cardFullBloom;
-  const stage = stageName(next.next);
-  const n = next.remaining;
-  if (next.unit === 'weeks') return n === 1 ? fmt(t.cardNextWeekOne, { stage }) : fmt(t.cardNextWeeks, { n, stage });
-  if (habit.schedule.kind === 'daily' && habit.schedule.interval <= 1) {
-    return n === 1 ? fmt(t.cardNextDayOne, { stage }) : fmt(t.cardNextDays, { n, stage });
-  }
-  return n === 1 ? fmt(t.cardNextTimesOne, { stage }) : fmt(t.cardNextTimes, { n, stage });
 }
 
 /** The logs of a habit after toggling day to done/undone (immutable copy for growth.ts). */
@@ -407,11 +400,18 @@ class HeuteScreen {
   private moodFlashUntil = 0;
   private completeTimer = 0;
   private opener: Opener | null = null;
+  private readonly island: Island;
+  /** Island candidates (areas, "Ohne Bereich") per spot and by key, as of the last island render. */
+  private spots = new Map<IslandSpot, IslandCandidate[]>();
+  private candidates = new Map<string, IslandCandidate>();
+  /** The open place sheet and the candidates it lists (kept even if the island reassigns the spot). */
+  private placeSheet: { sheet: PlaceSheet; keys: string[] } | null = null;
 
   constructor(view: HTMLElement, day: Day) {
     this.view = view;
     this.day = day;
     this.els = this.renderSkeleton();
+    this.island = new Island(this.els.island, `hgi${++islandSeq}-`, day);
     this.bindEvents();
   }
 
@@ -730,11 +730,12 @@ class HeuteScreen {
       <div class="ol-heute" data-loading>
         <header class="ol-hero">
           ${skyMarkup()}
+          <div class="ol-hero__top">
+            <span class="ol-hero__brand"><span class="ol-hero__brand-mark" aria-hidden="true">${icon('sprout', 20)}</span><span class="ol-hero__brand-name">${t.appName}</span></span>
+            <ol-icon-button class="ol-heute__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
+          </div>
+          <div class="ol-hero__body">
           <div class="ol-hero__content">
-            <div class="ol-hero__top">
-              <span class="ol-hero__brand"><span class="ol-hero__brand-mark" aria-hidden="true">${icon('sprout', 20)}</span><span class="ol-hero__brand-name">${t.appName}</span></span>
-              <ol-icon-button class="ol-heute__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
-            </div>
             <h1 class="ol-hero__title">
               <button type="button" class="ol-hero__date ol-hero__date-btn" aria-haspopup="dialog" aria-describedby="heute-date-hint"><span class="ol-hero__date-text">${formatWeekdayLong(this.day)}, <span class="ol-hero__date-accent">${formatDayFull(this.day)}</span></span>${icon('calendar', 20)}</button>
               <span class="ol-hero__greeting"></span>
@@ -747,9 +748,7 @@ class HeuteScreen {
             </div>
             <button type="button" class="ol-hero__review">${icon('bar-chart-3', 20)}<span>${t.reviewEntry}</span></button>
           </div>
-          <div class="ol-hero__land">
-            ${hillsMarkup()}
-            <ul class="ol-meadow" aria-label="${t.meadowLabel}"></ul>
+          ${islandMarkup()}
           </div>
         </header>
         <section class="ol-section ol-heute__first" aria-labelledby="heute-first" hidden>
@@ -885,7 +884,7 @@ class HeuteScreen {
       progress: req<HTMLElement>(hero, '.ol-hero__progress'),
       progressFill: req<HTMLElement>(hero, '.ol-hero__bar-fill'),
       progressCount: req<HTMLElement>(hero, '.ol-hero__progress-count'),
-      meadow: req<HTMLElement>(hero, '.ol-meadow'),
+      island: req<HTMLElement>(hero, '.ol-isl'),
       gardenAdd: req<HTMLElement>(view, '.ol-garden-add'),
       people,
       peopleHeading: req<HTMLElement>(people, '#heute-people'),
@@ -1021,16 +1020,23 @@ class HeuteScreen {
     els.routineEmptyState.addEventListener('ol-action', () => this.capture('habit'));
     els.gardenAdd.addEventListener('click', () => this.capture('habit'));
 
-    // Wiese: a plant opens its routine, a butterfly its person.
-    els.meadow.addEventListener('click', (event) => {
+    // Insel: a place opens its sheet, a butterfly its person, a tap on Keimi's bubble hides it for today.
+    els.island.addEventListener('click', (event) => {
       const target = event.target instanceof Element ? event.target : null;
-      const plant = target?.closest<HTMLElement>('button.ol-meadow__plant');
-      const flyer = target?.closest<HTMLElement>('.ol-meadow__butterfly');
-      const id = (plant ?? flyer)?.closest<HTMLElement>('li[data-id]')?.dataset['id'];
-      if (!id) return;
-      this.rememberOpener();
-      if (plant) emit(plant, 'ol-navigate', { path: `/gewohnheit/${encodeURIComponent(id)}` });
-      else this.openPerson(id);
+      if (!target) return;
+      const placeButton = target.closest<HTMLElement>('.ol-isl__place');
+      const spot = placeButton?.dataset['place'];
+      if (spot) {
+        this.openPlace(spot as IslandSpot);
+        return;
+      }
+      const flyer = target.closest<HTMLElement>('.ol-isl__butterfly');
+      const id = flyer?.closest<HTMLElement>('li[data-id]')?.dataset['id'];
+      if (id) {
+        this.openPerson(id);
+        return;
+      }
+      if (target.closest('.ol-isl__bubble')) this.island.hideBubble();
     });
 
     // Melde dich bei
@@ -1265,6 +1271,7 @@ class HeuteScreen {
     if (this.focusRendered) for (const row of created) this.fadeIn(row);
     this.focusRendered = true;
     this.updateRing(done, n);
+    this.renderIsland();
   }
 
   private focusDone(task: Task): boolean {
@@ -1449,7 +1456,7 @@ class HeuteScreen {
 
     const watered = shown.filter((hb) => this.habitDoneToday(hb, logs.get(hb.id) ?? [])).length;
     this.renderProgress(watered, shown.length);
-    this.renderMeadow(active, logs);
+    this.renderIsland();
     this.renderReviewCard(active, logs);
   }
 
@@ -1469,7 +1476,7 @@ class HeuteScreen {
     card.hidden = false;
   }
 
-  // --- Hero (greeting, landscape, progress) and meadow ---
+  // --- Hero (greeting, landscape, progress) ---
 
   private renderHero(): void {
     const settings = this.profile?.settings ?? DEFAULT_SETTINGS;
@@ -1483,6 +1490,7 @@ class HeuteScreen {
       render(greeting, greetingMarkup(phase));
     }
     this.renderGreetingLine();
+    this.renderIsland();
   }
 
   private renderGreetingLine(): void {
@@ -1504,9 +1512,17 @@ class HeuteScreen {
     setVar(els.progressFill, '--progress', (Math.min(1, done / n)).toFixed(3));
   }
 
-  /** Meadow groups: active areas in order (plus archived ones that still hold routines), routines without area last. */
-  private meadowGroups(active: readonly Habit[], logs: Map<Id, HabitLog[]>): MeadowGroup[] {
-    const day = this.day;
+  // --- Insel (Garten-Insel, Teil 1) ---
+
+  /** The logs of a habit as the screen shows them: an optimistic toggle result wins until the snapshot catches up. */
+  private shownLogs(habit: Habit): readonly HabitLog[] {
+    const logs = this.logs?.get(habit.id) ?? [];
+    const expected = this.expectLog.get(habit.id);
+    return expected && (todayStatus(logs, this.day) === 'done') !== expected.done ? withDay(logs, habit, this.day, expected.done) : logs;
+  }
+
+  /** Active areas in order (plus archived ones that still hold routines), routines without area last. */
+  private islandCandidates(active: readonly Habit[]): IslandCandidate[] {
     const byArea = new Map<string, Habit[]>();
     for (const habit of active) {
       const key = habit.areaId && this.areas.has(habit.areaId) ? habit.areaId : NO_AREA_GROUP;
@@ -1514,34 +1530,18 @@ class HeuteScreen {
       list.push(habit);
       byArea.set(key, list);
     }
-    const plantOf = (habit: Habit): MeadowGroup['plants'][number] => {
-      const own = logs.get(habit.id) ?? [];
-      return {
-        habit,
-        stage: stageFor(habit, own, day),
-        streak: streak(habit, own, day),
-        weeks: habit.schedule.kind === 'timesPerWeek',
-      };
-    };
-    const groups: MeadowGroup[] = [];
+    const out: IslandCandidate[] = [];
     for (const area of this.areas.values()) {
       const habits = byArea.get(area.id) ?? [];
       if (area.archived === 1 && habits.length === 0) continue;
-      groups.push({ key: area.id, name: area.name, flower: area.flower, tint: area.tint, plants: habits.map(plantOf), people: [] });
+      out.push({ key: area.id, areaId: area.id, name: area.name, flower: area.flower, tint: area.tint, habits });
     }
     const loose = byArea.get(NO_AREA_GROUP);
-    if (loose) groups.push({ key: NO_AREA_GROUP, name: t.noArea, flower: 'generic', tint: GENERIC_TINT, plants: loose.map(plantOf), people: [] });
-
-    const people = this.meadowPeople();
-    if (people.length > 0) {
-      const host = groups.find((g) => this.areas.get(g.key)?.flower === PEOPLE_FLOWER && this.areas.get(g.key)?.archived === 0);
-      if (host) host.people = people;
-      else groups.push({ key: PEOPLE_GROUP, name: t.meadowPeople, flower: PEOPLE_FLOWER, tint: GENERIC_TINT, plants: [], people });
-    }
-    return groups;
+    if (loose) out.push({ key: NO_AREA_GROUP, areaId: null, name: t.noArea, flower: 'generic', tint: GENERIC_TINT, habits: loose });
+    return out;
   }
 
-  private meadowPeople(): MeadowPerson[] {
+  private islandPeople(): IslandPerson[] {
     const contacts = this.contacts;
     const logs = this.contactLogs;
     if (!contacts || !logs) return [];
@@ -1557,10 +1557,145 @@ class HeuteScreen {
     });
   }
 
-  private renderMeadow(active: readonly Habit[], logs: Map<Id, HabitLog[]>): void {
-    if (!this.contacts || !this.contactLogs) return;
-    syncMeadow(this.els.meadow, this.meadowGroups(active, logs),
-      (id) => this.pendingHabits.has(id) || this.expectLog.has(id));
+  private phase(): DayPhase {
+    return dayPhase(currentHour(), this.profile?.settings ?? DEFAULT_SETTINGS);
+  }
+
+  /** Builds the island view (places, flourish, slots, summary, people, Keimi) and patches the hero and an open place sheet. */
+  private renderIsland(): void {
+    const habits = this.habits;
+    if (!habits || !this.logs || !this.areasLoaded || !this.contacts || !this.contactLogs || !this.focus) return;
+    const day = this.day;
+    const active = habits.filter((hb) => hb.archived === 0);
+    const candidates = this.islandCandidates(active);
+    const { places, extra } = assignPlaces(candidates);
+    const byKey = new Map(candidates.map((c) => [c.key, c]));
+    const stageOf = (habit: Habit): Stage => stageFor(habit, this.shownLogs(habit), day);
+    const counts = (list: readonly Habit[]): { done: number; scheduled: number } => {
+      const scheduled = list.filter((hb) => isScheduledOn(hb, day));
+      return { done: scheduled.filter((hb) => this.habitDoneToday(hb, this.logs?.get(hb.id) ?? [])).length, scheduled: scheduled.length };
+    };
+    const islandArea = (list: readonly Habit[], flower: FlowerId, tint: string): IslandArea => {
+      const items = list.map((habit) => ({ stage: stageOf(habit), wet: this.habitDoneToday(habit, this.logs?.get(habit.id) ?? []) }));
+      const { shown, more } = fillSlots(items);
+      return { lvl: flourishLevel(items.map((i) => i.stage)), flower, tint, plants: shown, more };
+    };
+
+    const spots = new Map<IslandSpot, IslandCandidate[]>();
+    const art: IslandView['art'] = { areas: {}, extra: null, decor: decorLevel(active.map(stageOf)) };
+    const placeList: Array<{ key: IslandSpot; label: string }> = [];
+    for (const [key, candidateKey] of places) {
+      const c = byKey.get(candidateKey);
+      if (!c) continue;
+      spots.set(key, [c]);
+      art.areas[key] = islandArea(c.habits, c.flower, c.tint);
+    }
+    const extras = extra.map((k) => byKey.get(k)).filter((c): c is IslandCandidate => c !== undefined);
+    if (extras.length > 0) {
+      spots.set('extra', extras);
+      art.extra = islandArea(extras.flatMap((c) => c.habits), 'generic', GENERIC_TINT);
+    }
+    // Places row by row, left to right (back, middle, front of the island) for a sensible tab order.
+    const ORDER: readonly IslandSpot[] = ['work', 'home', 'bonds', 'health', 'wealth', 'growth', 'extra', 'leisure'];
+    for (const key of ORDER) {
+      const list = spots.get(key);
+      if (!list) continue;
+      const all = list.flatMap((c) => c.habits);
+      const { done, scheduled } = counts(all);
+      const name = key === 'extra' ? t.islandMoreAreas : list[0]?.name ?? '';
+      placeList.push({ key, label: placeLabel(name, done, scheduled, all.length) });
+    }
+    const summary = candidates.map((c) => {
+      const { done, scheduled } = counts(c.habits);
+      return placeLabel(c.name, done, scheduled, c.habits.length);
+    });
+
+    const phase = this.phase();
+    const shown = active.filter((hb) => isScheduledOn(hb, day));
+    const pending = shown.filter((hb) => !this.habitDoneToday(hb, this.logs?.get(hb.id) ?? [])).length;
+    const focusOpen = this.focus.tasks.filter((task) => !this.focusDone(task)).length;
+    const due = suggestions(this.contacts.filter((c) => c.archived === 0), this.contactLogs, day, PEOPLE_MAX)
+      .find((st) => !this.contactedNow.has(st.contact.id));
+    const bubble = keimiLine({
+      night: phase === 'night', evening: phase === 'evening', habits: active.length, scheduled: shown.length, pending,
+      focusOpen, dueContact: due?.contact.name ?? null,
+    }).text;
+
+    this.spots = spots;
+    this.candidates = byKey;
+    this.island.update({ art, places: placeList, summary, people: this.islandPeople(), bubble });
+    this.renderPlaceSheet();
+  }
+
+  /** Groups of the place sheet: one per area (candidate key), rows for the area's active routines. */
+  private placeGroups(keys: readonly string[]): PlaceGroupData[] {
+    return keys.map((key) => this.candidates.get(key)).filter((c): c is IslandCandidate => c !== undefined).map((c) => ({
+      key: c.key,
+      name: c.name,
+      areaId: c.areaId,
+      rows: c.habits.map((habit) => ({
+        habit,
+        logs: this.shownLogs(habit),
+        flower: c.flower,
+        tint: c.tint,
+        scheduled: isScheduledOn(habit, this.day),
+        pending: this.pendingHabits.has(habit.id),
+        frozen: this.pendingHabits.has(habit.id) || this.expectLog.has(habit.id),
+      })),
+    }));
+  }
+
+  private openPlace(spot: IslandSpot): void {
+    const list = this.spots.get(spot);
+    if (!list || list.length === 0) return;
+    const title = spot === 'extra' ? t.islandMoreAreas : list[0]?.name ?? '';
+    const keys = list.map((c) => c.key);
+    this.placeSheet?.sheet.close();
+    let sheet: PlaceSheet;
+    try {
+      sheet = openPlaceSheet(title, this.day, this.placeGroups(keys), {
+        toggle: (id, toggle, plant) => {
+          const habit = this.habits?.find((hb) => hb.id === id);
+          if (habit) void this.toggleHabit(habit, toggle, this.cardRow(id), plant);
+        },
+        openHabit: (id) => emit(document.body, 'ol-navigate', { path: `/gewohnheit/${encodeURIComponent(id)}` }),
+        create: (areaId) => {
+          try {
+            openCapture({ type: 'habit', ...(areaId ? { areaId } : {}) });
+          } catch (err) {
+            console.error(err);
+          }
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      return;
+    }
+    const entry = { sheet, keys };
+    this.placeSheet = entry;
+    void sheet.closed.then(() => {
+      if (this.placeSheet === entry) this.placeSheet = null;
+    });
+  }
+
+  private renderPlaceSheet(): void {
+    const open = this.placeSheet;
+    if (!open) return;
+    const groups = this.placeGroups(open.keys);
+    if (groups.length === 0) {
+      open.sheet.close();
+      return;
+    }
+    open.sheet.update(groups);
+  }
+
+  /** The routine card of a habit (scheduled today), if rendered. */
+  private cardRow(id: Id): HTMLElement | null {
+    for (const period of PERIODS) {
+      const row = rowById(this.els.routine[period].list, id);
+      if (row) return row;
+    }
+    return null;
   }
 
   private orderRoutines(): void {
@@ -1654,29 +1789,25 @@ class HeuteScreen {
     }
 
     const toggle = row.querySelector<HTMLElement>('ol-habit-toggle');
-    if (toggle) {
-      if (weekly) {
-        setAttr(toggle, 'progress', (weekDone / target).toFixed(3));
-        setAttr(toggle, 'state', progress.done >= target ? 'done' : progress.done > 0 ? 'partial' : 'pending');
-        toggle.toggleAttribute('today-done', status === 'done');
-        setAttr(toggle, 'label', fmt(t.habitToggleWeekAria, { name: habit.name, done: weekDone, target }));
-      } else {
-        toggle.removeAttribute('progress');
-        toggle.removeAttribute('today-done');
-        setAttr(toggle, 'state', status === 'done' ? 'done' : status === 'skipped' ? 'skipped' : 'pending');
-        setAttr(toggle, 'label', fmt(t.habitToggleAria, { name: habit.name }));
-      }
-      toggle.toggleAttribute('disabled', this.pendingHabits.has(habit.id));
-    }
+    if (toggle) applyHabitToggle(toggle, habit, logs, day, this.pendingHabits.has(habit.id));
     row.toggleAttribute('data-watered', status === 'done');
     row.querySelector<OlHeatmap>('ol-heatmap')?.setData(habit, logs, day);
   }
 
   private async onHabitToggle(row: HTMLElement, toggle: HTMLElement, requested: boolean): Promise<void> {
     void requested;
-    const id = row.dataset['id'];
-    const habit = this.habits?.find((hb) => hb.id === id);
-    if (!id || !habit || this.pendingHabits.has(id)) return;
+    const habit = this.habits?.find((hb) => hb.id === row.dataset['id']);
+    if (habit) await this.toggleHabit(habit, toggle, row, row.querySelector<OlPlant>('ol-plant'));
+  }
+
+  /**
+   * Toggles today's log (F "Erledigungsablauf Routine") from a card or from the place sheet: `cardRow` is
+   * the routine's card (state, streak sparks), `plant` the plant that plays grow/wobble and the particles
+   * (the card's or the sheet's).
+   */
+  private async toggleHabit(habit: Habit, toggle: HTMLElement, cardRow: HTMLElement | null, plant: OlPlant | null): Promise<void> {
+    const id = habit.id;
+    if (this.pendingHabits.has(id)) return;
     this.pendingHabits.add(id);
     toggle.setAttribute('disabled', '');
     let result: ToggleResult;
@@ -1687,8 +1818,7 @@ class HeuteScreen {
       if (!this.destroyed) {
         showToast(t.toastError);
         toggle.removeAttribute('disabled');
-        const logs = this.logs?.get(id) ?? [];
-        this.applyHabitState(row, habit, logs, true);
+        if (cardRow) this.applyHabitState(cardRow, habit, this.logs?.get(id) ?? [], true);
         this.renderRoutines();
       }
       return;
@@ -1704,17 +1834,21 @@ class HeuteScreen {
       }, EXPECT_TIMEOUT_MS);
       this.expectLog.set(id, { done: result.done, timer });
     }
-    this.applyHabitState(row, habit, next, false);
-    this.animateHabit(row, habit, result, next);
+    if (cardRow) {
+      this.applyHabitState(cardRow, habit, next, false);
+      // Toggled in the place sheet: the card's plant follows without its own animation.
+      const cardPlant = cardRow.querySelector<OlPlant>('ol-plant');
+      if (cardPlant && cardPlant !== plant && cardPlant.stage !== result.after) cardPlant.setAttribute('stage', String(result.after));
+    }
+    if (toggle !== cardRow?.querySelector('ol-habit-toggle')) toggle.removeAttribute('disabled');
+    this.animateHabit(plant, cardRow, habit, result, next);
     this.renderRoutines();
   }
 
   /** F "Erledigungsablauf Routine" and B.4 (Routine erledigt, Stufenwechsel, Streak 7/30/100, Rücknahme). */
-  private animateHabit(row: HTMLElement, habit: Habit, result: ToggleResult, logs: readonly HabitLog[]): void {
-    const plant = row.querySelector<OlPlant>('ol-plant');
+  private animateHabit(plant: OlPlant | null, cardRow: HTMLElement | null, habit: Habit, result: ToggleResult, logs: readonly HabitLog[]): void {
     if (!plant) return;
     const { before, after, done } = result;
-    this.animateMeadowPlant(habit.id, result);
     if (!done) {
       // Rücknahme: no particles; a lower stage crossfades.
       if (plant.stage !== after) void plant.crossfadeTo(after);
@@ -1735,27 +1869,12 @@ class HeuteScreen {
       confirm = true;
     }
     if (habit.schedule.kind !== 'timesPerWeek' && MILESTONES.includes(streak(habit, logs, this.day))) {
-      const number = row.querySelector('.ol-garden-card__streak-n');
-      if (number) {
-        const box = number.getBoundingClientRect();
-        particles().sparks(box.left + box.width / 2, box.top + box.height / 2);
-      }
+      const number = cardRow?.querySelector('.ol-garden-card__streak-n');
+      const box = (number && cardRow?.contains(plant) ? number : plant).getBoundingClientRect();
+      particles().sparks(box.left + box.width / 2, box.top + box.height / 2);
       confirm = true;
     }
     if (confirm) vibrate(HAPTIC.confirm);
-  }
-
-  /** The meadow plant follows the card: grows with it, wobbles on watering, crossfades on undo. */
-  private animateMeadowPlant(id: Id, result: ToggleResult): void {
-    const plant = meadowPlant(this.els.meadow, id);
-    if (!plant) return;
-    if (!result.done) {
-      if (plant.stage !== result.after) void plant.crossfadeTo(result.after);
-      return;
-    }
-    if (plant.stage !== result.after) plant.setAttribute('stage', String(result.after));
-    if (result.after > result.before) void plant.grow();
-    void plant.wobble();
   }
 
   /** A heatmap cell on a card: today runs the card's toggle flow, past days toggle with a toast (like the habit sheet). */
@@ -1841,7 +1960,7 @@ class HeuteScreen {
     if (row.contains(document.activeElement)) moveFocusFrom(row, () => this.els.peopleHeading);
     this.renderPeople();
     this.renderRoutines();
-    liftButterfly(this.els.meadow, id);
+    this.island.lift(id);
     vibrate(HAPTIC.tick);
     try {
       const result = await logContact(id, this.day);

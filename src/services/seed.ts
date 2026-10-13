@@ -3,9 +3,9 @@
 // relative to today. Existing data is kept.
 // "10 min dehnen" has 13 days in a row up to yesterday, so ticking it today shows the
 // stage change to Blüte with its animation.
-// People part: five people with contact logs relative to today, so the meadow shows a mix of
-// butterflies in rhythm and overdue ones, plus an active "Beziehungen" area (helianthus) next to
-// which they fly (created from DEFAULT_AREAS or un-archived).
+// People part: five people with contact logs relative to today, so the island shows a mix of
+// butterflies in rhythm and overdue ones, plus an active "Beziehungen" area (helianthus) around
+// whose tree they fly (created from DEFAULT_AREAS or un-archived).
 // Each part is skipped when it already exists (habits: "10 min dehnen"; people: "Anna"); the result
 // is 'exists' only when both parts existed.
 import { db } from '../db.js';
