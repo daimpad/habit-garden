@@ -31,7 +31,7 @@
 //   stores the day in Profile.eveningCardDismissedFor, so it returns the next evening.
 // - Focus and due rows show the subtask progress "2/5" next to the title (Phase 2, decision 13.10.2026).
 // - The date in the hero is a button that opens the calendar sheet (H8, sheets/calendar.ts).
-// TODO(phase-5): review card (H9).
+// - Sundays show the card "Deine Woche" (H9) and the hero offers "Rückblick" at any time (screens/review.ts).
 import { liveQuery, type Observable, type Subscription } from 'dexie';
 import { butterfly, flower, petalColor } from '../components/flora.js';
 import type { CheckboxChange } from '../components/ol-checkbox.js';
@@ -736,7 +736,7 @@ class HeuteScreen {
               <ol-icon-button class="ol-heute__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
             </div>
             <h1 class="ol-hero__title">
-              <button type="button" class="ol-hero__date ol-hero__date-btn" aria-haspopup="dialog" aria-describedby="heute-date-hint">${formatWeekdayLong(this.day)}, <span class="ol-hero__date-accent">${formatDayFull(this.day)}</span>${icon('calendar', 20)}</button>
+              <button type="button" class="ol-hero__date ol-hero__date-btn" aria-haspopup="dialog" aria-describedby="heute-date-hint"><span class="ol-hero__date-text">${formatWeekdayLong(this.day)}, <span class="ol-hero__date-accent">${formatDayFull(this.day)}</span></span>${icon('calendar', 20)}</button>
               <span class="ol-hero__greeting"></span>
             </h1>
             <span class="ol-visually-hidden" id="heute-date-hint">${t.calendarOpenHint}</span>

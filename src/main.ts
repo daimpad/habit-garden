@@ -62,7 +62,7 @@ import * as wissenScreen from './screens/wissen.js';
 import { wissenContext } from './screens/wissen.js';
 import { startReminders } from './services/reminders.js';
 import { appPath } from './util/base.js';
-import { onDayChange } from './util/date.js';
+import { isDay, onDayChange, today } from './util/date.js';
 import { h, motionReduced, render } from './util/dom.js';
 
 type ScreenMount = (view: HTMLElement, route: Route) => () => void;
@@ -280,10 +280,15 @@ function onFabClick(): void {
   try {
     // G1: PLANUNG pre-fills the selected area and, on a project screen, the project.
     const prefill = tab === 'planung' ? planningContext() : null;
+    const base = baseRoute();
+    const dayParam = base.name === 'heute-day' ? base.params['day'] : undefined;
+    const futureDay = dayParam && isDay(dayParam) && dayParam > today() ? dayParam : undefined;
     sheet = openCapture({
       type: 'task',
       ...(prefill?.areaId ? { areaId: prefill.areaId } : {}),
       ...(prefill?.projectId ? { projectId: prefill.projectId } : {}),
+      // Day view of a future day (H8): the new task is due on that day.
+      ...(futureDay ? { dueDay: futureDay } : {}),
     });
   } catch {
     return;

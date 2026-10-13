@@ -24,6 +24,8 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 - **Planen in Projekten.** Unter „Planung“ wählst du oben einen Bereich und siehst seine Projekte. Bei jedem wächst eine kleine Pflanze mit dem Fortschritt. Die Liste ordnet alle offenen Aufgaben nach überfällig, heute, diese Woche und später; in der Inbox sammelt sich, was noch kein Projekt und kein Datum hat.
 - **Aufgaben verschieben.** Auf einer Tafel mit den Spalten Offen, In Arbeit und Erledigt oder in einer Matrix nach wichtig und dringend ziehst du Aufgaben mit dem Finger an ihren Platz. In Listen genügt ein Wischen: nach rechts ist erledigt, nach links verschiebst du auf morgen oder das Wochenende. Eine Suche mit Filtern findet jede Aufgabe, und ein Projekt lässt sich als Kalenderdatei mitnehmen.
 - **Wissen sammeln.** Unter „Wissen“ schreibst du Notizen in Markdown; die erste Zeile ist der Titel. Schlagworte wie #garten/balkon schreibst du einfach in den Text, sie ordnen sich zu einem Baum, nach dem du filtern kannst, auch mit UND und ODER. Eine Suche findet Titel, Schlagworte und Text. Notizen lassen sich anheften, archivieren, untereinander verlinken, und aus einer Zeile wird mit einem Tipp eine Aufgabe.
+- **Zurückblicken und vorausplanen.** Ein Tipp auf das Datum öffnet einen Kalender: Vergangene Tage zeigen, was erledigt und gegossen wurde, künftige Tage kannst du schon planen. Der Rückblick zeigt, wie deine Routinen in den letzten Wochen gewachsen sind; sonntags erinnert eine Karte an deine Woche.
+- **Tag und Nacht.** Sonne und Mond wandern über den Garten. Im dunklen Erscheinungsbild wird er zum Nachtgarten, in dem sich die Blüten sanft abheben.
 - **Stimmung und Journal.** Mit einem Tipp hältst du fest, wie es dir heute geht, und kannst einen kurzen Gedanken dazuschreiben.
 
 <p>
@@ -33,7 +35,7 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 
 ## Was noch kommt
 
-- **Rückblick und Kalender:** ein Blick zurück auf die vergangenen Wochen und ein dunkles Erscheinungsbild für den Abend.
+Die geplanten Bereiche sind umgesetzt. Als Nächstes geht es um Feinschliff aus dem Alltag mit der App.
 
 ## Deine Daten
 

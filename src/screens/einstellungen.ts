@@ -343,18 +343,18 @@ class SettingsScreen {
         </ol-segmented>
       </div>
       <div class="ol-settings__item ol-settings__switch">
-        <div class="ol-settings__switch-text ol-settings__landscape-text">
-          <span class="ol-settings__strong">${t.landscape}</span>
-          <span class="ol-settings__hint" id="settings-landscape-hint">${t.landscapeHint}</span>
-        </div>
-        <ol-checkbox class="ol-settings__landscape" label="${t.landscape}" aria-describedby="settings-landscape-hint"></ol-checkbox>
-      </div>
-      <div class="ol-settings__item ol-settings__switch">
         <div class="ol-settings__switch-text">
           <span class="ol-settings__strong">${t.leftHanded}</span>
           <span class="ol-settings__hint" id="settings-left-hint">${t.leftHandedHint}</span>
         </div>
         <ol-checkbox class="ol-settings__left" label="${t.leftHanded}" aria-describedby="settings-left-hint"></ol-checkbox>
+      </div>
+      <div class="ol-settings__item ol-settings__switch">
+        <div class="ol-settings__switch-text ol-settings__landscape-text">
+          <span class="ol-settings__strong">${t.landscape}</span>
+          <span class="ol-settings__hint" id="settings-landscape-hint">${t.landscapeHint}</span>
+        </div>
+        <ol-checkbox class="ol-settings__landscape" label="${t.landscape}" aria-describedby="settings-landscape-hint"></ol-checkbox>
       </div>
       <div class="ol-settings__item">
         <span class="ol-settings__label" id="settings-motion-label">${t.animations}</span>
