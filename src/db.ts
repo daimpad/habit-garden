@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
-  Area, Contact, ContactLog, DayPlan, Habit, HabitLog, MoodLog, Note, Profile, Project, Tag, Task,
+  Area, Contact, ContactLog, DayPlan, Habit, HabitLog, Milestone, MoodLog, Note, Profile, Project, Tag, Task,
 } from './model.js';
 
 export const db = new Dexie('olife') as Dexie & {
@@ -8,6 +8,7 @@ export const db = new Dexie('olife') as Dexie & {
   tasks: EntityTable<Task,'id'>; habits: EntityTable<Habit,'id'>; habitLogs: EntityTable<HabitLog,'id'>;
   notes: EntityTable<Note,'id'>; tags: EntityTable<Tag,'path'>; moodLogs: EntityTable<MoodLog,'id'>; dayPlans: EntityTable<DayPlan,'id'>;
   contacts: EntityTable<Contact,'id'>; contactLogs: EntityTable<ContactLog,'id'>;
+  milestones: EntityTable<Milestone,'id'>;
 };
 db.version(1).stores({
   profile:   'key',
@@ -27,11 +28,16 @@ db.version(2).stores({
   contacts:    'id, archived, sortKey',
   contactLogs: 'id, contactId, day, [contactId+day]',
 });
+// Version 3 (Garten-Insel Teil 3) adds the milestones ("Spuren im Garten"); Milestone.id is `${habitId}:${kind}`.
+// No upgrade function: the table starts empty and main.ts fills it from the history (repo/milestones backfill).
+db.version(3).stores({
+  milestones: 'id, habitId, earnedOn',
+});
 
 /** All table names in a stable order (export, import, delete-all). */
 export const TABLES = [
   'profile', 'areas', 'projects', 'tasks', 'habits', 'habitLogs', 'notes', 'tags', 'moodLogs', 'dayPlans',
-  'contacts', 'contactLogs',
+  'contacts', 'contactLogs', 'milestones',
 ] as const;
 export type TableName = typeof TABLES[number];
 

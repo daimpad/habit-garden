@@ -1,6 +1,6 @@
 import { liveQuery, type Observable } from 'dexie';
 import { db } from '../db.js';
-import type { Habit, HabitLog, Id } from '../model.js';
+import type { Habit, HabitLog, Id, Milestone } from '../model.js';
 import { nowIso, today } from '../util/date.js';
 import { newId, sortKeyBetween } from '../util/ids.js';
 
@@ -53,24 +53,28 @@ export function setHabitArchived(id: Id, archived: 0 | 1): Promise<void> {
   return updateHabit(id, { archived });
 }
 
-export interface DeletedHabit { habit: Habit; logs: HabitLog[] }
+/** milestones: the routine's "Spuren im Garten" (Teil 3), deleted with it and restored by "Rückgängig". */
+export interface DeletedHabit { habit: Habit; logs: HabitLog[]; milestones?: Milestone[] }
 
-/** Deletes the habit and all its logs; returns both for "Rückgängig". */
+/** Deletes the habit, all its logs and its milestones; returns them for "Rückgängig". */
 export function deleteHabit(id: Id): Promise<DeletedHabit> {
-  return db.transaction('rw', db.habits, db.habitLogs, async () => {
+  return db.transaction('rw', db.habits, db.habitLogs, db.milestones, async () => {
     const habit = await db.habits.get(id);
     if (!habit) throw new Error(`unknown habit ${id}`);
     const logs = await db.habitLogs.where('habitId').equals(id).toArray();
+    const milestones = await db.milestones.where('habitId').equals(id).toArray();
     await db.habitLogs.bulkDelete(logs.map((l) => l.id));
+    await db.milestones.bulkDelete(milestones.map((m) => m.id));
     await db.habits.delete(id);
-    return { habit, logs };
+    return { habit, logs, milestones };
   });
 }
 
 export function restoreHabit(deleted: DeletedHabit): Promise<void> {
-  return db.transaction('rw', db.habits, db.habitLogs, async () => {
+  return db.transaction('rw', db.habits, db.habitLogs, db.milestones, async () => {
     await db.habits.put(deleted.habit);
     if (deleted.logs.length > 0) await db.habitLogs.bulkPut(deleted.logs);
+    if (deleted.milestones && deleted.milestones.length > 0) await db.milestones.bulkPut(deleted.milestones);
   });
 }
 

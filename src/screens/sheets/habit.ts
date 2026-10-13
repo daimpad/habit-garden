@@ -45,9 +45,10 @@ import {
 import { areas$, listAreas } from '../../repo/areas.js';
 import { deleteHabit, getHabit, habit$, restoreHabit, setHabitArchived, updateHabit } from '../../repo/habits.js';
 import { habitLogId, habitLogs$, logsFor, toggleLog, type ToggleResult } from '../../repo/habitLogs.js';
+import { syncMilestones } from '../../repo/milestones.js';
 import { bestStreak, stageFor, streak } from '../../services/growth.js';
 import { formatDayLong, isoWeekday, nowIso, onDayChange, today } from '../../util/date.js';
-import { h, HAPTIC, render, setVar, vibrate } from '../../util/dom.js';
+import { emit, h, HAPTIC, render, setVar, vibrate } from '../../util/dom.js';
 import { failed, openActionMenu, syncAreaChips, type MenuItem } from './task.js';
 
 interface Sub { unsubscribe(): void }
@@ -271,6 +272,8 @@ class HabitSheet {
     this.queue = this.queue.then(async () => {
       try {
         const result = await toggleLog(this.habitId, day, restoreStartDay === undefined ? {} : { restoreStartDay });
+        // Spuren im Garten (Teil 3): store what the change earned; HEUTE (under the sheet) celebrates it.
+        void syncMilestones(this.habitId, day).then((change) => emit(document, 'ol-milestones', change), (err: unknown) => console.error(err));
         this.applyResult(day, result, restoreStartDay);
         this.feedback(day, result);
         const date = formatDayLong(day);

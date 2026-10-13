@@ -38,6 +38,8 @@
   --isl-shadow: #4A3826; --isl-glow: #FFD27A; --isl-smoke: #F6F2EC;
   --isl-bubble-bg: #FFFFFF; --isl-label-bg: rgba(255,255,255,.9); --isl-pill-hover: #FFFFFF;
   --isl-cloud-a: 1; --isl-lit-a: .45; --isl-smoke-a: .9;
+  /* Teil 3: campfire (flame, its core and the warm light it throws) and the spark rising from it. */
+  --isl-fire: #F08A3C; --isl-fire-core: #FFE08A; --isl-fire-light: #FFB25C; --isl-spark: #FFD27A;
 }
 /* Dunkel (B.1), "Nachtgarten". main.ts (and app/theme-boot.js before the first paint) resolves the
    setting light / dark / system (prefers-color-scheme, live) to data-theme="light" | "dark" on <html>.
@@ -69,6 +71,7 @@
   --isl-shadow: #0B1222; --isl-glow: #FFC75E; --isl-smoke: #C6D4EE;
   --isl-bubble-bg: #232A25; --isl-label-bg: rgba(26,31,27,.9); --isl-pill-hover: #232A25;
   --isl-cloud-a: .2; --isl-lit-a: 1; --isl-smoke-a: .16;
+  --isl-fire: #FF9A4D; --isl-fire-core: #FFE6A0; --isl-fire-light: #FFB861; --isl-spark: #FFD98A;
 }
 @media (prefers-reduced-motion: reduce) { :root { --duration-fast: 0ms; --duration-base: 0ms; --duration-slow: 0ms; } }
 /* In-app setting "Animationen: reduziert" (html[data-motion="reduced"]) behaves like the media query. */

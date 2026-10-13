@@ -11,10 +11,15 @@
 //   day-only parts .i-day; CSS shows one or the other (dark theme or the hero's night phase).
 // - Places of areas the user does not have become a calm clearing; natural landmarks (pond with stream
 //   and waterfall, the big tree) are terrain and always present. Flourish 0–3 adds details per place.
+// - Teil 3: a small campfire beside Keimi (.i-fire, shown by CSS from the hero's evening phase on; flame
+//   flicker in CSS, still under reduced motion) and the "Spuren im Garten" per place: the highest streak
+//   tier (lantern, stone bench, pavilion) at TRACE_AT and up to three flowering shrubs at SHRUB_AT. The object
+//   that just appeared carries .i-arrive (fade and scale in from 0.9, CSS).
 import { flowerBody, safeTint } from './flora.js';
 import { t, fmt } from '../i18n/de.js';
 import type { FlowerId, Stage } from '../model.js';
 import type { Decor, Flourish, PlaceKey } from '../services/island.js';
+import type { TraceTier } from '../services/milestones.js';
 
 export const VIEW_W = 600;
 export const VIEW_H = 560;
@@ -33,6 +38,12 @@ export interface IslandArea {
   plants: readonly IslandPlant[];
   /** Plants not shown ("+n"). */
   more: number;
+  /** Teil 3: highest streak milestone of the area (0 none, 1 lantern, 2 stone bench, 3 pavilion). */
+  trace?: TraceTier;
+  /** Teil 3: flowering shrubs (routines that reached full bloom), at most SHRUB_AT's length. */
+  shrubs?: number;
+  /** Teil 3: the object that just appeared ('trace' or a shrub index); it fades and scales in. */
+  arrive?: 'trace' | number;
 }
 
 export interface IslandInput {
@@ -172,7 +183,7 @@ function gradient(type: 'radialGradient' | 'linearGradient', name: string, attrs
   return `<${type} id="${ID_MARK}${name}"${attrs ? ` ${attrs}` : ''}>${stops}</${type}>`;
 }
 
-function defs(flowers: ReadonlySet<FlowerId>): string {
+function defs(flowers: ReadonlySet<FlowerId>, parts: ReadonlySet<TracePart> = new Set()): string {
   const rad = (name: string, attrs: string, list: readonly Stop[]): string => gradient('radialGradient', name, attrs, list);
   const lin = (name: string, attrs: string, list: readonly Stop[]): string => gradient('linearGradient', name, attrs, list);
   return '<defs>'
@@ -186,10 +197,12 @@ function defs(flowers: ReadonlySet<FlowerId>): string {
     + lin('g-side', '', [[0.45, 's-shadow', 0], [1, 's-shadow', 0.3]])
     + rad('g-sh', '', [[0, 's-shadow', 0.3], [1, 's-shadow', 0]])
     + rad('g-glow', '', [[0, 's-glow', 0.75], [0.45, 's-glow', 0.28], [1, 's-glow', 0]])
+    + rad('g-fire', '', [[0, 's-fire', 0.6], [0.45, 's-fire', 0.22], [1, 's-fire', 0]])
     + rad('g-keimi', 'cx=".38" cy=".3" r=".8"', [[0, 's-keimi-hi'], [0.6, 's-keimi'], [1, 's-keimi-lo']])
     + lin('g-cloud', 'x2="0" y2="1"', [[0.4, 's-cloud'], [1, 's-cloud-lo']])
     + PLANT_DEFS
     + [...flowers].map((id) => `<g id="${ID_MARK}f-${id}">${flowerBody(id, 1.6, `${ID_MARK}r-${id}-`)}</g>`).join('')
+    + [...parts].map((part) => TRACE_DEFS[part]).join('')
     + '</defs>';
 }
 
@@ -619,6 +632,123 @@ function keimi(x: number, y: number): Drawable {
 }
 
 // ---------------------------------------------------------------------------
+// Teil 3: campfire and the "Spuren im Garten" (milestone objects).
+
+/** Where the campfire stands (base centre), right beside Keimi on the central path. */
+export const FIRE_AT: Pt = [341, 398];
+
+/** Campfire, drawn at the origin and placed with a transform: stone ring, crossed logs, flame, embers, glow. */
+function campfire(): Drawable {
+  const [x, y] = FIRE_AT;
+  const ring = (from: number, to: number): string => {
+    let out = '';
+    for (let i = from; i < to; i++) {
+      const a = (i / 10) * 2 * Math.PI;
+      out += `<ellipse class="${i % 3 ? 'i-stone' : 'i-stone-lo'}" cx="${f(12.5 * Math.cos(a))}" cy="${f(-2 + 4.6 * Math.sin(a))}" rx="3.4" ry="2.3"/>`;
+    }
+    return out;
+  };
+  let s = `<g class="i-fire" transform="translate(${x} ${y}) scale(1.25)">`;
+  s += '<ellipse class="i-fire-light" cy="-1" rx="30" ry="8.5"/>';
+  s += `<circle cy="-12" r="30" fill="${ref('g-fire')}"/>`;
+  // Back stones, logs, flame, front stones.
+  s += ring(5, 10);
+  s += '<rect class="i-wood-lo" x="-10" y="-6" width="20" height="4" rx="2" transform="rotate(-16 0 -4)"/>';
+  s += '<rect class="i-wood" x="-10" y="-6" width="20" height="4" rx="2" transform="rotate(16 0 -4)"/>';
+  s += '<g class="i-flame"><path class="i-flame-out" d="M0 -4C-7.5 -6 -7 -14 -2 -22C-1.5 -17 1.5 -16 2.6 -20.5C7.5 -14 7 -6 0 -4Z"/>';
+  s += '<path class="i-flame-in" d="M0 -4.5C-3.6 -6 -3.4 -10 -.6 -14C.4 -11 3.8 -9 0 -4.5Z"/></g>';
+  s += '<g class="i-ember"><circle cx="-4" cy="-27" r=".9"/><circle cx="3.5" cy="-31" r=".7"/></g>';
+  s += ring(0, 5);
+  s += '</g>';
+  return { y, svg: s };
+}
+
+/*
+ * Milestone objects as symbols around the origin (base centre), defined only when used. Parts in the area tint
+ * have no fill of their own: they take it from the <use> element (fill="tint").
+ */
+const TRACE_DEFS = {
+  // Lantern on a post (7 in a row): lit lamp with a soft glow, cap and plate in the area tint.
+  lan: `<g id="${ID_MARK}lan">${sh(1, 0, 7, 2)}<rect class="i-stone-lo" x="-3.6" y="-2.6" width="7.2" height="3.2" rx="1.2"/>`
+    + `<rect class="i-wood-lo" x="-1.2" y="-28" width="2.4" height="26" rx="1"/>${glow(0, -33, 18, 'i-lit')}`
+    + '<rect class="i-lamp" x="-3.6" y="-37" width="7.2" height="8" rx="1.4"/><path class="k-wood-lo" d="M-3.6 -33h7.2M0 -37v8" stroke-width=".7"/>'
+    + '<rect x="-4.6" y="-29.4" width="9.2" height="2.2" rx="1"/><path d="M-5.4 -36.4L0 -41.5L5.4 -36.4Z"/></g>',
+  // Stone bench (30 in a row) with a cushion in the area tint.
+  ben: `<g id="${ID_MARK}ben">${sh(1, 0, 17, 3.6)}<rect class="i-stone-lo" x="-11" y="-7.5" width="5" height="7.5" rx="1.2"/><rect class="i-stone-lo" x="6" y="-7.5" width="5" height="7.5" rx="1.2"/>`
+    + '<rect class="i-stone" x="-14.5" y="-11" width="29" height="5" rx="2"/><rect class="i-stone-hi" x="-14.5" y="-11.6" width="29" height="2.6" rx="1.3"/>'
+    + '<rect x="-10" y="-14.6" width="9" height="3.6" rx="1.8"/></g>',
+  // Small pavilion (100 in a row): stone floor, four posts, a lamp, roof with an eave in the area tint.
+  pav: `<g id="${ID_MARK}pav">${sh(2, 0, 22, 5)}<ellipse class="i-stone-lo" cy="-1.6" rx="17.5" ry="4.6"/><ellipse class="i-stone-hi" cy="-3" rx="16.5" ry="4"/>`
+    + '<rect class="i-wood-lo" x="-10" y="-25" width="2" height="21" rx=".8"/><rect class="i-wood-lo" x="8" y="-25" width="2" height="21" rx=".8"/>'
+    + '<rect class="i-wood-hi" x="-8" y="-9" width="16" height="2.4" rx="1"/>'
+    + '<rect class="i-wood" x="-15" y="-24" width="2.6" height="22" rx="1"/><rect class="i-wood" x="12.4" y="-24" width="2.6" height="22" rx="1"/>'
+    + `${glow(0, -19, 14)}<circle class="i-lamp" cy="-19.5" r="1.7"/><path d="M-18 -25.5h36v2.6h-36Z"/>`
+    + `<path fill="${ref('g-roof')}" d="M-19.5 -25Q-9 -28 0 -41Q9 -28 19.5 -25Z"/>`
+    + '<path class="k-roof-lo" d="M0 -40Q-4 -30 -7 -26M0 -40Q4 -30 7 -26" stroke-width=".9" opacity=".6"/><circle cy="-42" r="1.8" fill="#F2C14E"/></g>',
+  // Foliage of a flowering shrub (bloom); the blossoms are added per shrub in the area tint.
+  shr: `<g id="${ID_MARK}shr">${sh(2, 0, 12, 3)}${blob(-5.5, -6, 6.6)}${blob(5.5, -6.5, 6.4)}${blob(0, -11.5, 7.6)}</g>`,
+} as const;
+
+type TracePart = keyof typeof TRACE_DEFS;
+
+const TRACE_OF: Readonly<Record<1 | 2 | 3, TracePart>> = { 1: 'lan', 2: 'ben', 3: 'pav' };
+
+/** The trace object of a place (the highest tier) as a <use> of its symbol, wrapped for the arrive animation. */
+function traceObject(part: TracePart, x: number, y: number, tint: string, arrive: boolean): Drawable {
+  return { y, svg: `<g${arrive ? ' class="i-arrive"' : ''}>${use(part, ` x="${f(x)}" y="${f(y)}" fill="${tint}"`)}</g>` };
+}
+
+const SHRUB_BLOSSOMS: ReadonlyArray<readonly [number, number]> = [[-7, -8], [-2, -15], [4, -12], [8, -6], [-3, -6], [1, -9.5]];
+
+/** A flowering shrub for a routine in full bloom: shared foliage, blossoms in the area tint. */
+function bloomShrub(x: number, y: number, tint: string, arrive: boolean): Drawable {
+  const colors = [lighten(tint, 0.3), '#FFFFFF', lighten(tint, 0.55), tint];
+  const blossoms = SHRUB_BLOSSOMS.map(([dx, dy], i) => blossom(x + dx, y + dy, colors[i % colors.length] ?? '#FFFFFF')).join('');
+  return { y, svg: `<g${arrive ? ' class="i-arrive"' : ''}>${use('shr', ` x="${f(x)}" y="${f(y)}"`)}${blossoms}</g>` };
+}
+
+/** Base points of the milestone object of each place (one object: the highest streak tier). */
+export const TRACE_AT: Readonly<Record<PlaceKey | 'extra', Pt>> = {
+  home: [226, 214], work: [194, 170], bonds: [404, 238], health: [188, 300],
+  wealth: [432, 326], leisure: [528, 366], growth: [56, 326], extra: [232, 402],
+};
+
+/** Base points of the flowering shrubs of each place (filled in order, oldest bloom first). */
+export const SHRUB_AT: Readonly<Record<PlaceKey | 'extra', readonly Pt[]>> = {
+  home: [[372, 222], [246, 250], [356, 250]],
+  work: [[86, 238], [212, 222], [124, 236]],
+  bonds: [[548, 238], [404, 260], [556, 214]],
+  health: [[40, 300], [178, 320], [96, 322]],
+  wealth: [[548, 330], [456, 340], [526, 342]],
+  leisure: [[396, 354], [520, 392], [440, 392]],
+  growth: [[40, 362], [162, 394], [80, 396]],
+  extra: [[202, 382], [276, 388], [196, 360]],
+};
+
+/** Symbols the milestone objects of an area need. */
+function tracePartsOf(area: IslandArea | null | undefined, into: Set<TracePart>): void {
+  if (!area) return;
+  const tier = area.trace ?? 0;
+  if (tier === 1 || tier === 2 || tier === 3) into.add(TRACE_OF[tier]);
+  if ((area.shrubs ?? 0) > 0) into.add('shr');
+}
+
+function traces(key: PlaceKey | 'extra', area: IslandArea): Drawable[] {
+  const out: Drawable[] = [];
+  const tint = safeTint(area.tint);
+  const [tx, ty] = TRACE_AT[key];
+  const tier = area.trace ?? 0;
+  if (tier === 1 || tier === 2 || tier === 3) out.push(traceObject(TRACE_OF[tier], tx, ty, tint, area.arrive === 'trace'));
+  const spots = SHRUB_AT[key];
+  const n = Math.min(spots.length, Math.max(0, Math.floor(area.shrubs ?? 0)));
+  for (let i = 0; i < n; i++) {
+    const [x, y] = at(spots, i);
+    out.push(bloomShrub(x, y, tint, area.arrive === i));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Plant slots per place (base points in fill order), beds and anchors.
 
 export const SLOTS: Readonly<Record<PlaceKey | 'extra', readonly Pt[]>> = {
@@ -652,10 +782,13 @@ const BEDS: Readonly<Partial<Record<PlaceKey | 'extra', string>>> = {
  * overall chip.
  */
 export const ANCHORS = {
-  keimi: [298, 390], keimiHead: [298, 318],
+  keimi: [298, 390], keimiHead: [298, 318], fire: [340, 376],
   home: [300, 92], work: [140, 146], bonds: [476, 62], health: [112, 238],
   wealth: [500, 338], leisure: [466, 400], growth: [118, 396], extra: [242, 330], total: [300, 466],
 } as const satisfies Record<string, Pt>;
+
+/** Tap area of the campfire button "Ins Feuer erzählen" (Teil 3) in viewBox units [x, y, width, height]. */
+export const FIRE_BOX: readonly [number, number, number, number] = [306, 340, 70, 68];
 
 /** Keimi's body (feet to leaf tips) in viewBox units [x, y, width, height]; labels keep clear of it. */
 export const KEIMI_BOX: readonly [number, number, number, number] = [270, 312, 58, 82];
@@ -771,7 +904,9 @@ export function islandSvg(input: IslandInput): string {
   for (const a of [...Object.values(areas), extra]) if (a && a.plants.some((p) => p.stage === 4)) flowers.add(a.flower);
 
   let s = `<svg class="ol-isl__svg" viewBox="0 0 ${VIEW_W} ${VIEW_H}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">`;
-  s += defs(flowers);
+  const parts = new Set<TracePart>();
+  for (const a of [...Object.values(areas), extra]) tracePartsOf(a, parts);
+  s += defs(flowers, parts);
   s += cloud(70, 452, 1.1) + cloud(548, 418, 0.9, true) + floatRock(64, 404, 9) + floatRock(548, 458, 7) + floatRock(522, 482, 4);
   s += body();
   if (input.decor === 'lush') s += vines();
@@ -787,12 +922,12 @@ export function islandSvg(input: IslandInput): string {
     bush(64, 216, 16, input.decor === 'lush'), bush(216, 172, 11, input.decor === 'lush'), bush(246, 400, 10, input.decor !== 'low'),
     bush(560, 304, 12, input.decor === 'lush'), bush(388, 398, 9, false),
   ];
-  for (const [key, area] of Object.entries(areas) as Array<[PlaceKey, IslandArea]>) items.push(...placePlants(key, area));
+  for (const [key, area] of Object.entries(areas) as Array<[PlaceKey, IslandArea]>) items.push(...placePlants(key, area), ...traces(key, area));
   if (extra) {
-    items.push(...placePlants('extra', extra));
+    items.push(...placePlants('extra', extra), ...traces('extra', extra));
     if (extra.lvl >= 3) items.push({ y: 378, svg: bloomRing(241, 376, 40, 6, extra.tint, 41) });
   }
-  items.push(keimi(ANCHORS.keimi[0], ANCHORS.keimi[1]));
+  items.push(keimi(ANCHORS.keimi[0], ANCHORS.keimi[1]), campfire());
   items.sort((a, b) => a.y - b.y);
   s += items.map((it) => it.svg).join('');
 
@@ -802,4 +937,28 @@ export function islandSvg(input: IslandInput): string {
   s += cloud(300, 528, 1.25) + cloud(470, 500, 0.85, true) + cloud(130, 506, 0.8);
   s += '</svg>';
   return s.split(ID_MARK).join(input.prefix);
+}
+
+/**
+ * Small glyph of a milestone object for lists (Rückblick "Spuren im Garten"): viewBox 0 0 32 32, aria-hidden,
+ * colours from the --isl-* tokens through the classes t-* (screens.css) and the area tint (data).
+ */
+export function traceGlyph(kind: 'streak7' | 'streak30' | 'streak100' | 'bloom', color: string): string {
+  const tint = safeTint(color);
+  let body = '';
+  if (kind === 'streak7') {
+    body = '<rect class="t-wood" x="14.8" y="11" width="2.4" height="17" rx="1"/><rect class="t-stone" x="12" y="27" width="8" height="2.6" rx="1.2"/>'
+      + '<rect class="t-lamp" x="12.2" y="5.6" width="7.6" height="7.4" rx="1.4"/>'
+      + `<path fill="${tint}" d="M10.8 6.2L16 1.8L21.2 6.2Z"/><rect fill="${tint}" x="11.4" y="12.6" width="9.2" height="2" rx="1"/>`;
+  } else if (kind === 'streak30') {
+    body = '<rect class="t-stone-lo" x="7" y="18" width="4.6" height="9" rx="1.2"/><rect class="t-stone-lo" x="20.4" y="18" width="4.6" height="9" rx="1.2"/>'
+      + `<rect class="t-stone" x="3.5" y="14" width="25" height="5.4" rx="2"/><rect fill="${tint}" x="7.5" y="10.4" width="8.5" height="3.8" rx="1.9"/>`;
+  } else if (kind === 'streak100') {
+    body = '<ellipse class="t-stone" cx="16" cy="27.5" rx="13" ry="3"/><rect class="t-wood" x="5.5" y="12" width="2.4" height="15" rx="1"/><rect class="t-wood" x="24.1" y="12" width="2.4" height="15" rx="1"/>'
+      + `<rect fill="${tint}" x="3.5" y="11" width="25" height="2.4"/><path class="t-roof" d="M2.5 11.6Q10 9 16 1.6Q22 9 29.5 11.6Z"/><circle cx="16" cy="1.6" r="1.4" fill="#F2C14E"/>`;
+  } else {
+    body = '<circle class="t-fol" cx="10" cy="20" r="7"/><circle class="t-fol" cx="22" cy="20" r="7"/><circle class="t-fol" cx="16" cy="13" r="8"/>'
+      + [[10, 15], [16, 9], [21, 14], [24, 21], [13, 22]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="2.3" fill="${i % 2 ? '#FFFFFF' : lighten(tint, 0.25)}"/>`).join('');
+  }
+  return `<svg class="ol-trace-glyph" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true" focusable="false">${body}</svg>`;
 }
