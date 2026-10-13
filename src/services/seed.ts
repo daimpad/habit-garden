@@ -15,9 +15,11 @@ import { createArea, listAreas, setAreaArchived } from '../repo/areas.js';
 import { createContact, logContact } from '../repo/contacts.js';
 import { addToFocus } from '../repo/dayPlans.js';
 import { createHabit } from '../repo/habits.js';
+import { createNote } from '../repo/notes.js';
 import { toggleLog } from '../repo/habitLogs.js';
 import { createProject } from '../repo/projects.js';
 import { completeTask, createSubtask, createTask } from '../repo/tasks.js';
+import { deriveTitle, mergeTags } from './notes.js';
 import { addDays, diffDays, isoAt, isoWeekday, startOfWeek, today } from '../util/date.js';
 
 export type SeedResult = 'created' | 'exists';
@@ -55,12 +57,26 @@ export async function loadExampleData(): Promise<SeedResult> {
   const habitsExist = (await db.habits.filter((h) => h.name === t.seedHabitStretch).first()) !== undefined;
   const peopleExist = (await db.contacts.filter((c) => c.name === t.seedPersonAnna).first()) !== undefined;
   const projectsExist = (await db.projects.filter((p) => p.name === t.seedProjectBalcony).first()) !== undefined;
-  if (habitsExist && peopleExist && projectsExist) return 'exists';
+  const notesExist = (await db.notes.filter((n) => n.body === t.seedNoteBalcony).first()) !== undefined;
+  if (habitsExist && peopleExist && projectsExist && notesExist) return 'exists';
   // Habits first: their default areas may already include "Beziehungen".
   if (!habitsExist) await seedHabitsAndTasks();
   if (!peopleExist) await seedPeople();
   if (!projectsExist) await seedProjects();
+  if (!notesExist) await seedNotes();
   return 'created';
+}
+
+/** Phase 4: three notes with nested tags, one pinned, so WISSEN shows sections, tags and the tag tree. */
+async function seedNotes(): Promise<void> {
+  const specs: ReadonlyArray<{ body: string; tags: string[]; pinned?: 0 | 1 }> = [
+    { body: t.seedNoteBalcony, tags: [], pinned: 1 },
+    { body: t.seedNoteBooks, tags: ['lesen'] },
+    { body: t.seedNoteRecipe, tags: [] },
+  ];
+  for (const spec of specs) {
+    await createNote({ title: deriveTitle(spec.body), body: spec.body, tagPaths: mergeTags(spec.tags, spec.body), pinned: spec.pinned ?? 0 });
+  }
 }
 
 /** Phase 3: two projects with tasks in different list groups (one done), so PLANUNG shows plants and progress. */

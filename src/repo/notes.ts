@@ -1,10 +1,13 @@
-// The notes UI is TODO(phase-4); Phase 1 writes notes from the capture sheet and the journal sheet.
+// Notes (Phase 4, A.2 W1–W4): created by the editor, the capture sheet and the journal sheet.
+// updateNote derives the title from the first line (W3) and the stored tags from explicit + inline tags (W4);
+// journal notes keep their fixed title ("YYYY-MM-DD Journal").
 import { liveQuery, type Observable } from 'dexie';
 import { db } from '../db.js';
 import { fmt, t } from '../i18n/de.js';
-import type { Day, Id, MoodLog, Note } from '../model.js';
+import type { Day, Id, MoodLog, Note, Tag } from '../model.js';
 import { dayParts, isDay, nowIso, timeOfIso } from '../util/date.js';
 import { newId } from '../util/ids.js';
+import { deriveTitle, mergeTags } from '../services/notes.js';
 import { ensureTags, normalizeTagPaths } from './tags.js';
 
 export type NoteInput = Pick<Note, 'title'> & Partial<Pick<Note, 'body' | 'kind' | 'journalDay' | 'tagPaths' | 'pinned'>>;
@@ -113,4 +116,80 @@ export async function journalIdFor(day: Day): Promise<Id | undefined> {
 /** liveQuery: number of non-archived notes (both kinds). */
 export function noteCount$(): Observable<number> {
   return liveQuery(() => db.notes.where('archived').equals(0).count());
+}
+
+/** liveQuery: all notes of the list (archived ones only when asked for), newest first. */
+export function notes$(includeArchived = false): Observable<Note[]> {
+  return liveQuery(async () => {
+    const rows = includeArchived ? await db.notes.toArray() : await db.notes.where('archived').equals(0).toArray();
+    return rows.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+  });
+}
+
+export function note$(id: Id): Observable<Note | undefined> {
+  return liveQuery(() => db.notes.get(id));
+}
+
+export function tags$(): Observable<Tag[]> {
+  return liveQuery(() => db.tags.orderBy('path').toArray());
+}
+
+/** New empty note for the editor (W3: FAB → editor, cursor in the first line). */
+export function createEmptyNote(explicitTags: readonly string[] = []): Promise<Note> {
+  return createNote({ title: '', body: '', tagPaths: [...explicitTags] });
+}
+
+/**
+ * Saves the editor state: body, explicit tags; title from the first line (kept for journal notes),
+ * tagPaths = explicit + inline tags. Resolves to the stored note, or undefined if it no longer exists.
+ */
+export function saveNoteContent(id: Id, body: string, explicit: readonly string[]): Promise<Note | undefined> {
+  return db.transaction('rw', db.notes, db.tags, async () => {
+    const note = await db.notes.get(id);
+    if (!note) return undefined;
+    const tagPaths = mergeTags(explicit, body);
+    const title = note.kind === 'journal' ? note.title : deriveTitle(body);
+    if (note.body === body && note.title === title && note.tagPaths.join('\n') === tagPaths.join('\n')) return note;
+    const next: Note = { ...note, body, title, tagPaths, updatedAt: nowIso() };
+    await db.notes.put(next);
+    await ensureTags(tagPaths);
+    return next;
+  });
+}
+
+export async function setNotePinned(id: Id, pinned: boolean): Promise<void> {
+  await db.notes.update(id, { pinned: pinned ? 1 : 0, updatedAt: nowIso() });
+}
+
+export async function setNoteArchived(id: Id, archived: boolean): Promise<void> {
+  await db.notes.update(id, { archived: archived ? 1 : 0, ...(archived ? { pinned: 0 as const } : {}), updatedAt: nowIso() });
+}
+
+export interface DeletedNote { note: Note; moodIds: Id[] }
+
+/** Deletes a note; mood entries pointing at it lose the link (restored by restoreNote). */
+export function deleteNote(id: Id): Promise<DeletedNote | undefined> {
+  return db.transaction('rw', db.notes, db.moodLogs, async () => {
+    const note = await db.notes.get(id);
+    if (!note) return undefined;
+    const moods = await db.moodLogs.filter((m) => m.noteId === id).toArray();
+    for (const mood of moods) {
+      const { noteId: _drop, ...rest } = mood;
+      void _drop;
+      await db.moodLogs.put(rest);
+    }
+    await db.notes.delete(id);
+    return { note, moodIds: moods.map((m) => m.id) };
+  });
+}
+
+export function restoreNote(deleted: DeletedNote): Promise<void> {
+  return db.transaction('rw', db.notes, db.moodLogs, db.tags, async () => {
+    await db.notes.put(deleted.note);
+    await ensureTags(deleted.note.tagPaths);
+    for (const id of deleted.moodIds) {
+      const mood = await db.moodLogs.get(id);
+      if (mood && mood.noteId === undefined) await db.moodLogs.update(id, { noteId: deleted.note.id });
+    }
+  });
 }

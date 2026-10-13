@@ -954,8 +954,66 @@
 /* === /planung === */
 
 /* === wissen === */
-/* Placeholder (TODO(phase-4)): app bar with ⚙ and the empty state; the FAB comes from the shell. */
-.ol-wissen { display: block; }
+/* Note list (Phase 4): search, filter chips, sections, note cards with a leaf in the tag colour; tag sheet. */
+.ol-wissen { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); padding-bottom: 96px; }
+.ol-wissen[data-loading] { visibility: hidden; }
+.ol-wissen [hidden] { display: none !important; }
+.ol-wissen__filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.ol-wissen__op {
+  min-height: 40px; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-full);
+  background: var(--color-surface); color: var(--color-primary); font: inherit; font-size: .8125rem; font-weight: 600;
+  letter-spacing: .04em; cursor: pointer;
+}
+.ol-wissen__count { color: var(--color-text-2); }
+.ol-wissen__section { margin-top: var(--space-3); }
+.ol-wissen__list {
+  display: grid; grid-template-columns: minmax(0, 1fr); margin: 0; padding: var(--space-1); list-style: none; border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); background: var(--color-surface);
+}
+.ol-wissen__item { --tint: var(--color-sage); }
+.ol-wissen__item + .ol-wissen__item { box-shadow: 0 -1px 0 color-mix(in srgb, var(--color-border) 60%, transparent); }
+.ol-wissen__card {
+  display: flex; align-items: flex-start; gap: var(--space-3); width: 100%; min-height: 64px; margin: 0;
+  padding: var(--space-3); border: 0; border-radius: var(--radius-md); background: transparent;
+  color: var(--color-text); font: inherit; text-align: left; cursor: pointer;
+}
+@media (hover: hover) { .ol-wissen__card:hover { background-color: var(--color-overlay-hover); } }
+.ol-wissen__leaf {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%;
+  background: color-mix(in srgb, var(--tint) 16%, var(--color-surface));
+}
+.ol-wissen__leaf-blade { fill: var(--tint); }
+.ol-wissen__leaf-vein { fill: none; stroke: var(--color-surface); stroke-width: 1.4; stroke-linecap: round; opacity: .8; }
+.ol-wissen__item[data-pinned="true"] .ol-wissen__leaf { box-shadow: inset 0 0 0 1.5px var(--tint); }
+.ol-wissen__body { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.ol-wissen__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px var(--space-2); }
+.ol-wissen__title { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.ol-wissen__tags { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
+.ol-wissen__tag {
+  max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 0 var(--space-2); border-radius: var(--radius-full); background: var(--color-surface-2);
+  color: var(--color-text-2); font-size: .75rem; line-height: 1.25rem;
+}
+.ol-wissen__foot { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.ol-wissen__preview {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-2);
+}
+.ol-wissen__time { flex: none; color: var(--color-text-2); }
+.ol-wissen__mark { background: color-mix(in srgb, var(--color-sun) 45%, transparent); color: inherit; border-radius: 3px; }
+.ol-wissen__nohits { padding: var(--space-4) 0; color: var(--color-text-2); text-align: center; }
+
+/* Tag sheet (W2) */
+.ol-tagtree { display: grid; gap: var(--space-3); }
+.ol-tagtree__op { max-width: 240px; }
+.ol-tagtree__hint, .ol-tagtree__empty { color: var(--color-text-2); }
+.ol-tagtree__list { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.ol-tagtree__row { display: flex; align-items: center; gap: var(--space-2); min-height: 48px; }
+.ol-tagtree__row[data-depth="1"] { padding-left: var(--space-5); }
+.ol-tagtree__row[data-depth="2"] { padding-left: calc(var(--space-5) * 2); }
+.ol-tagtree__row[data-depth="3"] { padding-left: calc(var(--space-5) * 3); }
+.ol-tagtree__row[data-depth="4"], .ol-tagtree__row[data-depth="5"] { padding-left: calc(var(--space-5) * 4); }
+.ol-tagtree__count { color: var(--color-text-2); }
+.ol-tagtree__actions { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
 /* === /wissen === */
 
 /* === einstellungen === */

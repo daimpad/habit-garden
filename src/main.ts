@@ -37,9 +37,11 @@ import './components/ol-input.js';
 import type { OlBottomNav } from './components/ol-bottom-nav.js';
 import type { OlFab } from './components/ol-fab.js';
 import { historySettled, topModal, type DismissReason, type OlSheet } from './components/ol-sheet.js';
+import { showToast } from './components/ol-toast.js';
 import { db } from './db.js';
 import { t } from './i18n/de.js';
 import type { Profile } from './model.js';
+import { createEmptyNote } from './repo/notes.js';
 import { getProfile, profile$ } from './repo/profile.js';
 import {
   TABS, back, baseRoute, current, lastPathOf, navigate, onRoute, parseRoute, refresh, routeHref, startRouter,
@@ -54,6 +56,7 @@ import { openHabitSheet } from './screens/sheets/habit.js';
 import { openTaskSheet } from './screens/sheets/task.js';
 import * as startScreen from './screens/start.js';
 import * as wissenScreen from './screens/wissen.js';
+import { wissenContext } from './screens/wissen.js';
 import { startReminders } from './services/reminders.js';
 import { appPath } from './util/base.js';
 import { onDayChange } from './util/date.js';
@@ -213,7 +216,8 @@ let fabSuppressed = false;
 
 function syncFab(): void {
   if (!shell) return;
-  const hidden = overlayScreen || fabSuppressed;
+  // The note editor has its own toolbar at the bottom; the FAB would cover it.
+  const hidden = overlayScreen || fabSuppressed || baseRoute().name === 'wissen-note';
   if (shell.fab.hidden !== hidden) shell.fab.hidden = hidden;
 }
 
@@ -227,16 +231,26 @@ function syncChrome(base: Route): void {
   syncFab();
 }
 
-/** G1: HEUTE and PLANUNG capture a task, WISSEN a note. */
+/** G1: HEUTE and PLANUNG capture a task; WISSEN opens a new note in the editor. */
 function onFabClick(): void {
   const tab = baseRoute().tab;
   if (!tab || overlayScreen) return;
+  // A.3 Screen 3: in WISSEN the FAB opens a new note in the editor (with the tags of an active filter).
+  if (tab === 'wissen') {
+    const fab = shell?.fab;
+    void createEmptyNote(wissenContext().tags).then(
+      (note) => navigate(`/wissen/n/${encodeURIComponent(note.id)}`),
+      () => showToast(t.toastError),
+    );
+    if (fab) fab.blur();
+    return;
+  }
   let sheet: OlSheet;
   try {
     // G1: PLANUNG pre-fills the selected area and, on a project screen, the project.
     const prefill = tab === 'planung' ? planningContext() : null;
     sheet = openCapture({
-      type: tab === 'wissen' ? 'note' : 'task',
+      type: 'task',
       ...(prefill?.areaId ? { areaId: prefill.areaId } : {}),
       ...(prefill?.projectId ? { projectId: prefill.projectId } : {}),
     });
