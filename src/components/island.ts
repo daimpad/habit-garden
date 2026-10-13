@@ -664,11 +664,11 @@ export const HIT_BOXES: Readonly<Record<PlaceKey | 'extra', readonly [number, nu
   home: [236, 92, 140, 146],
   work: [88, 152, 134, 86],
   bonds: [418, 92, 128, 162],
-  health: [34, 238, 142, 74],
-  wealth: [466, 254, 118, 80],
-  leisure: [394, 330, 122, 76],
-  growth: [50, 312, 112, 78],
-  extra: [202, 326, 76, 76],
+  health: [34, 240, 142, 82],
+  wealth: [466, 256, 118, 84],
+  leisure: [394, 342, 122, 84],
+  growth: [50, 324, 112, 84],
+  extra: [196, 326, 84, 84],
 };
 
 /**

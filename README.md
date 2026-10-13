@@ -4,7 +4,7 @@ Habit Garden ist ein Garten für deinen Alltag. Jede Gewohnheit, die du pflegen 
 
 **Ausprobieren:** [daimpad.github.io/habit-garden](https://daimpad.github.io/habit-garden/). Unter Einstellungen › Info kannst du Beispieldaten laden und den Garten gleich gefüllt sehen.
 
-![Der Garten am Abend: Beete für jeden Lebensbereich, Pflanzen in verschiedenen Stufen und Schmetterlinge über dem Beet „Beziehungen“](docs/bilder/garten.png)
+![Die Garten-Insel am Abend: Haus, Teich, Werkstatt, Brunnen und ein großer Baum mit Bank, dazwischen Pflanzen in verschiedenen Stufen, Schmetterlinge und der kleine Begleiter Keimi mit einer Sprechblase](docs/bilder/garten.png)
 
 ## Die Idee
 
@@ -14,7 +14,7 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 
 ## Was Habit Garden heute kann
 
-- **Der Garten auf einen Blick.** Oben auf der Startseite stehen alle Bereiche als Beete, jede Gewohnheit als Pflanze in ihrem aktuellen Wachstum. Der Himmel folgt der Tageszeit, und eine Begrüßung zeigt, wie viel du heute schon gegossen hast.
+- **Der Garten auf einen Blick.** Oben auf der Startseite schwebt deine Garten-Insel. Jeder Lebensbereich hat dort einen eigenen Ort – das Haus, den Teich, die Bank unter dem Baum, die Werkstatt und weitere –, und jede Gewohnheit wächst daneben als Pflanze. Je besser ein Bereich gepflegt ist, desto mehr blüht sein Ort auf. Ein Tipp auf einen Ort zeigt seine Routinen zum Gießen. Der kleine Keimi sagt dir, was als Nächstes ansteht, und der Himmel folgt der Tageszeit.
 - **Gewohnheiten pflegen.** Jede Gewohnheit hat eine eigene Karte mit ihrer Pflanze, der Anzahl der Tage in Folge und einem Überblick über die letzten zwölf Wochen. Ein Tipp auf „Heute gießen“ genügt; die Karte zeigt auch, wie lange es bis zur nächsten Stufe dauert. Gewohnheiten können täglich, an bestimmten Wochentagen oder einige Male pro Woche stattfinden.
 - **In Kontakt bleiben.** Du trägst Menschen ein, die dir wichtig sind, und legst fest, wie oft du dich melden möchtest. „Melde dich bei“ erinnert dich an die, bei denen es Zeit wird. Wer im Rhythmus ist, fliegt als bunter Schmetterling; wer länger nichts von dir gehört hat, ruht blass im Gras.
 - **Fokus für den Tag.** Du wählst bis zu drei Aufgaben, die heute wirklich zählen. Fällige Aufgaben erscheinen darunter, auf Wunsch mit einer Erinnerung, solange die Seite geöffnet ist.

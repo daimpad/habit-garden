@@ -522,7 +522,7 @@
    (--x/--y/--w/--h set by screens/garden.ts). Colour tokens --isl-* in tokens.css (light and dark).
    Phone: the island fills the width under the hero text; ≥ 900 px: right of the greeting. */
 /* The island lies above the hero text (its sky overlaps the text's last row); only its controls take pointers. */
-.ol-isl { position: relative; z-index: 2; margin: -44px -22px -6px; pointer-events: none; }
+.ol-isl { position: relative; z-index: 2; margin: -44px calc(var(--space-4) * -1) -6px; pointer-events: none; }
 .ol-isl__place, .ol-isl__flyer, .ol-isl__bubble { pointer-events: auto; }
 .ol-isl__stage { position: relative; aspect-ratio: 600 / 560; }
 .ol-isl__art { position: absolute; inset: 0; }
