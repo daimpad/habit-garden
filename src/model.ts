@@ -78,7 +78,7 @@ export const GENERIC_TINT = '#9CB59A';
 export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_SETTINGS: Profile['settings'] = {
-  theme: 'light', dayStartHour: 5, eveningHour: 17, leftHanded: false,
+  theme: 'system', dayStartHour: 5, eveningHour: 17, leftHanded: false,
   reminderLeadMinutes: 10, animations: 'system', landscape: 1,
 };
 

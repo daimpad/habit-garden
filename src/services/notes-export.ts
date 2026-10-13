@@ -68,3 +68,95 @@ export async function exportNotesMarkdown(notes: readonly Note[], single: Note |
     return { notes: 0, delivery: 'failed' };
   }
 }
+
+// --- Import (W6): the same format back in ---
+// A note starts with a frontmatter block: a line `---`, then `key: value` lines (at least `id` or
+// `title`), then `---`. Everything up to the next such block is the body. A `---` line inside a body
+// (a Markdown rule) only counts as a new block when key lines and a closing `---` follow. A file
+// without any frontmatter becomes one new note. Strings may be quoted ("…" with \" and \\) or bare.
+
+export interface ParsedNote {
+  id?: string;
+  title?: string;
+  tags: string[];
+  created?: string;
+  updated?: string;
+  pinned: boolean;
+  archived: boolean;
+  kind: 'note' | 'journal';
+  journalDay?: string;
+  body: string;
+}
+
+const KEY_LINE = /^([A-Za-z]+):\s*(.*)$/u;
+
+function unquote(raw: string): string {
+  const v = raw.trim();
+  if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) return v.slice(1, -1).replace(/\\(["\\])/gu, '$1');
+  return v;
+}
+
+function parseList(raw: string): string[] {
+  const v = raw.trim();
+  if (!v.startsWith('[') || !v.endsWith(']')) return v ? [unquote(v)] : [];
+  const out: string[] = [];
+  for (const m of v.slice(1, -1).matchAll(/"((?:[^"\\]|\\.)*)"|([^,\s][^,]*)/gu)) {
+    const item = m[1] !== undefined ? m[1].replace(/\\(["\\])/gu, '$1') : (m[2] ?? '').trim();
+    if (item) out.push(item);
+  }
+  return out;
+}
+
+/** Index of the closing `---` of a frontmatter block opening at `start`, or -1. */
+function frontmatterEnd(lines: readonly string[], start: number): number {
+  if (lines[start]?.trim() !== '---') return -1;
+  let keys = 0;
+  for (let i = start + 1; i < lines.length && i <= start + 20; i++) {
+    const line = lines[i] ?? '';
+    if (line.trim() === '---') return keys > 0 ? i : -1;
+    const m = KEY_LINE.exec(line);
+    if (!m) return -1;
+    if (m[1] === 'id' || m[1] === 'title') keys += 1;
+  }
+  return -1;
+}
+
+export function parseNotesMarkdown(text: string): ParsedNote[] {
+  const lines = text.replace(/^\uFEFF/u, '').split(/\r?\n/u);
+  const starts: Array<{ open: number; close: number }> = [];
+  for (let i = 0; i < lines.length; i++) {
+    const close = frontmatterEnd(lines, i);
+    if (close > 0) {
+      starts.push({ open: i, close });
+      i = close;
+    }
+  }
+  if (starts.length === 0) {
+    const body = text.trim();
+    return body ? [{ tags: [], pinned: false, archived: false, kind: 'note', body: `${body}\n` }] : [];
+  }
+  return starts.map(({ open, close }, n) => {
+    const note: ParsedNote = { tags: [], pinned: false, archived: false, kind: 'note', body: '' };
+    for (const line of lines.slice(open + 1, close)) {
+      const m = KEY_LINE.exec(line);
+      if (!m) continue;
+      const key = m[1] ?? '';
+      const raw = m[2] ?? '';
+      if (key === 'id') note.id = unquote(raw);
+      else if (key === 'title') note.title = unquote(raw);
+      else if (key === 'tags') note.tags = parseList(raw);
+      else if (key === 'created') note.created = unquote(raw);
+      else if (key === 'updated') note.updated = unquote(raw);
+      else if (key === 'pinned') note.pinned = unquote(raw) === 'true';
+      else if (key === 'archived') note.archived = unquote(raw) === 'true';
+      else if (key === 'kind') note.kind = unquote(raw) === 'journal' ? 'journal' : 'note';
+      else if (key === 'journalDay') note.journalDay = unquote(raw);
+    }
+    const end = starts[n + 1]?.open ?? lines.length;
+    const bodyLines = lines.slice(close + 1, end);
+    while (bodyLines.length > 0 && (bodyLines[0] ?? '').trim() === '') bodyLines.shift();
+    while (bodyLines.length > 0 && (bodyLines[bodyLines.length - 1] ?? '').trim() === '') bodyLines.pop();
+    note.body = bodyLines.length ? `${bodyLines.join('\n')}\n` : '';
+    return note;
+  });
+}

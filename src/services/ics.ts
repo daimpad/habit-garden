@@ -9,8 +9,24 @@
 // - UID = task id; DTSTAMP = opts.now (UTC); LAST-MODIFIED = updatedAt; SEQUENCE = whole seconds
 //   between SEQUENCE_EPOCH and updatedAt (≥ 0), so it grows with every change of the task and a
 //   re-import updates the existing event instead of duplicating it.
-// - Timed tasks (dueHasTime 1 with dueAt): DTSTART/DTEND in UTC ("…Z"). Tasks have no duration in the
-//   data model, so every timed event lasts DEFAULT_DURATION_MIN (30) minutes.
+// - Timed tasks (dueHasTime 1 with dueAt) use the local wall-clock time of the time zone
+//   (opts.timeZone, default: the system zone from Intl.DateTimeFormat().resolvedOptions()):
+//   DTSTART;TZID=<IANA zone>:YYYYMMDDTHHMMSS and DTEND likewise. Tasks have no duration in the data
+//   model, so every timed event lasts DEFAULT_DURATION_MIN (30) real minutes (01:45 CET + 30 min on
+//   the spring-forward day ends at 03:15 CEST). A weekly 09:00 series therefore stays at 09:00 on
+//   both sides of a DST change. Fallback to UTC ("…Z", no VTIMEZONE) when the zone is unknown or
+//   empty, or a UTC-like zone (UTC, GMT, Etc/*, …).
+// - One VTIMEZONE per used zone (only when at least one timed event uses a TZID), before the
+//   VEVENTs, derived from the zone's real behaviour via Intl (no bundled tz database): offsets are
+//   probed daily over a window of years (from the year before the earliest timed event, at least
+//   TZ_WINDOW_YEARS, at most TZ_MAX_YEARS) and every offset change is located to the minute.
+//   Transitions that fall on the same "n-th / last weekday of month" at the same local time in every
+//   year of the window become STANDARD/DAYLIGHT with RRULE:FREQ=YEARLY;BYMONTH=m;BYDAY=nSU (or -1SU;
+//   "last" wins when both fit); all other transitions are listed explicitly (DTSTART + RDATE, local
+//   time before the change), so after the window such a zone keeps its last offset. DAYLIGHT = a
+//   change to a larger offset. A zone without changes in the window gets one STANDARD with
+//   TZOFFSETFROM = TZOFFSETTO. TZNAME only when Intl has a letter abbreviation (EST, EDT, …).
+//   Observance DTSTART/RDATE are local times in the offset before the change (RFC 5545 3.6.5).
 // - All-day tasks: DTSTART;VALUE=DATE = dueDay (local day), DTEND;VALUE=DATE = the following day
 //   (DTEND is exclusive in RFC 5545).
 // - SUMMARY = title, DESCRIPTION = description (when set); TEXT values escape \ ; , and newlines.
@@ -22,14 +38,16 @@
 //   afterCompletion gets no RRULE: its next date depends on the day the task is completed, which a
 //   calendar cannot know, so only the current instance is exported. timesPerWeek applies to habits
 //   only. Habits are not exported (C.4 lists them as optional).
-// - Timed recurring events are anchored in UTC (C.4: times in UTC). When the UTC date of DTSTART
-//   differs from the local due day (e.g. 00:30 in Berlin = 22:30Z on the previous day), BYDAY and
-//   BYMONTHDAY are shifted to the UTC date so the series stays on the right days. Known limitation:
-//   a UTC anchored series keeps its UTC time, so after a DST change calendars show it one hour off
-//   the local wall time (a TZID with VTIMEZONE would be needed to avoid that).
+// - Timed recurring events are anchored in the TZID wall-clock time; with the default zone (the
+//   system zone) the date of DTSTART is the local due day, so BYDAY/BYMONTHDAY are written as they
+//   are. Only when the date of DTSTART differs from the local due day (UTC fallback, e.g. 00:30 in
+//   Berlin = 22:30Z on the previous day, or an explicit opts.timeZone other than the system zone)
+//   are BYDAY and BYMONTHDAY shifted by that day so the series stays on the right days. RRULEs
+//   carry no UNTIL, so no UTC conversion of an end date is needed.
 // - Reminders → VALARM (ACTION:DISPLAY, DESCRIPTION = title): relative ones → TRIGGER:-PT{n}M
 //   (relative to DTSTART; skipped for all-day tasks, which have no due time to count from, matching
-//   services/reminders fireTime); absolute ones → TRIGGER;VALUE=DATE-TIME:…Z, skipped once dismissed
+//   services/reminders fireTime); absolute ones → TRIGGER;VALUE=DATE-TIME:…Z (always UTC, as
+//   RFC 5545 3.8.6.3 requires), skipped once dismissed
 //   (they already fired; a relative reminder stays because it applies to every instance of a series).
 //
 // exportProjectIcs exports the open (status open or doing), dated top-level tasks of one project
@@ -37,9 +55,15 @@
 import { db } from '../db.js';
 import { fmt, t } from '../i18n/de.js';
 import type { Day, ISO, Project, Recurrence, Reminder, Task } from '../model.js';
-import { addDays, compareIso, dayOfIso, isDay, isoAt, isoWeekday, now, today } from '../util/date.js';
+import {
+  addDays, compareIso, dayOfIso, daysInMonth, diffDays, isDay, isoAt, isoWeekday, now, today,
+} from '../util/date.js';
 
 export const DEFAULT_DURATION_MIN = 30;
+/** VTIMEZONE: minimum number of years probed (and over which a yearly rule must hold). */
+export const TZ_WINDOW_YEARS = 5;
+/** VTIMEZONE: maximum number of years probed (far future due dates do not widen it further). */
+export const TZ_MAX_YEARS = 12;
 /** SEQUENCE counts seconds from here (before the first release, so it is never negative in practice). */
 export const SEQUENCE_EPOCH = Date.UTC(2024, 0, 1);
 const PRODID = '-//Habit Garden//Habit Garden 0.1//DE';
@@ -47,7 +71,12 @@ const CRLF = '\r\n';
 const MAX_OCTETS = 75;
 const BYDAY = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const;
 
-export interface IcsOptions { calendarName: string; now: Date }
+export interface IcsOptions {
+  calendarName: string;
+  now: Date;
+  /** IANA zone for timed events (tests); default: the system zone (systemTimeZone). */
+  timeZone?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Value formatting
@@ -120,7 +149,7 @@ function relativeTrigger(minutes: number): string {
 
 const intervalOf = (value: number): number => (Number.isFinite(value) && value >= 1 ? Math.floor(value) : 1);
 
-/** BYDAY codes for ISO weekdays, shifted by `shift` days (UTC date − local date), in week order. */
+/** BYDAY codes for ISO weekdays, shifted by `shift` days (DTSTART date − local date), in week order. */
 function byDay(weekdays: readonly number[], shift: number): string {
   const set = new Set<number>();
   for (const d of weekdays) {
@@ -130,8 +159,8 @@ function byDay(weekdays: readonly number[], shift: number): string {
 }
 
 /**
- * BYMONTHDAY (+ BYSETPOS) for day N or 'last', shifted by `shift` ∈ {-1, 0, 1} days (UTC date − local
- * date of DTSTART). Days above 28 are clamped to the month's last day, like services/recurrence.
+ * BYMONTHDAY (+ BYSETPOS) for day N or 'last', shifted by `shift` ∈ {-1, 0, 1} days (date written in
+ * DTSTART − local due day). Days above 28 are clamped to the month's last day, like services/recurrence.
  */
 function byMonthDay(day: number | 'last', shift: number): string {
   if (day === 'last') {
@@ -158,7 +187,8 @@ function byMonthDay(day: number | 'last', shift: number): string {
 
 /**
  * RRULE value (without "RRULE:") for a task recurrence starting on the local `day`; `shift` is the
- * difference in days between the UTC date of DTSTART and `day` (0 for all-day events).
+ * difference in days between the date written in DTSTART and `day` (0 for all-day events and for
+ * TZID events in the system zone; ±1 only for the UTC fallback or a foreign opts.timeZone).
  * null when the rule cannot be expressed (afterCompletion, timesPerWeek).
  */
 export function rrule(rec: Recurrence, day: Day, shift = 0): string | null {
@@ -182,6 +212,229 @@ export function rrule(rec: Recurrence, day: Day, shift = 0): string | null {
     case 'timesPerWeek':
       return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Time zones (TZID + VTIMEZONE, derived from Intl)
+
+const MIN_MS = 60_000;
+const DAY_MS = 86_400_000;
+/** Zones written as UTC ("…Z") instead of a TZID. */
+const UTC_LIKE = /^(?:UTC|UCT|GMT|GMT0|Zulu|Universal|Greenwich|Etc\/.*)$/iu;
+/** Letter abbreviations only ("EST"); Intl's "GMT+1" style names are left out. */
+const TZNAME_RE = /^[A-Z]{2,6}$/u;
+
+/** The system's IANA time zone; '' when Intl does not know it. */
+export function systemTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    return '';
+  }
+}
+
+const formats = new Map<string, Intl.DateTimeFormat>();
+
+/** Wall-clock formatter of a zone (throws a RangeError for an unknown zone). */
+function wallFormat(zone: string): Intl.DateTimeFormat {
+  let format = formats.get(zone);
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-US', {
+      timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+    formats.set(zone, format);
+  }
+  return format;
+}
+
+/** The zone to write as TZID, or null for the UTC fallback (empty, unknown or UTC-like zone). */
+export function tzidZone(zone: string | undefined): string | null {
+  if (!zone || UTC_LIKE.test(zone)) return null;
+  try {
+    wallFormat(zone);
+    return zone;
+  } catch {
+    return null;
+  }
+}
+
+/** Calendar and clock fields of a wall-clock time. */
+interface Wall { y: number; mo: number; d: number; h: number; mi: number; s: number }
+
+/** Wall-clock time of an instant in a zone. */
+function wallOf(ms: number, zone: string): Wall {
+  const parts = wallFormat(zone).formatToParts(ms);
+  const get = (type: Intl.DateTimeFormatPartTypes): number => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return { y: get('year'), mo: get('month'), d: get('day'), h: get('hour') % 24, mi: get('minute'), s: get('second') };
+}
+
+/** Wall-clock fields of an instant shifted by `offsetMin` (local time in a fixed offset). */
+function wallAtOffset(ms: number, offsetMin: number): Wall {
+  const date = new Date(ms + offsetMin * MIN_MS);
+  return {
+    y: date.getUTCFullYear(), mo: date.getUTCMonth() + 1, d: date.getUTCDate(),
+    h: date.getUTCHours(), mi: date.getUTCMinutes(), s: date.getUTCSeconds(),
+  };
+}
+
+/** "20261019T090000" (local / floating form). */
+const icsWall = (w: Wall): string => `${pad(w.y, 4)}${pad(w.mo)}${pad(w.d)}T${pad(w.h)}${pad(w.mi)}${pad(w.s)}`;
+const dayOfWall = (w: Wall): Day => `${pad(w.y, 4)}-${pad(w.mo)}-${pad(w.d)}`;
+
+/** UTC offset of a zone at an instant, in whole minutes (east of UTC positive). */
+export function zoneOffsetMinutes(ms: number, zone: string): number {
+  const w = wallOf(ms, zone);
+  const asUtc = Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi, w.s);
+  return Math.round((asUtc - Math.floor(ms / 1000) * 1000) / MIN_MS);
+}
+
+/** "+0100", "-0430", "+0530" (TZOFFSETFROM/TO, RFC 5545 3.3.14). */
+export function icsOffset(minutes: number): string {
+  const abs = Math.abs(minutes);
+  return `${minutes < 0 ? '-' : '+'}${pad(Math.floor(abs / 60))}${pad(abs % 60)}`;
+}
+
+interface Transition { at: number; from: number; to: number }
+
+/**
+ * Offset changes of a zone in [fromMs, toMs]: probed every day, each change located to the minute
+ * by bisection (`at` = first minute of the new offset). Two changes within one day are not seen.
+ */
+function transitions(zone: string, fromMs: number, toMs: number): Transition[] {
+  const out: Transition[] = [];
+  let prevMs = fromMs;
+  let prevOff = zoneOffsetMinutes(fromMs, zone);
+  for (let ms = fromMs + DAY_MS; ms <= toMs; ms += DAY_MS) {
+    const off = zoneOffsetMinutes(ms, zone);
+    if (off !== prevOff) {
+      let lo = prevMs;
+      let hi = ms;
+      while (hi - lo > MIN_MS) {
+        const mid = lo + Math.floor((hi - lo) / 2 / MIN_MS) * MIN_MS;
+        if (zoneOffsetMinutes(mid, zone) === prevOff) lo = mid;
+        else hi = mid;
+      }
+      out.push({ at: hi, from: prevOff, to: zoneOffsetMinutes(hi, zone) });
+    }
+    prevMs = ms;
+    prevOff = off;
+  }
+  return out;
+}
+
+function tzName(ms: number, zone: string): string | undefined {
+  try {
+    const name = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'short' })
+      .formatToParts(ms).find((p) => p.type === 'timeZoneName')?.value;
+    return name && TZNAME_RE.test(name) ? name : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+interface Observance {
+  kind: 'STANDARD' | 'DAYLIGHT';
+  from: number;
+  to: number;
+  /** Local start (offset `from`), sort key and DTSTART. */
+  start: string;
+  rrule?: string;
+  rdates: string[];
+  name?: string;
+}
+
+function observanceLines(o: Observance): string[] {
+  const lines = [`BEGIN:${o.kind}`, `DTSTART:${o.start}`, `TZOFFSETFROM:${icsOffset(o.from)}`, `TZOFFSETTO:${icsOffset(o.to)}`];
+  if (o.rrule) lines.push(`RRULE:${o.rrule}`);
+  for (const rdate of o.rdates) lines.push(`RDATE:${rdate}`);
+  if (o.name) lines.push(`TZNAME:${o.name}`);
+  lines.push(`END:${o.kind}`);
+  return lines;
+}
+
+const vtimezoneCache = new Map<string, string[]>();
+
+/**
+ * VTIMEZONE content lines (unfolded) for an IANA zone, covering the years fromYear … toYear (see the
+ * contract at the top of this file for the rules). Cached per zone and window.
+ */
+export function vtimezone(zone: string, fromYear: number, toYear: number): string[] {
+  const key = `${zone}|${fromYear}|${toYear}`;
+  const cached = vtimezoneCache.get(key);
+  if (cached) return cached;
+  const years = toYear - fromYear + 1;
+  // One day of margin on both sides: local years start up to 14 h before/after UTC years.
+  const found = transitions(zone, Date.UTC(fromYear, 0, 1) - DAY_MS, Date.UTC(toYear + 1, 0, 1) + DAY_MS);
+  const local = found
+    .map((t) => ({ t, wall: wallAtOffset(t.at, t.from) }))
+    .filter(({ wall }) => wall.y >= fromYear && wall.y <= toYear);
+
+  const observances: Observance[] = [];
+  if (local.length === 0) {
+    const offset = zoneOffsetMinutes(Date.UTC(fromYear, 0, 1), zone);
+    observances.push({
+      kind: 'STANDARD', from: offset, to: offset, start: '19700101T000000', rdates: [],
+      name: tzName(Date.UTC(fromYear, 0, 1), zone),
+    });
+  } else {
+    // Yearly rules: the same kind, offsets, month, weekday and local time in every year of the window.
+    const groups = new Map<string, typeof local>();
+    for (const entry of local) {
+      const { t, wall } = entry;
+      const day = dayOfWall(wall);
+      const groupKey = `${t.to > t.from ? 'D' : 'S'}|${t.from}|${t.to}|${wall.mo}|${isoWeekday(day)}|${icsWall(wall).slice(9)}`;
+      const list = groups.get(groupKey) ?? [];
+      list.push(entry);
+      groups.set(groupKey, list);
+    }
+    const rest: typeof local = [];
+    for (const list of groups.values()) {
+      const first = list[0];
+      const everyYear = years >= 3 && list.length === years && new Set(list.map(({ wall }) => wall.y)).size === years;
+      let byDay: string | null = null;
+      if (first && everyYear) {
+        const code = BYDAY[isoWeekday(dayOfWall(first.wall)) - 1] ?? 'SU';
+        const nth = new Set(list.map(({ wall }) => Math.ceil(wall.d / 7)));
+        const allLast = list.every(({ wall }) => wall.d + 7 > daysInMonth(wall.y, wall.mo));
+        const [n] = [...nth];
+        if (allLast) byDay = `-1${code}`;
+        else if (nth.size === 1 && n !== undefined && n <= 4) byDay = `${n}${code}`;
+      }
+      if (first && byDay) {
+        observances.push({
+          kind: first.t.to > first.t.from ? 'DAYLIGHT' : 'STANDARD', from: first.t.from, to: first.t.to,
+          start: icsWall(first.wall), rrule: `FREQ=YEARLY;BYMONTH=${first.wall.mo};BYDAY=${byDay}`, rdates: [],
+          name: tzName(first.t.at, zone),
+        });
+      } else {
+        rest.push(...list);
+      }
+    }
+    // Everything else explicitly: one observance per kind and offset pair, DTSTART + RDATEs.
+    const explicit = new Map<string, Observance>();
+    for (const { t, wall } of rest.sort((a, b) => a.t.at - b.t.at)) {
+      const kind = t.to > t.from ? 'DAYLIGHT' : 'STANDARD';
+      const obsKey = `${kind}|${t.from}|${t.to}`;
+      const existing = explicit.get(obsKey);
+      if (existing) existing.rdates.push(icsWall(wall));
+      else explicit.set(obsKey, { kind, from: t.from, to: t.to, start: icsWall(wall), rdates: [], name: tzName(t.at, zone) });
+    }
+    observances.push(...explicit.values());
+  }
+  observances.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  const lines = ['BEGIN:VTIMEZONE', `TZID:${zone}`, ...observances.flatMap(observanceLines), 'END:VTIMEZONE'];
+  vtimezoneCache.set(key, lines);
+  return lines;
+}
+
+/** Window of years for a VTIMEZONE covering timed events in the given years. */
+export function tzWindow(eventYears: readonly number[]): { fromYear: number; toYear: number } {
+  const first = Math.min(...eventYears);
+  const last = Math.max(...eventYears);
+  const fromYear = first - 1;
+  const toYear = Math.min(fromYear + TZ_MAX_YEARS - 1, Math.max(last, fromYear + TZ_WINDOW_YEARS - 1));
+  return { fromYear, toYear };
 }
 
 // ---------------------------------------------------------------------------
@@ -213,19 +466,27 @@ function alarms(reminders: readonly Reminder[], title: string, timed: boolean): 
   return out;
 }
 
-/** Content lines (unfolded) of one VEVENT; [] for a task without a date. */
-function eventLines(task: Task, stamp: string): string[] {
+/** Start instant (ms) of a timed task; NaN for all-day tasks. */
+function timedStart(task: Task): number {
+  return task.dueHasTime === 1 && task.dueAt ? Date.parse(task.dueAt) : Number.NaN;
+}
+
+/** Content lines (unfolded) of one VEVENT; [] for a task without a date. zone null = UTC. */
+function eventLines(task: Task, stamp: string, zone: string | null): string[] {
   const day = dueDayOf(task);
   if (!day) return [];
-  const startMs = task.dueHasTime === 1 && task.dueAt ? Date.parse(task.dueAt) : Number.NaN;
+  const startMs = timedStart(task);
   const timed = Number.isFinite(startMs);
   const lines = ['BEGIN:VEVENT', `UID:${task.id}`, `DTSTAMP:${stamp}`];
   let shift = 0;
   if (timed) {
-    const start = new Date(startMs);
-    lines.push(`DTSTART:${icsUtc(start)}`, `DTEND:${icsUtc(new Date(startMs + DEFAULT_DURATION_MIN * 60_000))}`);
-    const utcDay = `${pad(start.getUTCFullYear(), 4)}-${pad(start.getUTCMonth() + 1)}-${pad(start.getUTCDate())}`;
-    shift = utcDay === day ? 0 : utcDay < day ? -1 : 1;
+    const endMs = startMs + DEFAULT_DURATION_MIN * MIN_MS;
+    // Wall clock of DTSTART: in the TZID zone, or UTC for the fallback.
+    const start = zone ? wallOf(startMs, zone) : wallAtOffset(startMs, 0);
+    if (zone) lines.push(`DTSTART;TZID=${zone}:${icsWall(start)}`, `DTEND;TZID=${zone}:${icsWall(wallOf(endMs, zone))}`);
+    else lines.push(`DTSTART:${icsUtc(new Date(startMs))}`, `DTEND:${icsUtc(new Date(endMs))}`);
+    // 0 whenever the zone is the system zone; ±1 for the UTC fallback across midnight.
+    shift = Math.sign(diffDays(dayOfWall(start), day));
   } else {
     lines.push(`DTSTART;VALUE=DATE:${icsDate(day)}`, `DTEND;VALUE=DATE:${icsDate(addDays(day, 1))}`);
   }
@@ -243,6 +504,7 @@ function eventLines(task: Task, stamp: string): string[] {
 /** The complete .ics text (see the contract at the top of this file). */
 export function buildIcs(tasks: readonly Task[], opts: IcsOptions): string {
   const stamp = icsUtc(opts.now);
+  const zone = tzidZone(opts.timeZone ?? systemTimeZone());
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -251,7 +513,18 @@ export function buildIcs(tasks: readonly Task[], opts: IcsOptions): string {
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${escapeText(opts.calendarName)}`,
   ];
-  for (const task of tasks) lines.push(...eventLines(task, stamp));
+  if (zone) {
+    const years = tasks
+      .filter((task) => dueDayOf(task) !== undefined)
+      .map(timedStart)
+      .filter(Number.isFinite)
+      .map((ms) => wallOf(ms, zone).y);
+    if (years.length > 0) {
+      const { fromYear, toYear } = tzWindow(years);
+      lines.push(...vtimezone(zone, fromYear, toYear));
+    }
+  }
+  for (const task of tasks) lines.push(...eventLines(task, stamp, zone));
   lines.push('END:VCALENDAR');
   return lines.map(foldLine).join(CRLF) + CRLF;
 }

@@ -7,8 +7,9 @@ import { fmt, t } from '../i18n/de.js';
 import type { Day, Id, MoodLog, Note, Tag } from '../model.js';
 import { dayParts, isDay, nowIso, timeOfIso } from '../util/date.js';
 import { newId } from '../util/ids.js';
+import type { ParsedNote } from '../services/notes-export.js';
 import { deriveTitle, mergeTags } from '../services/notes.js';
-import { ensureTags, normalizeTagPaths } from './tags.js';
+import { ensureTags, normalizeTagPaths, pruneTags } from './tags.js';
 
 export type NoteInput = Pick<Note, 'title'> & Partial<Pick<Note, 'body' | 'kind' | 'journalDay' | 'tagPaths' | 'pinned'>>;
 
@@ -153,7 +154,7 @@ export function createEmptyNote(explicitTags: readonly string[] = []): Promise<N
  * tagPaths = explicit + inline tags. Resolves to the stored note, or undefined if it no longer exists.
  */
 export function saveNoteContent(id: Id, body: string, explicit: readonly string[]): Promise<Note | undefined> {
-  return db.transaction('rw', db.notes, db.tags, async () => {
+  return db.transaction('rw', db.notes, db.tags, db.tasks, async () => {
     const note = await db.notes.get(id);
     if (!note) return undefined;
     const tagPaths = mergeTags(explicit, body);
@@ -162,6 +163,7 @@ export function saveNoteContent(id: Id, body: string, explicit: readonly string[
     const next: Note = { ...note, body, title, tagPaths, updatedAt: nowIso() };
     await db.notes.put(next);
     await ensureTags(tagPaths);
+    if (note.tagPaths.some((path) => !tagPaths.includes(path))) await pruneTags();
     return next;
   });
 }
@@ -178,7 +180,7 @@ export interface DeletedNote { note: Note; moodIds: Id[] }
 
 /** Deletes a note; mood entries pointing at it lose the link (restored by restoreNote). */
 export function deleteNote(id: Id): Promise<DeletedNote | undefined> {
-  return db.transaction('rw', db.notes, db.moodLogs, async () => {
+  return db.transaction('rw', db.notes, db.moodLogs, db.tags, db.tasks, async () => {
     const note = await db.notes.get(id);
     if (!note) return undefined;
     const moods = await db.moodLogs.filter((m) => m.noteId === id).toArray();
@@ -188,6 +190,7 @@ export function deleteNote(id: Id): Promise<DeletedNote | undefined> {
       await db.moodLogs.put(rest);
     }
     await db.notes.delete(id);
+    if (note.tagPaths.length > 0) await pruneTags();
     return { note, moodIds: moods.map((m) => m.id) };
   });
 }
@@ -200,5 +203,51 @@ export function restoreNote(deleted: DeletedNote): Promise<void> {
       const mood = await db.moodLogs.get(id);
       if (mood && mood.noteId === undefined) await db.moodLogs.update(id, { noteId: deleted.note.id });
     }
+  });
+}
+
+export interface NotesImportResult { created: number; updated: number; unchanged: number }
+
+const IMPORT_ID = /^[A-Za-z0-9_-]{1,64}$/u;
+const isIso = (value: string | undefined): value is string => value !== undefined && !Number.isNaN(Date.parse(value));
+
+/**
+ * Markdown import (W6, Einstellungen › Daten): merges parsed notes by id like the JSON merge —
+ * a known id is replaced only when the file's `updated` is newer; unknown or missing ids become new
+ * notes. Tags are the listed ones plus the inline tags of the body.
+ */
+export function importNotes(parsed: readonly ParsedNote[]): Promise<NotesImportResult> {
+  return db.transaction('rw', db.notes, db.tags, async () => {
+    const result: NotesImportResult = { created: 0, updated: 0, unchanged: 0 };
+    const stamp = nowIso();
+    for (const item of parsed) {
+      const id = item.id && IMPORT_ID.test(item.id) ? item.id : newId();
+      const existing = await db.notes.get(id);
+      const kind = item.kind;
+      const note: Note = {
+        id,
+        kind,
+        title: kind === 'journal' && item.title ? item.title : (item.title?.trim() || deriveTitle(item.body)),
+        body: item.body,
+        tagPaths: mergeTags(item.tags, item.body),
+        pinned: item.pinned ? 1 : 0,
+        archived: item.archived ? 1 : 0,
+        createdAt: isIso(item.created) ? item.created : existing?.createdAt ?? stamp,
+        updatedAt: isIso(item.updated) ? item.updated : stamp,
+      };
+      if (kind === 'journal' && item.journalDay && isDay(item.journalDay)) note.journalDay = item.journalDay;
+      if (existing) {
+        if (note.updatedAt <= existing.updatedAt) {
+          result.unchanged += 1;
+          continue;
+        }
+        result.updated += 1;
+      } else {
+        result.created += 1;
+      }
+      await db.notes.put(note);
+      await ensureTags(note.tagPaths);
+    }
+    return result;
   });
 }

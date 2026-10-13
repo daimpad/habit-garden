@@ -762,6 +762,12 @@ export const t = {
   archiveHabits: 'Archivierte Routinen',
   toastHabitReactivated: 'Routine „{name}“ reaktiviert',
   habitReactivate: 'Reaktivieren',
+  // --- additions: limits ---
+  importMarkdown: 'Notizen aus Markdown importieren',
+  importMarkdownHint: 'Eine Datei aus „Notizen als Markdown“ oder eine einzelne Markdown-Datei. Vorhandene Notizen werden nur ersetzt, wenn die Datei neuer ist.',
+  importMarkdownEmpty: 'In dieser Datei steht keine Notiz.',
+  importMarkdownDone: 'Import fertig: {created} neu, {updated} aktualisiert, {unchanged} unverändert',
+  importMarkdownFailed: 'Die Datei konnte nicht gelesen werden.',
   // --- additions: phase3b-planung ---
   planViewKanban: 'Kanban',
   planViewMatrix: 'Matrix',
