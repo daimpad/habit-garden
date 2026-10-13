@@ -11,21 +11,30 @@
 //   Final values are SVG attributes or CSS custom properties (setVar), never style="" (CSP).
 // - Colours come from tokens; ring strokes, swatches and plants use the area tint (data).
 // - Rings: at most RING_MAX (outer → inner in list order); the legend lists every active routine.
+// - "Spuren im Garten" (Garten-Insel Teil 3): every stored milestone, newest first, with its glyph, the routine
+//   (archived ones included), its area and the day it was earned; an empty state otherwise. Shown also without
+//   active routines (milestones are permanent).
 import '../components/ol-app-bar.js';
 import '../components/ol-card.js';
 import '../components/ol-empty-state.js';
 import type { Observable, Subscription } from 'dexie';
 import { plant, safeTint } from '../components/flora.js';
+import { traceGlyph } from '../components/island.js';
 import { fmt, moodLabel, stageName, t, weekdayShort } from '../i18n/de.js';
-import { GENERIC_TINT, type Area, type ContactLog, type Day, type FlowerId, type Habit, type HabitLog, type Id, type MoodLog } from '../model.js';
+import {
+  GENERIC_TINT, type Area, type ContactLog, type Day, type FlowerId, type Habit, type HabitLog, type Id, type Milestone, type MoodLog,
+} from '../model.js';
 import { areas$ } from '../repo/areas.js';
 import { contactLogs$ } from '../repo/contacts.js';
 import { logsByHabit$ } from '../repo/habitLogs.js';
+import { milestones$ } from '../repo/milestones.js';
 import { habits$ } from '../repo/habits.js';
 import { moodsBetween$ } from '../repo/moodLogs.js';
 import type { Route } from '../router.js';
+import { streakUnit } from '../services/growth.js';
+import { countFor, milestoneObject, newestFirst } from '../services/milestones.js';
 import { lastDays, percent, review, type BestStreak, type MoodTrend, type Review, type Rhythm } from '../services/review.js';
-import { addDays, formatDayShort, formatWeekdayLong, isoWeekday, today } from '../util/date.js';
+import { addDays, formatDayFull, formatDayShort, formatWeekdayLong, isoWeekday, today } from '../util/date.js';
 import { h, motionReduced, raw, render, setVar, type SafeHtml } from '../util/dom.js';
 import { openCapture } from './sheets/capture.js';
 
@@ -82,6 +91,9 @@ class ReviewScreen {
   private logs: Map<Id, HabitLog[]> | null = null;
   private moods: MoodLog[] | null = null;
   private contactLogs: ContactLog[] | null = null;
+  /** Teil 3: all routines (archived ones too, for the names of their milestones) and the milestones. */
+  private allHabits: Map<Id, Habit> | null = null;
+  private milestones: Milestone[] | null = null;
 
   constructor(view: HTMLElement, day: Day) {
     this.view = view;
@@ -119,6 +131,12 @@ class ReviewScreen {
     });
     this.watch(contactLogs$(), (list) => {
       this.contactLogs = list;
+    });
+    this.watch(habits$(true), (list) => {
+      this.allHabits = new Map(list.map((hb) => [hb.id, hb]));
+    });
+    this.watch(milestones$(), (list) => {
+      this.milestones = list;
     });
   }
 
@@ -174,8 +192,8 @@ class ReviewScreen {
   // --- Rendering ---
 
   private render(): void {
-    const { habits, areas, logs, moods, contactLogs } = this;
-    if (!habits || !areas || !logs || !moods || !contactLogs) return;
+    const { habits, areas, logs, moods, contactLogs, allHabits, milestones } = this;
+    if (!habits || !areas || !logs || !moods || !contactLogs || !allHabits || !milestones) return;
     const data = review({ habits, logs, moods, contactLogs, today: this.day });
     const parts: SafeHtml[] = [this.kpis(data)];
     if (data.active === 0) {
@@ -183,6 +201,7 @@ class ReviewScreen {
     } else {
       parts.push(this.rings(data), this.streaks(data));
     }
+    parts.push(this.traces(milestones, allHabits, areas));
     parts.push(this.rhythm(data.rhythm), this.mood(data.mood));
     render(this.body, h`${parts}`);
     this.applyVars();
@@ -275,6 +294,43 @@ class ReviewScreen {
     return h`<section class="ol-section ol-review__streaks-section" aria-labelledby="review-streaks">
       <div class="ol-section__head"><h2 class="ol-label" id="review-streaks">${t.reviewSectionStreaks}</h2></div>
       <ol-card class="ol-review__card"><ul class="ol-review__streaks">${rows}</ul></ol-card>
+    </section>`;
+  }
+
+  /** "Spuren im Garten": the milestones, newest first (glyph, routine, object and run, area, date). */
+  private traces(list: readonly Milestone[], habits: ReadonlyMap<Id, Habit>, areas: ReadonlyMap<Id, Area>): SafeHtml {
+    const head = h`<div class="ol-section__head"><h2 class="ol-label" id="review-traces">${t.reviewSectionTraces}</h2>${list.length > 0 ? h`<span class="ol-review__head-value ol-num">${list.length}</span>` : null}</div>`;
+    const shown = newestFirst(list).filter((m) => habits.has(m.habitId));
+    if (shown.length === 0) {
+      return h`<section class="ol-section ol-review__traces-section" aria-labelledby="review-traces">${head}
+        <ol-card class="ol-review__card"><p class="ol-review__traces-empty ol-body-s ol-text-2">${t.reviewTracesEmpty}</p></ol-card></section>`;
+    }
+    const rows = shown.map((m) => {
+      const habit = habits.get(m.habitId);
+      if (!habit) return null;
+      const areaId = habit.areaId ?? m.areaId;
+      const area = areaId ? areas.get(areaId) : undefined;
+      const tint = area ? safeTint(area.tint) : GENERIC_TINT;
+      const object = milestoneObject(m.kind);
+      const count = countFor(habit, m.kind);
+      const run = streakUnit(habit) === 'weeks' ? fmt(t.streakWeeks, { n: count }) : fmt(t.dayCount, { n: count });
+      const what = m.kind === 'bloom' ? fmt(t.reviewTraceBloom, { object }) : fmt(t.reviewTraceStreak, { object, count: run });
+      const areaName = area?.name ?? t.noArea;
+      const date = formatDayFull(m.earnedOn);
+      return h`<li class="ol-review__trace" data-kind="${m.kind}">
+        <span class="ol-review__trace-glyph" aria-hidden="true">${raw(traceGlyph(m.kind, tint))}</span>
+        <span class="ol-review__trace-main">
+          <span class="ol-review__trace-name">${habit.name}</span>
+          <span class="ol-caption">${what}</span>
+          <span class="ol-caption ol-text-2">${fmt(t.reviewTraceMeta, { area: areaName, date })}</span>
+        </span>
+      </li>`;
+    });
+    return h`<section class="ol-section ol-review__traces-section" aria-labelledby="review-traces">${head}
+      <ol-card class="ol-review__card">
+        <ol class="ol-review__traces" aria-label="${t.reviewTracesAria}">${rows}</ol>
+        <p class="ol-review__hint ol-caption">${t.reviewTracesHint}</p>
+      </ol-card>
     </section>`;
   }
 

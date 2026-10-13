@@ -56,6 +56,14 @@ export interface ContactLog { id: `${Id}:${Day}`; contactId: Id; day: Day; kind?
 export const CONTACT_RHYTHMS: readonly number[] = [7, 14, 30, 90];
 export const DEFAULT_CONTACT_RHYTHM = 14;
 
+/**
+ * Garten-Insel Teil 3 ("Spuren im Garten"): a permanent trace a routine left on the island. One per routine and
+ * kind, id = `${habitId}:${kind}`; areaId is the routine's area when it was earned; earnedOn the day the run
+ * first reached the tier (services/milestones). Stays when the streak breaks later.
+ */
+export type MilestoneKind = 'streak7'|'streak30'|'streak100'|'bloom';
+export interface Milestone { id: `${Id}:${MilestoneKind}`; kind: MilestoneKind; habitId: Id; areaId?: Id; earnedOn: Day; }
+
 export type Stage = 0|1|2|3|4;
 
 export const DEFAULT_AREAS: ReadonlyArray<Pick<Area,'flower'|'name'|'tint'>> = [

@@ -22,15 +22,24 @@
 //   pixels): no pill overlaps another pill, Keimi, a figure, the bubble or the stage edge (a pill may
 //   lie over part of a place's large tap area); person pills without a free spot near their figures stay hidden (the figure's name
 //   carries the information).
+// - Teil 3 (Abendfeuer, Spuren im Garten): from the evening on the root carries data-fire ('ask' while today's
+//   "Freude" entry is missing, else 'done'; CSS shows the campfire and keeps Keimi awake while it asks) and a
+//   transparent button "Ins Feuer erzählen" lies over the fire (below the figures). The bubble has a kind:
+//   'line' (Keimi's normal sentence, a tap hides it for the day), 'ask' (the evening question, a tap opens the
+//   answer sheet; shown even when hidden for the day) and 'event' (a milestone or the thank-you, shown even when
+//   hidden). spark() lets a spark rise from the fire (not under reduced motion); announce() speaks through a
+//   polite live region.
 import '../components/ol-segmented.js';
 import {
-  ANCHORS, HIT_BOXES, islandSvg, KEIMI_BOX, PEOPLE_SPOTS, sproutFigure, VIEW_H, VIEW_W, type IslandInput,
+  ANCHORS, FIRE_BOX, HIT_BOXES, islandSvg, KEIMI_BOX, PEOPLE_SPOTS, sproutFigure, VIEW_H, VIEW_W, type IslandInput,
 } from '../components/island.js';
 import { fmt, stageName, t } from '../i18n/de.js';
 import type { Day, Habit, HabitLog, Id, Profile } from '../model.js';
 import { weekProgress, type NextStage } from '../services/growth.js';
-import { figureSlots, layoutLabels, showPeoplePills, type Box, type LabelRequest, type PlaceKey } from '../services/island.js';
-import { h, icon, raw, render, setVar, type SafeHtml } from '../util/dom.js';
+import {
+  figureSlots, layoutLabels, showPeoplePills, type Box, type FireState, type LabelRequest, type PlaceKey,
+} from '../services/island.js';
+import { h, icon, motionReduced, raw, render, setVar, type SafeHtml } from '../util/dom.js';
 
 export type DayPhase = 'morning' | 'day' | 'evening' | 'night';
 
@@ -191,7 +200,13 @@ export interface IslandView {
   total: { text: string; detail: string };
   /** Keimi's sentence. */
   bubble: string;
+  /** Teil 3: what the bubble says ('line' normal, 'ask' the evening question, 'event' a milestone or thanks). */
+  bubbleKind?: BubbleKind;
+  /** Teil 3: the campfire ('off' before the evening). */
+  fire?: FireState;
 }
+
+export type BubbleKind = 'line' | 'ask' | 'event';
 
 const BUBBLE_KEY = 'hg-keimi-hidden';
 const MODE_KEY = 'hg-island-mode';
@@ -201,6 +216,7 @@ const ROOMY_PX = 560;
 const REACH_PLACE = 72;
 const REACH_PERSON = 24;
 const HOP_MS = 900;
+const SPARK_MS = 1400;
 
 /** Island skeleton inside the hero (filled by Island.update). */
 export function islandMarkup(): SafeHtml {
@@ -209,8 +225,9 @@ export function islandMarkup(): SafeHtml {
     <ul class="ol-visually-hidden ol-isl__summary" aria-label="${t.islandSummary}"></ul>
     <div class="ol-isl__stage">
       <div class="ol-isl__art"></div>
-      <button type="button" class="ol-isl__bubble" hidden><span class="ol-isl__bubble-text"></span><span class="ol-visually-hidden"> ${t.islandBubbleHide}</span></button>
+      <button type="button" class="ol-isl__bubble" hidden><span class="ol-isl__bubble-text"></span><span class="ol-visually-hidden ol-isl__bubble-action"> ${t.islandBubbleHide}</span></button>
       <div class="ol-isl__places" role="group" aria-label="${t.islandPlaces}"></div>
+      <button type="button" class="ol-isl__fire" aria-label="${t.joyFireButton}" hidden></button>
       <div class="ol-isl__labels" role="group" aria-label="${t.islandBalanceGroup}" hidden>
         <div class="ol-isl__pills"></div>
         <p class="ol-isl__total"><span class="ol-isl__total-icon" aria-hidden="true">${icon('trending-up', 20)}</span><span class="ol-isl__total-text"></span><span class="ol-visually-hidden ol-isl__total-detail"></span></p>
@@ -218,6 +235,7 @@ export function islandMarkup(): SafeHtml {
       <ul class="ol-isl__people" aria-label="${t.islandPeople}"></ul>
       <button type="button" class="ol-isl__more-people" hidden></button>
     </div>
+    <p class="ol-visually-hidden ol-isl__live" aria-live="polite"></p>
     <ol-segmented class="ol-isl__mode" label="${t.islandModeAria}" value="garden"><button type="button" data-value="garden">${t.islandModeGarden}</button><button type="button" data-value="balance">${t.islandModeBalance}</button></ol-segmented>
   </section>`;
 }
@@ -306,6 +324,10 @@ export class Island {
   private readonly total: HTMLElement;
   private readonly switcher: HTMLElement;
   readonly bubble: HTMLButtonElement;
+  readonly fireButton: HTMLButtonElement;
+  private readonly live: HTMLElement;
+  private kind: BubbleKind = 'line';
+  private fire: FireState = 'off';
   private signature = '';
   private layoutKey = '';
   private frame = 0;
@@ -331,7 +353,13 @@ export class Island {
     this.total = q('.ol-isl__total');
     this.switcher = q('.ol-isl__mode');
     this.bubble = q('.ol-isl__bubble');
+    this.fireButton = q('.ol-isl__fire');
+    this.live = q('.ol-isl__live');
     place(this.bubble, ANCHORS.keimiHead[0], ANCHORS.keimiHead[1]);
+    const [fx, fy, fw, fh] = FIRE_BOX;
+    place(this.fireButton, fx, fy);
+    setVar(this.fireButton, '--w', (fw / VIEW_W).toFixed(4));
+    setVar(this.fireButton, '--h', (fh / VIEW_H).toFixed(4));
     place(this.total, ANCHORS.total[0], ANCHORS.total[1]);
     const [mx, my] = PEOPLE_SPOTS.more;
     place(this.morePeople, mx, my);
@@ -366,8 +394,17 @@ export class Island {
     this.syncPeople(view.people, view.morePeople);
     const text = this.bubble.querySelector('.ol-isl__bubble-text');
     if (text) setText(text, view.bubble);
+    this.kind = view.bubbleKind ?? 'line';
+    const action = this.bubble.querySelector('.ol-isl__bubble-action');
+    if (action) setText(action, ` ${this.kind === 'ask' ? t.joyBubbleAction : t.islandBubbleHide}`);
+    this.fire = view.fire ?? 'off';
+    setAttr(this.root, 'data-fire', this.fire);
+    if (this.fire === 'off' && this.fireButton.contains(document.activeElement)) {
+      this.places.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+    }
+    this.fireButton.hidden = this.fire === 'off';
     this.applyMode();
-    const key = JSON.stringify([view.pills, view.total, view.people, view.morePeople, view.bubble]);
+    const key = JSON.stringify([view.pills, view.total, view.people, view.morePeople, view.bubble, this.fire]);
     if (key !== this.layoutKey) {
       this.layoutKey = key;
       this.scheduleLayout(false);
@@ -376,6 +413,33 @@ export class Island {
 
   get viewMode(): IslandMode {
     return this.mode;
+  }
+
+  /** What the bubble currently says (the screen opens the answer sheet on a tap while it asks). */
+  get bubbleKind(): BubbleKind {
+    return this.kind;
+  }
+
+  /** Polite screen reader announcement (milestones); the same text twice is announced again. */
+  announce(text: string): void {
+    this.live.textContent = '';
+    window.setTimeout(() => {
+      this.live.textContent = text;
+    }, 60);
+  }
+
+  /** A spark rises from the campfire into the sky (1.2 s, CSS); nothing under reduced motion. */
+  spark(): void {
+    if (motionReduced()) return;
+    const [x, y] = ANCHORS.fire;
+    for (const cls of ['ol-isl__spark', 'ol-isl__spark ol-isl__spark--b']) {
+      const el = document.createElement('span');
+      el.className = cls;
+      el.setAttribute('aria-hidden', 'true');
+      place(el, x, y);
+      this.stage.append(el);
+      window.setTimeout(() => el.remove(), SPARK_MS);
+    }
   }
 
   /** Switches between the garden and the balance view (remembered per browser). */
@@ -433,7 +497,7 @@ export class Island {
       }
     }
     const bubbleFocused = this.bubble.contains(document.activeElement);
-    this.bubble.hidden = balance || this.hiddenFor === this.day;
+    this.bubble.hidden = balance || (this.kind === 'line' && this.hiddenFor === this.day);
     // Keep the keyboard where it was: a place moves to its pill and back.
     if (focusInPlaces || focusInPills || (bubbleFocused && this.bubble.hidden)) {
       const key = document.activeElement instanceof HTMLElement ? document.activeElement.dataset['place'] : undefined;
@@ -565,6 +629,7 @@ export class Island {
     const sw = relBox(this.switcher, origin);
     if (sw.y < H && sw.y + sw.h > 0) obstacles.push(sw);
     if (!this.morePeople.hidden) obstacles.push(relBox(this.morePeople, origin));
+    if (!this.fireButton.hidden) obstacles.push(relBox(this.fireButton, origin));
     const figures = [...this.people.querySelectorAll<HTMLElement>('.ol-isl__person')].map((li) => {
       const button = li.querySelector<HTMLElement>('.ol-isl__fig');
       const pill = li.querySelector<HTMLElement>('.ol-isl__pill--person');

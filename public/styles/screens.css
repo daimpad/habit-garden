@@ -524,7 +524,7 @@
    text; ≥ 900 px: right of the greeting. Pill and figure sizes follow the stage width (cqw). */
 /* The island lies above the hero text (its sky overlaps the text's last row); only its controls take pointers. */
 .ol-isl { position: relative; z-index: 2; margin: -44px calc(var(--space-4) * -1) -6px; pointer-events: none; }
-.ol-isl__place, .ol-isl__fig, .ol-isl__bubble, .ol-isl__pill, .ol-isl__more-people, .ol-isl__mode { pointer-events: auto; }
+.ol-isl__place, .ol-isl__fig, .ol-isl__bubble, .ol-isl__pill, .ol-isl__more-people, .ol-isl__mode, .ol-isl__fire { pointer-events: auto; }
 .ol-isl__stage { position: relative; aspect-ratio: 600 / 560; container-type: inline-size; }
 .ol-isl__art { position: absolute; inset: 0; }
 .ol-isl__svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--font-sans); }
@@ -542,8 +542,16 @@
 :root:not([data-theme="dark"]) .ol-hero[data-phase="evening"] .ol-isl { --isl-light: var(--isl-evening-light); --isl-lit-a: .75; }
 :root:not([data-theme="dark"]) .ol-hero[data-phase="night"] .ol-isl { --isl-light: var(--isl-moonlight); --isl-window: var(--isl-window-lit); --isl-lit-a: 1; --isl-smoke-a: .4; }
 .ol-isl__svg .i-night { display: none; }
-:root[data-theme="dark"] .ol-isl__svg .i-night, .ol-hero[data-phase="night"] .ol-isl__svg .i-night { display: inline; }
-:root[data-theme="dark"] .ol-isl__svg .i-day, .ol-hero[data-phase="night"] .ol-isl__svg .i-day { display: none; }
+:root[data-theme="dark"] .ol-isl__svg .i-night, .ol-hero:is([data-phase="evening"], [data-phase="night"]) .ol-isl__svg .i-night { display: inline; }
+:root[data-theme="dark"] .ol-isl__svg .i-day, .ol-hero:is([data-phase="evening"], [data-phase="night"]) .ol-isl__svg .i-day { display: none; }
+/* Abendfeuer (Teil 3): from the evening on the island shows its night look (above) and the campfire; Keimi is
+   awake at the fire in the evening and at night while it asks (data-fire="ask"), asleep at night otherwise. */
+.ol-isl__svg .i-fire { display: none; }
+.ol-hero:is([data-phase="evening"], [data-phase="night"]) .ol-isl__svg .i-fire { display: inline; }
+.ol-hero[data-phase="evening"] .ol-isl__svg .i-keimi-root .i-day,
+.ol-hero[data-phase="night"] .ol-isl[data-fire="ask"] .ol-isl__svg .i-keimi-root .i-day { display: inline; }
+.ol-hero[data-phase="evening"] .ol-isl__svg .i-keimi-root .i-night,
+.ol-hero[data-phase="night"] .ol-isl[data-fire="ask"] .ol-isl__svg .i-keimi-root .i-night { display: none; }
 :root[data-landscape="off"] .ol-isl__svg .i-cloudset { display: none; }
 
 /* SVG fills (every shade derived from the base tokens with color-mix) */
@@ -587,6 +595,23 @@
 .ol-isl__svg .i-lit { opacity: var(--isl-lit-a); }
 .ol-isl__svg .i-more rect { fill: var(--isl-label-bg); }
 .ol-isl__svg .i-more text { fill: var(--color-text-2); font-size: 10px; font-weight: 600; }
+
+.ol-isl__svg .i-fire-light { fill: var(--isl-fire-light); opacity: .22; }
+.ol-isl__svg .i-flame-out { fill: var(--isl-fire); }
+.ol-isl__svg .i-flame-in { fill: var(--isl-fire-core); }
+.ol-isl__svg .i-ember { fill: var(--isl-spark); }
+.ol-isl__svg .i-flame { transform-box: fill-box; transform-origin: 50% 100%; animation: ol-fire-flicker 1.7s ease-in-out infinite alternate; }
+.ol-isl__svg .i-ember { animation: ol-ember 2.4s ease-in-out infinite alternate; }
+@keyframes ol-fire-flicker {
+  0% { transform: scale(1, 1); }
+  35% { transform: scale(.94, 1.07) skewX(-2deg); }
+  70% { transform: scale(1.04, .95) skewX(1.5deg); }
+  100% { transform: scale(.97, 1.04); }
+}
+@keyframes ol-ember { from { opacity: .9; } to { opacity: .25; } }
+/* A milestone that just appeared (Teil 3): fades and scales in from 0.9 at its base. */
+.ol-isl__svg .i-arrive { transform-box: fill-box; transform-origin: 50% 100%; animation: ol-arrive .6s cubic-bezier(.2, .9, .3, 1.1) both; }
+@keyframes ol-arrive { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
 
 /* SVG strokes; k-* elements have no fill (filled and stroked shapes re-declare it) */
 .ol-isl__svg :is([class^="k-"], [class*=" k-"]) { fill: none; }
@@ -633,6 +658,7 @@
 .ol-isl__svg .s-keimi-lo { stop-color: color-mix(in oklab, var(--isl-keimi) 72%, var(--isl-leaf)); }
 .ol-isl__svg .s-cloud { stop-color: var(--isl-cloud); }
 .ol-isl__svg .s-cloud-lo { stop-color: var(--isl-cloud-shade); }
+.ol-isl__svg .s-fire { stop-color: var(--isl-fire-light); }
 
 /* Places: transparent buttons over the artwork (≥ 70 viewBox units, about 50 px on a 390 px phone). */
 .ol-isl__places { position: absolute; inset: 0; }
@@ -735,9 +761,11 @@
   78% { transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ol-isl__fig-svg .f-leaves, .ol-isl__fig-art { animation: none !important; }
+  .ol-isl__fig-svg .f-leaves, .ol-isl__fig-art, .ol-isl__svg :is(.i-flame, .i-ember, .i-arrive) { animation: none !important; }
+  .ol-isl__spark { display: none; }
 }
-:root[data-motion="reduced"] :is(.ol-isl__fig-svg .f-leaves, .ol-isl__fig-art) { animation: none !important; }
+:root[data-motion="reduced"] :is(.ol-isl__fig-svg .f-leaves, .ol-isl__fig-art, .ol-isl__svg .i-flame, .ol-isl__svg .i-ember, .ol-isl__svg .i-arrive) { animation: none !important; }
+:root[data-motion="reduced"] .ol-isl__spark { display: none; }
 .ol-isl__more-people {
   z-index: 2; translate: -50% -100%; min-width: 28px; min-height: 24px; margin: 0; padding: 0 .6em;
   border: 0; border-radius: var(--radius-full); background: var(--isl-label-bg); color: var(--color-text);
@@ -747,6 +775,40 @@
 }
 .ol-isl__more-people[hidden] { display: none; }
 .ol-isl__more-people:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+/* Abendfeuer (Teil 3): a transparent button over the campfire ("Ins Feuer erzählen"), below the figures; the
+   spark rises from the fire into the sky once after an answer (1.2 s; none under reduced motion). */
+.ol-isl__fire {
+  position: absolute; z-index: 1; left: calc(var(--x, 0) * 100%); top: calc(var(--y, 0) * 100%);
+  width: calc(var(--w, 0) * 100%); height: calc(var(--h, 0) * 100%); margin: 0; padding: 0;
+  border: 0; border-radius: 40%; background: transparent; cursor: pointer; pointer-events: auto;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.ol-isl__fire[hidden] { display: none; }
+/* At narrow widths the fire is small; a transparent ::before keeps the hit area at least 44 px. */
+.ol-isl__fire::before { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
+@media (hover: hover) {
+  .ol-isl__fire:hover { background: radial-gradient(closest-side, color-mix(in srgb, var(--isl-fire-light) 30%, transparent), transparent); }
+}
+.ol-isl__fire:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: var(--radius-lg); }
+.ol-isl__spark {
+  position: absolute; z-index: 3; left: calc(var(--x, 0) * 100%); top: calc(var(--y, 0) * 100%);
+  width: max(9px, 2.2cqw); aspect-ratio: 1; margin: 0; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, var(--isl-fire-core) 0 38%, var(--isl-spark) 62%, transparent 74%);
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--isl-spark) 55%, transparent);
+  translate: -50% -50%; opacity: 0; animation: ol-spark-rise 1.2s cubic-bezier(.25, .6, .35, 1) forwards;
+}
+.ol-isl__spark--b { width: max(6px, 1.5cqw); animation-delay: .12s; animation-name: ol-spark-rise-b; }
+@keyframes ol-spark-rise {
+  0% { opacity: 0; transform: translate(0, 0) scale(.6); }
+  12% { opacity: 1; transform: translate(-2px, -6cqw) scale(1); }
+  100% { opacity: 0; transform: translate(8px, -58cqw) scale(.5); }
+}
+@keyframes ol-spark-rise-b {
+  0% { opacity: 0; transform: translate(0, 0) scale(.6); }
+  15% { opacity: 1; transform: translate(3px, -5cqw) scale(1); }
+  100% { opacity: 0; transform: translate(-10px, -46cqw) scale(.4); }
+}
 
 /* Place sheet (sheets/place.ts): the area's routines with plant, stage and watering toggle. */
 .ol-place { display: grid; gap: var(--space-4); padding-bottom: var(--space-2); }
@@ -804,6 +866,8 @@
 .ol-journal__entries { display: grid; gap: var(--space-3); }
 .ol-journal__entry { display: grid; gap: 2px; }
 .ol-journal__text { color: var(--color-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Abendfeuer answer sheet (sheets/joy.ts, Garten-Insel Teil 3) */
+.ol-joy { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-1); }
 /* === /journal === */
 
 /* === capture === */
@@ -1843,6 +1907,22 @@
 
 /* Best streaks: mini plant of the reached stage, bar relative to the longest */
 .ol-review__streaks { display: grid; margin: 0; padding: 0; list-style: none; }
+/* Spuren im Garten (Garten-Insel Teil 3): milestones, newest first, with a small glyph of the object. */
+.ol-review__traces { display: grid; margin: 0; padding: 0; list-style: none; }
+.ol-review__trace { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--color-border); }
+.ol-review__trace:first-child { border-top: 0; }
+.ol-review__trace-glyph {
+  flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--isl-grass) 22%, var(--color-surface)); line-height: 0;
+}
+.ol-review__trace-main { flex: 1 1 auto; min-width: 0; display: grid; }
+.ol-review__trace-name { font-weight: 600; overflow-wrap: anywhere; }
+.ol-trace-glyph .t-wood { fill: var(--isl-wood); }
+.ol-trace-glyph .t-stone { fill: var(--isl-stone); }
+.ol-trace-glyph .t-stone-lo { fill: color-mix(in oklab, var(--isl-stone) 72%, var(--isl-shadow)); }
+.ol-trace-glyph .t-lamp { fill: var(--isl-glow); }
+.ol-trace-glyph .t-roof { fill: var(--isl-roof); }
+.ol-trace-glyph .t-fol { fill: var(--isl-foliage); }
 .ol-review__streak { display: flex; align-items: flex-end; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--color-border); }
 .ol-review__streak:first-child { border-top: 0; padding-top: 0; }
 .ol-review__streak:last-child { padding-bottom: 0; }

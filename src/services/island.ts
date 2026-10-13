@@ -337,3 +337,44 @@ export function layoutLabels(requests: readonly LabelRequest[], obstacles: reado
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Abendfeuer (Teil 3)
+//
+// From the evening on (the hero's phases 'evening' and 'night', settings.eveningHour) the island shows its night
+// look and Keimi sits at a small campfire. As long as today's journal holds no "Freude" entry, Keimi asks
+// "Was hat dich heute gefreut?"; the answer is appended to today's journal note as "Gefreut: …".
+// Detection reads the journal itself (no profile flag): the question returns when the entry is deleted in the
+// editor, and export, import and editing need nothing extra.
+
+export type FireState = 'off' | 'ask' | 'done';
+
+/** 'off' before the evening; 'ask' while the entry is missing; 'done' with the entry (or while the journal is unknown). */
+export function fireState(phase: 'morning' | 'day' | 'evening' | 'night', joyLogged: boolean | null): FireState {
+  if (phase !== 'evening' && phase !== 'night') return 'off';
+  return joyLogged === false ? 'ask' : 'done';
+}
+
+/**
+ * Whether a journal body holds a "Freude" entry: a line that starts with the prefix ("Gefreut:", case-insensitive)
+ * after the time stamp "**HH:MM**" the journal writes, list or quote markers and opening emphasis. Each line is
+ * checked on its own, so the entry is found anywhere in the note and survives edits around it.
+ */
+export function hasJoyEntry(body: string | undefined, prefix: string = t.joyPrefix): boolean {
+  if (!body) return false;
+  const want = prefix.trim().toLocaleLowerCase('de');
+  if (want === '') return false;
+  for (const raw of body.split('\n')) {
+    const line = raw.trim()
+      .replace(/^(?:(?:[-*+>]|\d+[.)])\s+)+/u, '')
+      .replace(/^\*\*\d{1,2}:\d{2}\*\*\s*/u, '')
+      .replace(/^[*_]+/u, '');
+    if (line.toLocaleLowerCase('de').startsWith(want)) return true;
+  }
+  return false;
+}
+
+/** The journal entry for the answer: "Gefreut: <text>". */
+export function joyEntry(text: string): string {
+  return `${t.joyPrefix} ${text.trim()}`;
+}

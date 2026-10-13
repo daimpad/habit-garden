@@ -8,17 +8,20 @@
 // format version: the change is additive, so files written before simply lack them and import
 // as empty tables. The format version therefore stays 1. profile.schemaVersion 2 (Phase 5) only changes
 // the meaning of settings.landscape; files with schema 1 are upgraded on import (repo/profile upgradeProfile).
+// The table milestones (Garten-Insel Teil 3, Dexie schema version 3) is added the same way: optional on import,
+// files without it import an empty table (the app start then backfills it from the history).
 import { db, TABLES, type TableName } from '../db.js';
 import {
   SCHEMA_VERSION, DEFAULT_SETTINGS,
   type Area, type Contact, type ContactLog, type Day, type DayPlan, type FirstStepId, type FlowerId, type Habit,
-  type HabitLog, type HabitSchedule, type ISO, type MoodLog, type Note, type PlanningState, type PlanningView,
+  type HabitLog, type HabitSchedule, type ISO, type Milestone, type MoodLog, type Note, type PlanningState, type PlanningView,
   type Profile, type Project, type Recurrence,
   type Reminder, type Tag, type Task,
 } from '../model.js';
 import { defaultProfile, updateProfile, upgradeProfile } from '../repo/profile.js';
 import { ensureTags, normalizeTagPath, tagChain } from '../repo/tags.js';
 import { CONTACT_KINDS } from './contacts.js';
+import { MILESTONE_KINDS, mergeMilestones, milestoneId } from './milestones.js';
 import { compareIso, deriveDueDay, isDay, isoAt, nowIso, today } from '../util/date.js';
 
 export interface ExportFile {
@@ -39,7 +42,7 @@ export class ImportError extends Error {
 export interface ImportTables {
   profile: Profile[]; areas: Area[]; projects: Project[]; tasks: Task[]; habits: Habit[];
   habitLogs: HabitLog[]; notes: Note[]; tags: Tag[]; moodLogs: MoodLog[]; dayPlans: DayPlan[];
-  contacts: Contact[]; contactLogs: ContactLog[];
+  contacts: Contact[]; contactLogs: ContactLog[]; milestones: Milestone[];
 }
 
 /** A file that passed parseImport: same shape, typed and sanitized tables. */
@@ -103,7 +106,7 @@ const FLOWERS: readonly FlowerId[] = [
 ];
 const FIRST_STEPS: readonly FirstStepId[] = ['focus', 'habit', 'note'];
 /** Tables added after the first files were written; a file without them imports them as empty. */
-const OPTIONAL_TABLES: ReadonlySet<TableName> = new Set<TableName>(['contacts', 'contactLogs']);
+const OPTIONAL_TABLES: ReadonlySet<TableName> = new Set<TableName>(['contacts', 'contactLogs', 'milestones']);
 
 function fail(path: string, problem: string): never {
   throw new ImportError(`${path}: ${problem}`);
@@ -495,6 +498,17 @@ function validateContactLog(value: unknown, path: string): ContactLog {
   return log;
 }
 
+function validateMilestone(value: unknown, path: string): Milestone {
+  const r = asRecord(value, path);
+  const habitId = id(r, 'habitId', path);
+  const kind = oneOf(r, 'kind', MILESTONE_KINDS, path);
+  const expected = milestoneId(habitId, kind);
+  if (r.id !== expected) fail(`${path}.id`, 'expected habitId:kind');
+  const milestone: Milestone = { id: expected, kind, habitId, earnedOn: day(r, 'earnedOn', path) };
+  setOpt(milestone, 'areaId', optId(r, 'areaId', path));
+  return milestone;
+}
+
 function rows<T>(value: unknown, name: TableName, check: (v: unknown, path: string) => T, key: (row: T) => string): T[] {
   if (!Array.isArray(value)) fail(`tables.${name}`, 'expected an array');
   const seen = new Set<string>();
@@ -533,6 +547,7 @@ export function validateExport(input: unknown): ValidatedExport {
     dayPlans: rows(t.dayPlans, 'dayPlans', validateDayPlan, (p) => p.id),
     contacts: rows(t.contacts ?? [], 'contacts', validateContact, (c) => c.id),
     contactLogs: rows(t.contactLogs ?? [], 'contactLogs', validateContactLog, (l) => l.id),
+    milestones: rows(t.milestones ?? [], 'milestones', validateMilestone, (m) => m.id),
   };
   return { format: 'olife', version: 1, exportedAt, tables };
 }
@@ -542,8 +557,8 @@ export function validateExport(input: unknown): ValidatedExport {
  * every record has its key field with the right type). Throws ImportError.
  * Every record is checked field by field (types, enums, day keys, ISO
  * timestamps, colours, HabitLog id = habitId:day, ContactLog id = contactId:day,
- * rhythmDays 1–365, ≤ 3 focus ids, normalized tags). contacts and contactLogs may be
- * missing (files from before people existed); they then import as empty tables.
+ * rhythmDays 1–365, ≤ 3 focus ids, normalized tags, Milestone id = habitId:kind). contacts,
+ * contactLogs and milestones may be missing (older files); they then import as empty tables.
  */
 export function parseImport(text: string): ExportFile {
   let data: unknown;
@@ -592,7 +607,8 @@ function laterIso(a: ISO | undefined, b: ISO | undefined): ISO | undefined {
  * keeps only known task ids, at most 3); contacts: newer updatedAt wins; contactLogs
  * are united (logs of unknown people are dropped; same person and day: newer
  * loggedAt wins); profile: local wins with
- * lastExportAt = max (file profile only when none exists locally).
+ * lastExportAt = max (file profile only when none exists locally); milestones are united
+ * (services/milestones mergeMilestones: milestones of unknown routines are dropped, the earlier earnedOn wins).
  * The profile is not counted in the result.
  */
 export function importMerge(file: ExportFile): Promise<MergeResult> {
@@ -656,6 +672,13 @@ export function importMerge(file: ExportFile): Promise<MergeResult> {
     });
     await db.contactLogs.bulkPut(putContactLogs);
 
+    // Milestones: union by id, earlier earnedOn wins; those of unknown routines are dropped.
+    const milestones = mergeMilestones(await db.milestones.bulkGet(data.milestones.map((m) => m.id)), data.milestones, habitIds);
+    await db.milestones.bulkPut(milestones.put);
+    result.created += milestones.created;
+    result.updated += milestones.updated;
+    result.unchanged += milestones.unchanged;
+
     // MoodLogs: one per day, newer loggedAt wins.
     const incomingByDay = new Map<Day, MoodLog>();
     for (const mood of data.moodLogs) {
@@ -704,7 +727,8 @@ export function importMerge(file: ExportFile): Promise<MergeResult> {
 
 /**
  * "Wiederherstellen": clears all tables and writes the file, atomically. Returns the record count.
- * Without a profile in the file a fresh default profile is written. onboardingDone is 1
+ * Without a profile in the file a fresh default profile is written. Milestones of routines missing in the file
+ * are left out. onboardingDone is 1
  * whenever an active area exists (otherwise 0, so onboarding creates one); lastExportAt
  * becomes at least the file's exportedAt, since the data now equals that backup.
  */
@@ -724,13 +748,16 @@ export function importRestore(file: ExportFile): Promise<number> {
     await db.dayPlans.bulkPut(data.dayPlans);
     await db.contacts.bulkPut(data.contacts);
     await db.contactLogs.bulkPut(data.contactLogs);
+    const habitIds = new Set(data.habits.map((x) => x.id));
+    const milestones = data.milestones.filter((m) => habitIds.has(m.habitId));
+    await db.milestones.bulkPut(milestones);
     await ensureTags([...data.notes.flatMap((n) => n.tagPaths), ...data.tags.map((x) => x.path)]);
     const profile = structuredClone(data.profile[0] ?? defaultProfile());
     profile.onboardingDone = data.areas.some((a) => a.archived === 0) ? 1 : 0;
     const last = laterIso(profile.lastExportAt, valid.exportedAt);
     if (last !== undefined) profile.lastExportAt = last;
     await db.profile.put(profile);
-    return TABLES.reduce((sum, name) => sum + data[name].length, 0);
+    return TABLES.reduce((sum, name) => sum + (name === 'milestones' ? milestones.length : data[name].length), 0);
   });
 }
 

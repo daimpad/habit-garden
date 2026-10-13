@@ -1,7 +1,7 @@
 // Bootstrap: open the DB, apply settings (data-motion, theme, FAB side), render the shell (view,
 // bottom nav, FAB, toast, particles), wire global events (ol-navigate, ol-back, delegated
 // <a href="/…"> clicks to app routes under the base path), start the router with the onboarding
-// guard, start reminders and the day watcher.
+// guard, start reminders and the day watcher. The milestone backfill (repo/milestones) runs once per start.
 //
 // Details of this implementation:
 // - Screens export mount(view, route) → cleanup. The previous cleanup runs before the next mount; every
@@ -41,6 +41,7 @@ import { showToast } from './components/ol-toast.js';
 import { db } from './db.js';
 import { t } from './i18n/de.js';
 import type { Profile } from './model.js';
+import { backfillMilestones } from './repo/milestones.js';
 import { createEmptyNote } from './repo/notes.js';
 import { getProfile, profile$ } from './repo/profile.js';
 import {
@@ -606,6 +607,8 @@ async function boot(): Promise<void> {
   shell.fab.addEventListener('click', onFabClick);
 
   watchProfile(profile);
+  // Spuren im Garten (Teil 3): add the milestones the history already earned, silently (idempotent).
+  void backfillMilestones().catch((err: unknown) => console.error(err));
   onRoute(onRouteChange);
   await startRouter(guard, { settle: historySettled });
   if (profile.onboardingDone === 1) startRemindersOnce();

@@ -11,7 +11,7 @@
 //   (neither counts nor breaks), a missing log ends it.
 // - Days are mapped to integers via util/date diffDays (UTC based, so DST cannot shift them).
 import type { Day, Habit, HabitLog, Stage } from '../model.js';
-import { diffDays } from '../util/date.js';
+import { addDays, diffDays } from '../util/date.js';
 
 type Status = HabitLog['status'];
 
@@ -226,6 +226,56 @@ export function bestStreak(habit: Habit, logs: readonly HabitLog[], today: Day):
   return best;
 }
 
+/** Unit of streak() and bestStreak(): ISO weeks for timesPerWeek, scheduled days otherwise (as the card shows it). */
+export function streakUnit(habit: Habit): 'days' | 'weeks' {
+  return unitOf(habit);
+}
+
+/**
+ * For each count, the first day (≤ today) on which the habit's run reached it, walking the history with the
+ * rules of bestStreak() (same unit); null for a count never reached. timesPerWeek: the day of the done log
+ * that fulfilled the week (the `times`-th done day of that week). Used by services/milestones.
+ */
+export function reachedOn(habit: Habit, logs: readonly HabitLog[], today: Day, counts: readonly number[]): Array<Day | null> {
+  const ctx = context(habit, logs);
+  const t = toNum(today);
+  const out: Array<Day | null> = counts.map(() => null);
+  let firstDone = Number.POSITIVE_INFINITY;
+  for (const [n, s] of ctx.status) if (s === 'done' && n >= ctx.start && n <= t && n < firstDone) firstDone = n;
+  if (firstDone === Number.POSITIVE_INFINITY) return out;
+  const mark = (run: number, n: number): void => {
+    counts.forEach((c, i) => {
+      if (out[i] === null && run >= c) out[i] = addDays(EPOCH, n);
+    });
+  };
+  let current = 0;
+  if (ctx.schedule.kind === 'timesPerWeek') {
+    const byWeek = new Map<number, number[]>();
+    for (const [n, s] of ctx.status) {
+      if (s !== 'done' || n > t || !scheduled(ctx, n)) continue;
+      const list = byWeek.get(mondayOf(n)) ?? [];
+      list.push(n);
+      byWeek.set(mondayOf(n), list);
+    }
+    for (let w = mondayOf(firstDone); w <= mondayOf(t); w += 7) {
+      const days = (byWeek.get(w) ?? []).sort((a, b) => a - b);
+      const fulfilled = days[ctx.times - 1];
+      if (fulfilled === undefined) {
+        current = 0;
+        continue;
+      }
+      mark(++current, fulfilled);
+    }
+    return out;
+  }
+  for (let d = nextScheduled(ctx, firstDone, t); d !== null; d = nextScheduled(ctx, d + 1, t)) {
+    const s = ctx.status.get(d);
+    if (s === 'done') mark(++current, d);
+    else if (s !== 'skipped') current = 0;
+  }
+  return out;
+}
+
 /** Whether the habit is due on day (shown in HEUTE): daily interval, weekly weekdays, timesPerWeek every day. */
 export function isScheduledOn(habit: Habit, day: Day): boolean {
   return scheduled(buildContext(habit, []), toNum(day));
@@ -257,6 +307,11 @@ export function nextStage(habit: Habit, logs: readonly HabitLog[], today: Day): 
   const next = (stage + 1) as Stage;
   const threshold = STAGE_THRESHOLDS[unit][next] ?? 1;
   return { stage, next, remaining: Math.max(1, threshold - streak(habit, logs, today)), unit };
+}
+
+/** Streak at which the plant reaches full bloom (stage 4): 14 days or 4 weeks (B.5). */
+export function bloomCount(habit: Habit): number {
+  return STAGE_THRESHOLDS[unitOf(habit)][4] ?? 14;
 }
 
 /** Stage thresholds (B.5): days 0/1–2/3–6/7–13/≥14, weeks 0/1/2/3/≥4. */

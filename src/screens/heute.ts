@@ -35,6 +35,13 @@
 // - Focus and due rows show the subtask progress "2/5" next to the title (Phase 2, decision 13.10.2026).
 // - The date in the hero is a button that opens the calendar sheet (H8, sheets/calendar.ts).
 // - Sundays show the card "Deine Woche" (H9) and the hero offers "Rückblick" at any time (screens/review.ts).
+// - Garten-Insel Teil 3: from the evening on Keimi sits at a campfire and asks "Was hat dich heute gefreut?" while
+//   today's journal has no "Gefreut:" entry (services/island hasJoyEntry on the live journal note); the bubble or
+//   the fire button opens sheets/joy.ts; after saving a spark rises, the toast offers "Öffnen" and Keimi thanks
+//   (for this mount; after a reload the normal evening line). Milestones ("Spuren im Garten"): after every log
+//   change made here (card, place sheet, heatmap) repo/milestones syncMilestones stores newly earned ones; they
+//   are celebrated quietly (Keimi's sentence for CELEBRATE_MS, the object fades in, aria-live). The mount also
+//   runs the silent backfill. Each place shows its highest streak tier and up to three shrubs.
 import { liveQuery, type Observable, type Subscription } from 'dexie';
 import { butterfly, flower, petalColor } from '../components/flora.js';
 import type { IslandArea } from '../components/island.js';
@@ -49,7 +56,7 @@ import { fmt, stageName, t } from '../i18n/de.js';
 import {
   DEFAULT_SETTINGS, GENERIC_TINT, MAX_FOCUS,
   type Area, type Contact, type ContactLog, type Day, type FirstStepId, type FlowerId, type Habit, type HabitLog,
-  type Id, type MoodLog, type Profile, type Stage, type Task,
+  type Id, type Milestone, type MoodLog, type Note, type Profile, type Stage, type Task,
 } from '../model.js';
 import { areas$ } from '../repo/areas.js';
 import { contactLogs$, contacts$, logContact, undoLogContact } from '../repo/contacts.js';
@@ -57,7 +64,8 @@ import { addToFocus, anyFocusEver, getFocus, removeFromFocus } from '../repo/day
 import { habitLogId, logsByHabit$, toggleLog, type ToggleResult } from '../repo/habitLogs.js';
 import { habits$ } from '../repo/habits.js';
 import { mood$, setMood } from '../repo/moodLogs.js';
-import { noteCount$ } from '../repo/notes.js';
+import { backfillMilestones, milestones$, syncMilestones, type MilestoneChange } from '../repo/milestones.js';
+import { journalFor$, noteCount$ } from '../repo/notes.js';
 import { profile$, updateProfile } from '../repo/profile.js';
 import { compareDue, completeTask, dueOn, getTask, reopenTask, subtaskProgress$, type CompleteResult } from '../repo/tasks.js';
 import type { Route } from '../router.js';
@@ -66,9 +74,10 @@ import {
 } from '../services/contacts.js';
 import { bestStreak, isScheduledOn, nextStage, stageFor, streak, weekProgress } from '../services/growth.js';
 import {
-  assignPlaces, balancePercent, balanceState, balanceWord, decorLevel, fillSlots, flourishLevel, keimiLine, percentText,
-  pickPeople, placeLabel, shortAreaName,
+  assignPlaces, balancePercent, balanceState, balanceWord, decorLevel, fillSlots, fireState, flourishLevel, hasJoyEntry, keimiLine,
+  percentText, pickPeople, placeLabel, shortAreaName,
 } from '../services/island.js';
+import { byEarned, milestoneLine, mostNotable, SHRUB_MAX, traceTier } from '../services/milestones.js';
 import { backupCardState } from '../services/storage-hints.js';
 import { percent, showWeekCard, weekSummary } from '../services/review.js';
 import { takeRevealDue } from '../services/reminders.js';
@@ -81,13 +90,14 @@ import { attachSwipe } from '../util/swipe.js';
 import { exportWithNotice } from './export-flow.js';
 import {
   applyHabitToggle, applySky, dayPhase, greetingLine, greetingMarkup, Island, islandMarkup, nextText, skyMarkup, sunPosition,
-  todayStatus, type DayPhase, type IslandPerson, type IslandPill, type IslandSpot, type IslandView,
+  todayStatus, type BubbleKind, type DayPhase, type IslandPerson, type IslandPill, type IslandSpot, type IslandView,
 } from './garden.js';
 import { openCalendar } from './sheets/calendar.js';
 import { openCapture, type CaptureType } from './sheets/capture.js';
 import { openFocusPick } from './sheets/focus-pick.js';
 import { openHabitEditor, rhythmText } from './sheets/habit.js';
 import { openJournal } from './sheets/journal.js';
+import { openJoySheet } from './sheets/joy.js';
 import { openPeopleSheet, openPersonSheet } from './sheets/people.js';
 import { openPlaceSheet, type PlaceGroupData, type PlaceSheet } from './sheets/place.js';
 import { doneMessage } from './sheets/task.js';
@@ -113,6 +123,9 @@ const PEOPLE_MAX = 3;
 const NO_AREA_GROUP = 'none';
 /** Island ids are unique per mount (two islands never share gradients). */
 let islandSeq = 0;
+/** Keimi's milestone sentence stays this long; the new object's fade-in class this long (Teil 3). */
+const CELEBRATE_MS = 12_000;
+const ARRIVE_MS = 1_200;
 const RING_R = 11.5;
 const RING_C = 2 * Math.PI * RING_R;
 const EASE_ENTER = 'cubic-bezier(0,0,0,1)';
@@ -409,6 +422,14 @@ class HeuteScreen {
   private candidates = new Map<string, IslandCandidate>();
   /** The open place sheet and the candidates it lists (kept even if the island reassigns the spot). */
   private placeSheet: { sheet: PlaceSheet; keys: string[] } | null = null;
+  /** Teil 3: stored milestones (null until loaded), today's journal note, the evening answer of this mount. */
+  private milestones: Milestone[] | null = null;
+  private journal: Note | undefined;
+  private journalLoaded = false;
+  private thanked = false;
+  /** A milestone just earned: Keimi's sentence (cleared after CELEBRATE_MS) and the fade-in ids (after ARRIVE_MS). */
+  private celebration: { text: string } | null = null;
+  private arriving: ReadonlySet<string> | null = null;
 
   constructor(view: HTMLElement, day: Day) {
     this.view = view;
@@ -496,12 +517,30 @@ class HeuteScreen {
       this.noteCount = n;
       this.renderFirstSteps();
     });
+    this.watch(milestones$(), (list) => {
+      this.milestones = list;
+      this.renderIsland();
+    });
+    this.watch(journalFor$(day), (note) => {
+      this.journal = note;
+      this.journalLoaded = true;
+      this.renderIsland();
+    });
+    // Example data loaded in this session (no reload): its earned milestones appear silently.
+    void backfillMilestones().catch((err: unknown) => console.error(err));
     this.later(() => this.reveal(), REVEAL_TIMEOUT_MS);
     this.armHourTimer();
     this.detach.push(onModalChange(() => this.onModalChange()));
     const onRevealDue = (): void => this.maybeRevealDue();
     document.addEventListener('ol-reveal-due', onRevealDue);
     this.detach.push(() => document.removeEventListener('ol-reveal-due', onRevealDue));
+    // Milestones earned in the habit sheet over this screen (sheets/habit.ts) are celebrated here.
+    const onMilestonesEvent = (event: Event): void => {
+      const change = event instanceof CustomEvent ? (event.detail as MilestoneChange | null) : null;
+      if (change && Array.isArray(change.added) && Array.isArray(change.removed)) this.onMilestones(change);
+    };
+    document.addEventListener('ol-milestones', onMilestonesEvent);
+    this.detach.push(() => document.removeEventListener('ol-milestones', onMilestonesEvent));
   }
 
   destroy(): void {
@@ -1045,7 +1084,11 @@ class HeuteScreen {
         this.openPeople();
         return;
       }
-      if (target.closest('.ol-isl__bubble')) this.island.hideBubble();
+      if (target.closest('.ol-isl__fire')) {
+        this.openJoy();
+        return;
+      }
+      if (target.closest('.ol-isl__bubble')) this.onBubble();
     });
 
     // Melde dich bei
@@ -1619,6 +1662,31 @@ class HeuteScreen {
       spots.set('extra', extras);
       art.extra = islandArea(extras.flatMap((c) => c.habits), 'generic', GENERIC_TINT);
     }
+    // Spuren im Garten (Teil 3): the highest streak tier and the shrubs of each place.
+    const spotOfKey = new Map<string, IslandSpot>();
+    for (const [key, list] of spots) for (const c of list) spotOfKey.set(c.key, key);
+    const bySpot = new Map<IslandSpot, Milestone[]>();
+    for (const m of this.milestones ?? []) {
+      const spot = spotOfKey.get(this.milestoneAreaKey(m));
+      if (!spot) continue;
+      const list = bySpot.get(spot) ?? [];
+      list.push(m);
+      bySpot.set(spot, list);
+    }
+    const arriving = this.arriving;
+    for (const [spot, list] of bySpot) {
+      const area = spot === 'extra' ? art.extra : art.areas[spot];
+      if (!area) continue;
+      const tier = traceTier(list.map((m) => m.kind));
+      const shrubs = list.filter((m) => m.kind === 'bloom').sort(byEarned);
+      if (tier > 0) area.trace = tier;
+      if (shrubs.length > 0) area.shrubs = Math.min(SHRUB_MAX, shrubs.length);
+      if (!arriving) continue;
+      const tierKind = tier === 3 ? 'streak100' : tier === 2 ? 'streak30' : 'streak7';
+      if (list.some((m) => arriving.has(m.id) && m.kind === tierKind)) area.arrive = 'trace';
+      const shrub = shrubs.findIndex((m) => arriving.has(m.id));
+      if (shrub >= 0 && shrub < SHRUB_MAX && area.arrive === undefined) area.arrive = shrub;
+    }
     // Places row by row, left to right (back, middle, front of the island) for a sensible tab order.
     const ORDER: readonly IslandSpot[] = ['work', 'home', 'bonds', 'health', 'wealth', 'growth', 'extra', 'leisure'];
     // Balance (Teil 2): fulfilment over the last 30 days with the Rückblick rules, per place and overall.
@@ -1658,6 +1726,8 @@ class HeuteScreen {
     if (active.length > 0) {
       summary.push(totalPct === null ? t.islandSummaryTotalNone : fmt(t.islandSummaryTotal, { pct: percentText(totalPct), state: word }));
     }
+    const traces = this.milestones?.length ?? 0;
+    if (active.length > 0 || traces > 0) summary.push(traces === 0 ? t.islandSummaryTracesNone : fmt(t.islandSummaryTraces, { n: traces }));
 
     const phase = this.phase();
     const shown = active.filter((hb) => isScheduledOn(hb, day));
@@ -1665,16 +1735,124 @@ class HeuteScreen {
     const focusOpen = this.focus.tasks.filter((task) => !this.focusDone(task)).length;
     const due = suggestions(this.contacts.filter((c) => c.archived === 0), this.contactLogs, day, PEOPLE_MAX)
       .find((st) => !this.contactedNow.has(st.contact.id));
-    const bubble = keimiLine({
+    let bubble = keimiLine({
       night: phase === 'night', evening: phase === 'evening', habits: active.length, scheduled: shown.length, pending,
       focusOpen, dueContact: due?.contact.name ?? null,
     }).text;
+    // Abendfeuer (Teil 3): the question while today's "Freude" entry is missing, the thank-you after an answer
+    // here; a milestone just earned speaks first.
+    const fire = fireState(phase, this.journalLoaded ? hasJoyEntry(this.journal?.body) : null);
+    let bubbleKind: BubbleKind = 'line';
+    if (fire === 'ask') {
+      bubble = t.joyQuestion;
+      bubbleKind = 'ask';
+    } else if (this.thanked && fire !== 'off') {
+      bubble = t.joyThanks;
+      bubbleKind = 'event';
+    }
+    if (this.celebration) {
+      bubble = this.celebration.text;
+      bubbleKind = 'event';
+    }
 
     this.spots = spots;
     this.candidates = byKey;
     const { people, more } = this.islandPeople();
-    this.island.update({ art, places: placeList, summary, people, morePeople: more, pills, total, bubble });
+    this.island.update({ art, places: placeList, summary, people, morePeople: more, pills, total, bubble, bubbleKind, fire });
     this.renderPlaceSheet();
+  }
+
+  /** Island candidate key of a milestone's area: the routine's current area while it exists, else the stored one. */
+  private milestoneAreaKey(m: Milestone): string {
+    const habit = this.habits?.find((hb) => hb.id === m.habitId);
+    const areaId = habit ? habit.areaId : m.areaId;
+    return areaId && this.areas.has(areaId) ? areaId : NO_AREA_GROUP;
+  }
+
+  /** The place a milestone shows at (as of the last island render), if any. */
+  private milestoneSpot(m: Milestone): IslandSpot | null {
+    const key = this.milestoneAreaKey(m);
+    for (const [spot, list] of this.spots) if (list.some((c) => c.key === key)) return spot;
+    return null;
+  }
+
+  /** After a log change made here: store newly earned milestones (and take back undone ones), then celebrate. */
+  private syncMilestonesAfter(habitId: Id, changedDay: Day): void {
+    syncMilestones(habitId, changedDay).then((change) => {
+      if (!this.destroyed) this.onMilestones(change);
+    }, (err: unknown) => console.error(err));
+  }
+
+  /**
+   * Leise Feier: Keimi says where the new object stands (the most notable one), the object fades in and the
+   * sentences are announced politely. The stored list is patched at once so the island does not wait for the
+   * live query.
+   */
+  private onMilestones(change: MilestoneChange): void {
+    const gone = new Set([...change.removed, ...change.added].map((m) => m.id));
+    if (this.milestones && gone.size > 0) this.milestones = [...this.milestones.filter((m) => !gone.has(m.id)), ...change.added];
+    if (change.removed.length > 0 && this.celebration && change.added.length === 0) this.celebration = null;
+    const lines: string[] = [];
+    const first = mostNotable(change.added);
+    for (const m of first ? [first, ...change.added.filter((x) => x !== first)] : []) {
+      const spot = this.milestoneSpot(m);
+      if (spot) lines.push(milestoneLine(m.kind, spot));
+    }
+    const text = lines[0];
+    if (text !== undefined) {
+      const celebration = { text };
+      const arriving = new Set(change.added.map((m) => m.id));
+      this.celebration = celebration;
+      this.arriving = arriving;
+      this.island.announce(lines.join(' '));
+      this.later(() => {
+        if (this.arriving !== arriving) return;
+        this.arriving = null;
+        this.renderIsland();
+      }, ARRIVE_MS);
+      this.later(() => {
+        if (this.celebration !== celebration) return;
+        this.celebration = null;
+        this.renderIsland();
+      }, CELEBRATE_MS);
+    }
+    this.renderIsland();
+  }
+
+  /** Tap on Keimi's bubble: the evening question opens the answer sheet; a milestone or thank-you is put away. */
+  private onBubble(): void {
+    const kind = this.island.bubbleKind;
+    if (kind === 'ask') {
+      this.openJoy();
+      return;
+    }
+    if (kind === 'event') {
+      this.celebration = null;
+      this.thanked = false;
+      this.renderIsland();
+    }
+    this.island.hideBubble();
+  }
+
+  /** "Ins Feuer erzählen": the answer goes into today's journal; spark, toast with "Öffnen", Keimi thanks. */
+  private openJoy(): void {
+    this.rememberOpener();
+    try {
+      openJoySheet(this.day, (note) => {
+        if (this.destroyed) return;
+        this.journal = note;
+        this.journalLoaded = true;
+        this.thanked = true;
+        this.celebration = null;
+        this.renderIsland();
+        this.island.spark();
+        showToast(t.joyToast, {
+          action: { label: t.joyOpen, onAction: () => emit(document.body, 'ol-navigate', { path: `/wissen/n/${encodeURIComponent(note.id)}` }) },
+        });
+      });
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   /** Groups of the place sheet: one per area (candidate key), rows for the area's active routines. */
@@ -1893,6 +2071,7 @@ class HeuteScreen {
     if (toggle !== cardRow?.querySelector('ol-habit-toggle')) toggle.removeAttribute('disabled');
     this.animateHabit(plant, cardRow, habit, result, next);
     this.renderRoutines();
+    this.syncMilestonesAfter(id, this.day);
   }
 
   /** F "Erledigungsablauf Routine" and B.4 (Routine erledigt, Stufenwechsel, Streak 7/30/100, Rücknahme). */
@@ -1940,6 +2119,7 @@ class HeuteScreen {
     const run = (restoreStartDay?: Day, offerUndo = true): void => {
       toggleLog(id, day, restoreStartDay === undefined ? {} : { restoreStartDay }).then((result) => {
         if (this.destroyed) return;
+        this.syncMilestonesAfter(id, day);
         const date = formatDayLong(day);
         const message = fmt(result.done ? t.toastDayDone : t.toastDayReset, { date });
         showToast(message, offerUndo ? { action: { label: t.actionUndo, onAction: () => run(result.startDayBefore, false) } } : {});
