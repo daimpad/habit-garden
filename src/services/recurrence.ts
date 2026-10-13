@@ -1,5 +1,7 @@
 // Recurrence rules (F §4.14, C.4). Pure functions on day keys, calendar components only:
 // a wall time is attached afterwards (util/date isoAt), so DST changes cannot shift an occurrence.
+// Also: the due day of a completed task's follow-up instance (followUpDay) and the presets of the
+// Wiederholung editor (A.2 P8: presetOf, presetRecurrence).
 import type { Day, Recurrence } from '../model.js';
 import { addDays, dayParts, daysInMonth, diffDays, isoWeekday, makeDay, startOfWeek } from '../util/date.js';
 
@@ -34,6 +36,66 @@ export function nextOccurrence(rec: Recurrence, anchor: Day, after: Day): Day {
       return addDays(after, atLeastOne(rec.days));
     case 'timesPerWeek':
       throw new RangeError('nextOccurrence: timesPerWeek applies to habits only');
+  }
+}
+
+/**
+ * Due day of the follow-up instance when a recurring task is completed on `completionDay` (C.4).
+ * - afterCompletion: completionDay + days
+ * - other kinds: the next occurrence after the due day that is today or later, i.e.
+ *   nextOccurrence(rec, anchor, max(dueDay ?? completionDay, completionDay − 1)); a task done late
+ *   never spawns an already overdue copy, a task done early continues after its own due day.
+ * The caller passes anchor = recurrenceAnchor ?? dueDay ?? completionDay.
+ */
+export function followUpDay(rec: Recurrence, anchor: Day, dueDay: Day | undefined, completionDay: Day): Day {
+  if (rec.kind === 'afterCompletion') return addDays(completionDay, atLeastOne(rec.days));
+  return nextOccurrence(rec, anchor, later(dueDay ?? completionDay, addDays(completionDay, -1)));
+}
+
+/** Presets of the Wiederholung editor (A.2 P8); 'custom' is any other rule (e.g. imported). */
+export type RecurrencePreset = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'afterCompletion';
+
+const WORKDAYS = [1, 2, 3, 4, 5] as const;
+
+/** Which preset a stored rule corresponds to. */
+export function presetOf(rec: Recurrence | undefined): RecurrencePreset | 'custom' {
+  if (!rec) return 'none';
+  switch (rec.kind) {
+    case 'daily':
+      return atLeastOne(rec.interval) === 1 ? 'daily' : 'custom';
+    case 'weekly': {
+      if (atLeastOne(rec.interval) !== 1) return 'custom';
+      const days = [...new Set(rec.weekdays)].sort((a, b) => a - b);
+      if (days.length === WORKDAYS.length && days.every((d, i) => d === WORKDAYS[i])) return 'weekdays';
+      return days.length === 1 ? 'weekly' : 'custom';
+    }
+    case 'monthly':
+      return atLeastOne(rec.interval) === 1 && rec.day !== 'last' ? 'monthly' : 'custom';
+    case 'afterCompletion':
+      return 'afterCompletion';
+    case 'timesPerWeek':
+      return 'custom';
+  }
+}
+
+/**
+ * The rule of a preset for a task due on `day` (weekly: that weekday; monthly: that day of the
+ * month); `days` is used by afterCompletion only. 'none' gives undefined.
+ */
+export function presetRecurrence(preset: RecurrencePreset, day: Day, days = 1): Recurrence | undefined {
+  switch (preset) {
+    case 'none':
+      return undefined;
+    case 'daily':
+      return { kind: 'daily', interval: 1 };
+    case 'weekdays':
+      return { kind: 'weekly', interval: 1, weekdays: [...WORKDAYS] };
+    case 'weekly':
+      return { kind: 'weekly', interval: 1, weekdays: [isoWeekday(day)] };
+    case 'monthly':
+      return { kind: 'monthly', interval: 1, day: dayParts(day).date };
+    case 'afterCompletion':
+      return { kind: 'afterCompletion', days: atLeastOne(days) };
   }
 }
 

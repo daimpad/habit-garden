@@ -18,6 +18,9 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 - **Gewohnheiten pflegen.** Jede Gewohnheit hat eine eigene Karte mit ihrer Pflanze, der Anzahl der Tage in Folge und einem Überblick über die letzten zwölf Wochen. Ein Tipp auf „Heute gießen“ genügt; die Karte zeigt auch, wie lange es bis zur nächsten Stufe dauert. Gewohnheiten können täglich, an bestimmten Wochentagen oder einige Male pro Woche stattfinden.
 - **In Kontakt bleiben.** Du trägst Menschen ein, die dir wichtig sind, und legst fest, wie oft du dich melden möchtest. „Melde dich bei“ erinnert dich an die, bei denen es Zeit wird. Wer im Rhythmus ist, fliegt als bunter Schmetterling; wer länger nichts von dir gehört hat, ruht blass im Gras.
 - **Fokus für den Tag.** Du wählst bis zu drei Aufgaben, die heute wirklich zählen. Fällige Aufgaben erscheinen darunter, auf Wunsch mit einer Erinnerung, solange die Seite geöffnet ist.
+- **Aufgaben, die wiederkommen.** Eine Aufgabe kann sich täglich, werktags, wöchentlich, monatlich oder einige Tage nach dem Erledigen wiederholen. Hakst du sie ab, steht die nächste schon bereit. Unteraufgaben machen aus einer Aufgabe eine kleine Checkliste.
+- **Schnell notieren.** Beim Anlegen genügt eine Zeile: „Steuer machen @finanzen morgen ! #geld 14:00“ wird zu einer wichtigen Aufgabe im Bereich Finanzen, morgen um 14 Uhr.
+- **Den Abend nutzen.** Am Abend erscheint eine Karte „Morgen vorbereiten“. Dort wählst du die Aufgaben für morgen, und am Morgen stehen sie schon im Fokus.
 - **Stimmung und Journal.** Mit einem Tipp hältst du fest, wie es dir heute geht, und kannst einen kurzen Gedanken dazuschreiben.
 
 <p>
@@ -27,9 +30,8 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 
 ## Was noch kommt
 
-- **Planung:** Projekte, wiederkehrende Aufgaben, Unteraufgaben und verschiedene Ansichten, etwa als Liste oder Tafel.
+- **Planung:** Projekte und verschiedene Ansichten deiner Aufgaben, etwa als Liste oder Tafel.
 - **Wissen:** Notizen mit Schlagworten und einer Suche, damit Gedanken nicht verloren gehen.
-- **Der Abend:** eine Karte, mit der du den nächsten Tag vorbereitest.
 - **Rückblick und Kalender:** ein Blick zurück auf die vergangenen Wochen und ein dunkles Erscheinungsbild für den Abend.
 
 ## Deine Daten

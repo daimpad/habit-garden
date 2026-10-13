@@ -1,9 +1,10 @@
 // F §4.14 / C.4 mandatory cases: both DST changes (Europe/Berlin), the 31st in 30-day months,
-// 'last', weekly interval 2, afterCompletion, year change.
+// 'last', weekly interval 2, afterCompletion, year change. Follow-up instances of completed tasks
+// (followUpDay) and the editor presets (presetOf, presetRecurrence).
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { Day, Recurrence } from '../model.js';
-import { nextOccurrence } from '../services/recurrence.js';
+import { followUpDay, nextOccurrence, presetOf, presetRecurrence } from '../services/recurrence.js';
 import { isoAt, timeOfIso } from '../util/date.js';
 
 process.env.TZ = 'Europe/Berlin';
@@ -158,4 +159,94 @@ describe('afterCompletion', () => {
 
 test('timesPerWeek is for habits only', () => {
   assert.throws(() => nextOccurrence({ kind: 'timesPerWeek', times: 3 }, '2026-10-05', '2026-10-05'), RangeError);
+});
+
+describe('followUpDay (follow-up instance of a completed task)', () => {
+  const daily: Recurrence = { kind: 'daily', interval: 1 };
+  const mondays: Recurrence = { kind: 'weekly', interval: 1, weekdays: [1] };
+
+  test('done on the due day: the next occurrence after it', () => {
+    assert.equal(followUpDay(daily, '2026-10-01', '2026-10-13', '2026-10-13'), '2026-10-14');
+    assert.equal(followUpDay(mondays, '2026-10-05', '2026-10-12', '2026-10-12'), '2026-10-19');
+  });
+
+  test('done late: today or later, never an already overdue copy', () => {
+    assert.equal(followUpDay(daily, '2026-10-01', '2026-10-10', '2026-10-13'), '2026-10-13');
+    // Monday 12 Oct has passed (done on Tuesday): the following Monday.
+    assert.equal(followUpDay(mondays, '2026-10-05', '2026-10-05', '2026-10-13'), '2026-10-19');
+    // Done on Thursday after the Monday due day: the coming Monday.
+    assert.equal(followUpDay(mondays, '2026-10-05', '2026-10-05', '2026-10-08'), '2026-10-12');
+  });
+
+  test('done late with interval 2: stays in phase with the anchor', () => {
+    const every2: Recurrence = { kind: 'weekly', interval: 2, weekdays: [1] };
+    assert.equal(followUpDay(every2, '2026-10-05', '2026-10-05', '2026-10-14'), '2026-10-19');
+    assert.equal(followUpDay(every2, '2026-10-05', '2026-10-05', '2026-10-20'), '2026-11-02');
+  });
+
+  test('done early: continues after its own due day', () => {
+    assert.equal(followUpDay(mondays, '2026-10-05', '2026-10-19', '2026-10-13'), '2026-10-26');
+    assert.equal(followUpDay(daily, '2026-10-01', '2026-10-20', '2026-10-13'), '2026-10-21');
+  });
+
+  test('without a due day: from the completion day', () => {
+    assert.equal(followUpDay(daily, '2026-10-13', undefined, '2026-10-13'), '2026-10-14');
+    assert.equal(followUpDay(mondays, '2026-10-13', undefined, '2026-10-13'), '2026-10-19');
+  });
+
+  test('DST weeks (Europe/Berlin): one calendar day or week further, wall time kept', () => {
+    assert.equal(followUpDay(daily, '2026-03-01', '2026-03-28', '2026-03-28'), '2026-03-29');
+    assert.equal(followUpDay(daily, '2026-03-01', '2026-03-29', '2026-03-29'), '2026-03-30');
+    assert.equal(followUpDay(daily, '2026-10-01', '2026-10-24', '2026-10-24'), '2026-10-25');
+    const spring = followUpDay(mondays, '2026-03-02', '2026-03-23', '2026-03-23');
+    const autumn = followUpDay(mondays, '2026-10-05', '2026-10-19', '2026-10-19');
+    assert.deepEqual([spring, autumn], ['2026-03-30', '2026-10-26']);
+    assert.equal(timeOfIso(isoAt(spring, '14:00')), '14:00');
+    assert.equal(timeOfIso(isoAt(autumn, '14:00')), '14:00');
+  });
+
+  test('monthly on the 31st: clamped in 30-day months, back to the 31st afterwards', () => {
+    const rec: Recurrence = { kind: 'monthly', interval: 1, day: 31 };
+    assert.equal(followUpDay(rec, '2026-01-31', '2026-03-31', '2026-03-31'), '2026-04-30');
+    assert.equal(followUpDay(rec, '2026-01-31', '2026-04-30', '2026-04-30'), '2026-05-31');
+    assert.equal(followUpDay(rec, '2026-01-31', '2026-01-31', '2026-02-03'), '2026-02-28');
+  });
+
+  test('year change', () => {
+    assert.equal(followUpDay({ kind: 'monthly', interval: 1, day: 15 }, '2026-01-15', '2026-12-15', '2026-12-15'), '2027-01-15');
+    const workdays: Recurrence = { kind: 'weekly', interval: 1, weekdays: [1, 2, 3, 4, 5] };
+    assert.equal(followUpDay(workdays, '2026-12-01', '2027-01-01', '2027-01-01'), '2027-01-04');
+    assert.equal(followUpDay(daily, '2026-12-01', '2026-12-31', '2026-12-31'), '2027-01-01');
+  });
+
+  test('afterCompletion: completion day + days, whatever the due day', () => {
+    const rec: Recurrence = { kind: 'afterCompletion', days: 3 };
+    assert.equal(followUpDay(rec, '2026-12-20', '2026-12-20', '2026-12-30'), '2027-01-02');
+    assert.equal(followUpDay(rec, '2026-10-20', '2026-10-20', '2026-10-13'), '2026-10-16');
+    assert.equal(followUpDay(rec, '2026-10-13', undefined, '2026-10-13'), '2026-10-16');
+    assert.equal(followUpDay({ kind: 'afterCompletion', days: 1 }, '2026-10-24', '2026-10-24', '2026-10-24'), '2026-10-25');
+  });
+});
+
+describe('editor presets', () => {
+  test('presetRecurrence follows the due day', () => {
+    assert.deepEqual(presetRecurrence('weekly', '2026-10-14'), { kind: 'weekly', interval: 1, weekdays: [3] });
+    assert.deepEqual(presetRecurrence('monthly', '2026-10-31'), { kind: 'monthly', interval: 1, day: 31 });
+    assert.deepEqual(presetRecurrence('weekdays', '2026-10-14'), { kind: 'weekly', interval: 1, weekdays: [1, 2, 3, 4, 5] });
+    assert.deepEqual(presetRecurrence('daily', '2026-10-14'), { kind: 'daily', interval: 1 });
+    assert.deepEqual(presetRecurrence('afterCompletion', '2026-10-14', 3), { kind: 'afterCompletion', days: 3 });
+    assert.equal(presetRecurrence('none', '2026-10-14'), undefined);
+  });
+
+  test('presetOf recognises every preset and reports other rules as custom', () => {
+    for (const preset of ['daily', 'weekdays', 'weekly', 'monthly', 'afterCompletion'] as const) {
+      assert.equal(presetOf(presetRecurrence(preset, '2026-10-14', 5)), preset);
+    }
+    assert.equal(presetOf(undefined), 'none');
+    assert.equal(presetOf({ kind: 'weekly', interval: 1, weekdays: [5, 4, 3, 2, 1] }), 'weekdays');
+    assert.equal(presetOf({ kind: 'weekly', interval: 2, weekdays: [1] }), 'custom');
+    assert.equal(presetOf({ kind: 'weekly', interval: 1, weekdays: [1, 3] }), 'custom');
+    assert.equal(presetOf({ kind: 'daily', interval: 3 }), 'custom');
+    assert.equal(presetOf({ kind: 'monthly', interval: 1, day: 'last' }), 'custom');
+  });
 });

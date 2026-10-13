@@ -4,7 +4,7 @@ Technische Dokumentation zu Habit Garden: Aufbau, Build, Auslieferung, Lizenzen.
 
 Habit Garden ist eine local-first Website. Alle Daten liegen ausschließlich im Browser (IndexedDB). Es gibt kein Konto, keine Datenbank auf dem Server und keine Telemetrie; Export und Import (JSON) sind der einzige Transferweg.
 
-Stand: Phase 1 (Grundgerüst) mit dem Garten-Redesign vom 12.10.2026. PLANUNG und WISSEN sind als Screens mit Leerzustand vorhanden; die vollständigen Fassungen folgen in Phase 3 und 4.
+Stand: Phase 1 (Grundgerüst) mit dem Garten-Redesign vom 12.10.2026 und Phase 2 vom 13.10.2026 (Wiederholungen mit Folgeinstanz, Unteraufgaben, Schnellsyntax, Abendkarte). PLANUNG und WISSEN sind als Screens mit Leerzustand vorhanden; die vollständigen Fassungen folgen in Phase 3 und 4.
 
 ## Garten und Personen
 

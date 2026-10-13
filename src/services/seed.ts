@@ -16,8 +16,8 @@ import { createContact, logContact } from '../repo/contacts.js';
 import { addToFocus } from '../repo/dayPlans.js';
 import { createHabit } from '../repo/habits.js';
 import { toggleLog } from '../repo/habitLogs.js';
-import { createTask } from '../repo/tasks.js';
-import { addDays, diffDays, isoAt, startOfWeek, today } from '../util/date.js';
+import { createSubtask, createTask } from '../repo/tasks.js';
+import { addDays, diffDays, isoAt, isoWeekday, startOfWeek, today } from '../util/date.js';
 
 export type SeedResult = 'created' | 'exists';
 
@@ -95,6 +95,12 @@ async function seedHabitsAndTasks(): Promise<void> {
     const invoice = await createTask({ title: t.seedTaskInvoice, areaId, dueAt: isoAt(day, '14:00'), dueHasTime: 1 });
     await createTask({ title: t.seedTaskBike, areaId: areas[1]?.id ?? areaId, dueAt: isoAt(ago(1)), dueHasTime: 0 });
     const call = await createTask({ title: t.seedTaskCall, areaId: areas[2]?.id ?? areaId });
+    // Phase 2: a weekly task with a checklist; ticking it creates next week's copy with open subtasks.
+    const shopping = await createTask({
+      title: t.seedTaskShopping, areaId, dueAt: isoAt(day), dueHasTime: 0,
+      recurrence: { kind: 'weekly', interval: 1, weekdays: [isoWeekday(day)] }, recurrenceAnchor: day,
+    });
+    for (const title of [t.seedSubtaskBread, t.seedSubtaskVegetables, t.seedSubtaskCoffee]) await createSubtask(shopping.id, title);
     for (const id of [invoice.id, call.id]) {
       try {
         await addToFocus(day, id);

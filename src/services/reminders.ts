@@ -182,8 +182,9 @@ async function fire(task: Task, reminder: Reminder): Promise<void> {
 
 async function completeFromReminder(taskId: string): Promise<void> {
   try {
-    await completeTask(taskId);
-    showToast(t.toastDone, { action: { label: t.actionUndo, onAction: () => void reopenTask(taskId).catch(failed) } });
+    const { followUp } = await completeTask(taskId);
+    const message = followUp?.dueDay ? fmt(t.toastDoneNext, { date: formatDayShort(followUp.dueDay) }) : t.toastDone;
+    showToast(message, { action: { label: t.actionUndo, onAction: () => void reopenTask(taskId).catch(failed) } });
   } catch (err) {
     failed(err);
   }

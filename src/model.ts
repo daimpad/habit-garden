@@ -8,6 +8,8 @@ export interface Profile {
   onboardingDone: 0|1; createdAt: ISO; lastExportAt?: ISO; backupCardDismissedAt?: ISO;
   /** Approved addition (Rückfrage 2): ids of dismissed "Erste Schritte" cards. */
   firstStepsDismissed?: FirstStepId[];
+  /** Phase 2 (H7): the day whose evening card "Morgen vorbereiten" was dismissed. */
+  eveningCardDismissedFor?: Day;
 }
 export type FirstStepId = 'focus'|'habit'|'note';
 export interface Area { id: Id; name: string; flower: FlowerId; tint: string; sortKey: SortKey; archived: 0|1; updatedAt: ISO; }
@@ -24,6 +26,7 @@ export interface Task {
   status: 'open'|'doing'|'done'; important: 0|1; urgent: 0|1;
   dueAt?: ISO; dueDay?: Day; dueHasTime: 0|1; completedAt?: ISO; recurrence?: Recurrence; recurrenceAnchor?: Day;
   reminders: Reminder[]; tagPaths?: string[]; linkedNoteIds?: Id[]; sortKey: SortKey; createdAt: ISO; updatedAt: ISO;
+  followUpId?: Id;
 }
 export type HabitSchedule = Extract<Recurrence, { kind: 'daily'|'weekly'|'timesPerWeek' }>;
 export interface Habit {
