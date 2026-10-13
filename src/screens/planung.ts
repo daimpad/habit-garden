@@ -8,9 +8,14 @@
 //   progress row with plant, the project's open tasks grouped like the list view.
 // - /planung/inbox: open top-level tasks without project and date; "Zuweisen" opens the project picker.
 // Rows: checkbox (completeTask, toast with the next date of a recurring task and Rückgängig), title
-// (opens /aufgabe/:id), meta (project · date). Kanban, Matrix, swipe gestures, search and ICS export
-// follow in part 2. The FAB pre-fills area and project from planningContext() (G1).
-// TODO(phase-3b): Kanban and Matrix with drag, swipe gestures (Liste, Inbox), search, ICS export, archive (P10).
+// (opens /aufgabe/:id), meta (project · date). The FAB pre-fills area and project from planningContext() (G1).
+// Part 2 (Phase 3b):
+// - Views Kanban and Matrix (screens/planung-board.ts, long-press drag) on the root and the project
+//   screen; the project screen remembers its view under projectViewKey().
+// - Swipe (util/swipe.ts): list rows right ⟲ erledigt, left ⇡ Verschieben; inbox rows right ⇡ Zuweisen,
+//   left ⟲ erledigt. Checkbox, title and the "Zuweisen" button stay the non-gesture alternatives.
+// - 🔍 opens the task search of the selected area (screens/sheets/task-search.ts); ⋯ on the root opens the
+//   archive (P10), ⋯ on a project adds "Exportieren (ICS)".
 import '../components/ol-app-bar.js';
 import '../components/ol-button.js';
 import '../components/ol-chip.js';
@@ -28,23 +33,32 @@ import { showToast } from '../components/ol-toast.js';
 import { fmt, t } from '../i18n/de.js';
 import { GENERIC_TINT, type Area, type Id, type PlanningView, type Profile, type Project, type Task } from '../model.js';
 import { areas$ } from '../repo/areas.js';
-import { openTasks$, setPlanningArea, setPlanningView, viewKey } from '../repo/planning.js';
+import { doneTasks$, openTasks$, projectViewKey, setPlanningArea, setPlanningView, viewKey } from '../repo/planning.js';
 import { profile$ } from '../repo/profile.js';
 import {
   allProjects$, createProject, deleteProject, moveProject, projectStats$, restoreProject, setProjectArchived, updateProject,
   type ProjectStats,
 } from '../repo/projects.js';
-import { completeTask, reopenTask, updateTask } from '../repo/tasks.js';
+import { completeTask, reopenTask, subtaskProgress$, updateTask } from '../repo/tasks.js';
 import { back, type Route } from '../router.js';
 import { groupForList, inScope, isInbox, LIST_GROUPS, projectStage, type ListGroupKey } from '../services/planning.js';
-import { formatDayShort, formatTime, today } from '../util/date.js';
+import { addDays, dayKey, formatDayShort, formatTime, now, today } from '../util/date.js';
 import { emit, h, icon, raw, render, setVar, type SafeHtml } from '../util/dom.js';
+import { attachSwipe, type SwipeAction, type SwipeDirection } from '../util/swipe.js';
+import { PlanungBoard } from './planung-board.js';
+import { exportProjectIcs } from '../services/ics.js';
+import { openArchiveSheet } from './sheets/archive.js';
+import { openMoveSheet } from './sheets/move.js';
 import { doneMessage, failed, openActionMenu } from './sheets/task.js';
+import { openTaskSearch } from './sheets/task-search.js';
 
 const GROUP_LABELS: Readonly<Record<ListGroupKey, string>> = {
   overdue: t.focusGroupOverdue, today: t.planGroupToday, week: t.planGroupWeek, later: t.planGroupLater, noDate: t.focusGroupNoDate,
 };
-const VIEWS: readonly PlanningView[] = ['projects', 'list'];
+const VIEWS: readonly PlanningView[] = ['projects', 'list', 'kanban', 'matrix'];
+const PROJECT_VIEWS: readonly PlanningView[] = ['list', 'kanban', 'matrix'];
+/** Kanban "Erledigt" shows tasks done in the last two weeks. */
+const DONE_DAYS = 14;
 const NAME_MAX = 120;
 
 /** Area and project the FAB pre-fills while a PLANUNG route is mounted (G1). */
@@ -121,6 +135,13 @@ class PlanungScreen {
   private projects: Project[] | null = null;
   private stats = new Map<Id, ProjectStats>();
   private tasks: Task[] | null = null;
+  private doneTasks: Task[] = [];
+  private progress = new Map<Id, { done: number; total: number }>();
+  private progressSub: Subscription | null = null;
+  private progressKey = '';
+  private board: PlanungBoard | null = null;
+  private boardKind: 'kanban' | 'matrix' | null = null;
+  private stopSwipe: (() => void) | null = null;
   private gone = false;
 
   constructor(private readonly view: HTMLElement, route: Route) {
@@ -149,13 +170,37 @@ class PlanungScreen {
     watch(areas$(true), (list: Area[]) => { this.areas = list; });
     watch(allProjects$(true), (list: Project[]) => { this.projects = list; });
     watch(projectStats$(), (map: Map<Id, ProjectStats>) => { this.stats = map; });
-    watch(openTasks$(), (list: Task[]) => { this.tasks = list; });
+    watch(openTasks$(), (list: Task[]) => {
+      this.tasks = list;
+      this.watchProgress(list);
+    });
+    watch(doneTasks$(addDays(dayKey(now()), -DONE_DAYS)), (list: Task[]) => { this.doneTasks = list; });
+  }
+
+  /** Subtask ratios for the cards of the board (re-subscribed when the set of open tasks changes). */
+  private watchProgress(list: readonly Task[]): void {
+    const ids = list.map((task) => task.id).sort();
+    const key = ids.join('|');
+    if (key === this.progressKey) return;
+    this.progressKey = key;
+    this.progressSub?.unsubscribe();
+    this.progressSub = subtaskProgress$(ids).subscribe({
+      next: (map: Map<Id, { done: number; total: number }>) => {
+        if (this.destroyed) return;
+        this.progress = map;
+        this.render();
+      },
+      error: (err: unknown) => console.error(err),
+    });
   }
 
   destroy(): void {
     this.destroyed = true;
     for (const sub of this.subs) sub.unsubscribe();
     this.subs.length = 0;
+    this.progressSub?.unsubscribe();
+    this.board?.destroy();
+    this.stopSwipe?.();
     context = null;
   }
 
@@ -180,6 +225,11 @@ class PlanungScreen {
     return stored && VIEWS.includes(stored) ? stored : 'projects';
   }
 
+  private projectView(): PlanningView {
+    const stored = this.projectId ? this.profile?.planning?.views?.[projectViewKey(this.projectId)] : undefined;
+    return stored && PROJECT_VIEWS.includes(stored) ? stored : 'list';
+  }
+
   private project(): Project | undefined {
     return this.projects?.find((p) => p.id === this.projectId);
   }
@@ -195,14 +245,18 @@ class PlanungScreen {
     if (this.kind === 'root') {
       render(view, h`
         <ol-app-bar display heading="${t.titlePlanung}">
-          <ol-icon-button slot="actions" class="ol-plan__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
+          <ol-icon-button slot="actions" class="ol-plan__search" icon="search" label="${t.planSearchAria}"></ol-icon-button>
+          <ol-icon-button slot="actions" class="ol-plan__root-more" icon="ellipsis" label="${t.actionMore}"></ol-icon-button>
         </ol-app-bar>
         <div class="ol-plan" data-loading>
           <div class="ol-plan__chips" role="radiogroup" aria-label="${t.planAreasAria}"></div>
           <ol-segmented class="ol-plan__views" label="${t.planViewAria}">
             <button type="button" data-value="projects">${t.planViewProjects}</button>
             <button type="button" data-value="list">${t.planViewList}</button>
+            <button type="button" data-value="kanban">${t.planViewKanban}</button>
+            <button type="button" data-value="matrix">${t.planViewMatrix}</button>
           </ol-segmented>
+          <section class="ol-plan__board-view" hidden></section>
           <section class="ol-plan__projects-view">
             <button type="button" class="ol-plan__inbox-row" hidden>
               <span class="ol-plan__inbox-icon" aria-hidden="true">${icon('inbox')}</span>
@@ -234,8 +288,16 @@ class PlanungScreen {
               <p class="ol-plan__progress-next ol-caption"></p>
             </div>
           </div>
-          <p class="ol-plan__empty ol-body-s" hidden>${t.planProjectEmpty}</p>
-          <div class="ol-plan__groups"></div>
+          <ol-segmented class="ol-plan__views" label="${t.planViewAria}">
+            <button type="button" data-value="list">${t.planViewList}</button>
+            <button type="button" data-value="kanban">${t.planViewKanban}</button>
+            <button type="button" data-value="matrix">${t.planViewMatrix}</button>
+          </ol-segmented>
+          <section class="ol-plan__board-view" hidden></section>
+          <section class="ol-plan__list-view">
+            <p class="ol-plan__empty ol-body-s" hidden>${t.planProjectEmpty}</p>
+            <div class="ol-plan__groups"></div>
+          </section>
           <p class="ol-plan__gone ol-body" hidden>${t.projectMissing}</p>
         </div>`);
     } else {
@@ -251,10 +313,24 @@ class PlanungScreen {
 
   private bind(): void {
     const view = this.view;
-    view.querySelector('.ol-plan__settings')?.addEventListener('click', (event) => {
-      if (event.currentTarget instanceof Element) emit(event.currentTarget, 'ol-navigate', { path: '/einstellungen' });
+    view.querySelector('.ol-plan__search')?.addEventListener('click', () => {
+      const areaId = this.selectedArea();
+      openTaskSearch({ ...(areaId ? { areaId } : {}), areas: this.areas ?? [] });
+    });
+    view.querySelector('.ol-plan__root-more')?.addEventListener('click', (event) => {
+      const button = event.currentTarget instanceof Element ? event.currentTarget : this.view;
+      openActionMenu(t.titlePlanung, [
+        { label: t.planArchive, icon: 'archive', run: () => void openArchiveSheet() },
+        { label: t.actionSettings, icon: 'settings', run: () => emit(button, 'ol-navigate', { path: '/einstellungen' }) },
+      ]);
     });
     view.querySelector('.ol-plan__more')?.addEventListener('click', () => this.openProjectMenu());
+    this.stopSwipe = attachSwipe(view, {
+      rowSelector: 'li[data-task]',
+      actionFor: (_row, direction) => this.swipeAction(direction),
+      onSwipe: (row, direction) => this.onSwipe(row, direction),
+      renderLayer: (layer, action) => render(layer, h`<span class="ol-swipe-layer__icon">${icon(action.icon, 20)}</span><span class="ol-swipe-layer__label">${action.label}</span>`),
+    });
 
     const chips = view.querySelector<HTMLElement>('.ol-plan__chips');
     chips?.addEventListener('ol-change', (event) => {
@@ -274,7 +350,10 @@ class PlanungScreen {
     });
     view.querySelector('.ol-plan__views')?.addEventListener('ol-change', (event) => {
       const value = event instanceof CustomEvent ? (event.detail as { value?: string } | null)?.value : undefined;
-      if (value === 'projects' || value === 'list') void setPlanningView(viewKey(this.selectedArea()), value).catch(failed);
+      const next = VIEWS.find((v) => v === value);
+      if (!next) return;
+      const key = this.kind === 'project' && this.projectId ? projectViewKey(this.projectId) : viewKey(this.selectedArea());
+      void setPlanningView(key, next).catch(failed);
     });
     view.querySelector('.ol-plan__inbox-row')?.addEventListener('click', (event) => {
       event.preventDefault();
@@ -324,6 +403,7 @@ class PlanungScreen {
     req<HTMLElement>(view, '.ol-plan__projects-view').hidden = current !== 'projects';
     req<HTMLElement>(view, '.ol-plan__list-view').hidden = current !== 'list';
     const tasks = inScope(this.tasks ?? [], areaId ? { areaId } : {});
+    this.renderBoard(current, tasks, inScope(this.doneTasks, areaId ? { areaId } : {}), true);
 
     // Inbox row (only with content)
     const inboxCount = tasks.filter(isInbox).length;
@@ -477,7 +557,7 @@ class PlanungScreen {
     if (!project) {
       context = null;
       gone.hidden = false;
-      for (const sel of ['.ol-plan__progress', '.ol-plan__groups', '.ol-plan__empty']) req<HTMLElement>(view, sel).hidden = true;
+      for (const sel of ['.ol-plan__progress', '.ol-plan__views', '.ol-plan__list-view', '.ol-plan__board-view']) req<HTMLElement>(view, sel).hidden = true;
       this.view.querySelector<HTMLElement>('.ol-plan__more')?.setAttribute('hidden', '');
       return;
     }
@@ -500,6 +580,10 @@ class PlanungScreen {
     next.hidden = !stats.nextDue;
     setText(next, stats.nextDue ? fmt(t.planProjectNext, { date: formatDayShort(stats.nextDue) }) : '');
     const tasks = inScope(this.tasks ?? [], { projectId: project.id });
+    const current = this.projectView();
+    setAttr(req<HTMLElement>(view, '.ol-plan__views'), 'value', current);
+    req<HTMLElement>(view, '.ol-plan__list-view').hidden = current !== 'list';
+    this.renderBoard(current, tasks, inScope(this.doneTasks, { projectId: project.id }), false);
     req<HTMLElement>(view, '.ol-plan__empty').hidden = tasks.length > 0;
     this.renderGroups(req<HTMLElement>(view, '.ol-plan__groups'), tasks, false);
   }
@@ -511,6 +595,51 @@ class PlanungScreen {
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
     req<HTMLElement>(this.view, '.ol-plan__empty').hidden = tasks.length > 0;
     this.renderRows(req<HTMLElement>(this.view, '.ol-plan__inbox-list'), tasks, false, true);
+  }
+
+  /** Kanban / Matrix: one PlanungBoard per kind, created on first use and replaced when the kind changes. */
+  private renderBoard(current: PlanningView, tasks: readonly Task[], done: readonly Task[], showProject: boolean): void {
+    const container = req<HTMLElement>(this.view, '.ol-plan__board-view');
+    const kind = current === 'kanban' || current === 'matrix' ? current : null;
+    container.hidden = kind === null;
+    if (kind === null) return;
+    if (this.boardKind !== kind || !this.board) {
+      this.board?.destroy();
+      container.replaceChildren();
+      this.board = new PlanungBoard(container, kind);
+      this.boardKind = kind;
+    }
+    this.board.update({
+      tasks,
+      doneTasks: done,
+      projects: new Map((this.projects ?? []).map((p) => [p.id, p])),
+      areas: new Map((this.areas ?? []).map((a) => [a.id, a])),
+      progress: this.progress,
+      showProject,
+    });
+  }
+
+  // --- Swipe (list rows and inbox) ---
+
+  private swipeAction(direction: SwipeDirection): SwipeAction | null {
+    if (this.kind === 'inbox') {
+      return direction === 'right'
+        ? { label: t.swipeAssign, icon: 'folder-input', tone: 'neutral' }
+        : { label: t.swipeDone, icon: 'check', tone: 'done' };
+    }
+    return direction === 'right'
+      ? { label: t.swipeDone, icon: 'check', tone: 'done' }
+      : { label: t.swipeMove, icon: 'calendar', tone: 'neutral' };
+  }
+
+  private onSwipe(row: HTMLElement, direction: SwipeDirection): void {
+    const id = row.dataset['task'];
+    const task = id ? this.tasks?.find((x) => x.id === id) : undefined;
+    if (!id || !task) return;
+    const done = this.kind === 'inbox' ? direction === 'left' : direction === 'right';
+    if (done) void this.onCheck(id, true);
+    else if (this.kind === 'inbox') this.openAssign(id);
+    else openMoveSheet(task);
   }
 
   // --- Actions ---
@@ -580,6 +709,7 @@ class PlanungScreen {
     openActionMenu(project.name, [
       { label: t.projectRename, icon: 'pencil', run: () => this.openRename(project) },
       { label: t.projectMove, icon: 'folder-input', run: () => this.openMove(project) },
+      { label: t.projectExportIcs, icon: 'download', run: () => void exportProjectIcs(project).catch(failed) },
       { label: t.actionArchive, icon: 'archive', run: () => void this.archive(project) },
       { label: t.actionDelete, icon: 'trash-2', danger: true, run: () => void this.remove(project) },
     ]);

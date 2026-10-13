@@ -10,9 +10,23 @@ export function openTasks$(): Observable<Task[]> {
   return liveQuery(() => db.tasks.filter((t) => t.status !== 'done' && (t.parentId === null || t.parentId === undefined)).toArray());
 }
 
+/** liveQuery: done top-level tasks completed on or after `since` (ISO), newest first (Kanban "Erledigt"). */
+export function doneTasks$(since: string): Observable<Task[]> {
+  return liveQuery(async () => {
+    const rows = await db.tasks.filter((t) => t.status === 'done' && (t.parentId === null || t.parentId === undefined)
+      && (t.completedAt ?? '') >= since).toArray();
+    return rows.sort((a, b) => ((a.completedAt ?? '') < (b.completedAt ?? '') ? 1 : -1));
+  });
+}
+
 /** Key under which a view is remembered: the area id, or 'all' for "Alle" (A.3: Segment-Zustand pro Bereich). */
 export function viewKey(areaId: Id | undefined): string {
   return areaId ?? 'all';
+}
+
+/** Key of a project screen's view. */
+export function projectViewKey(projectId: Id): string {
+  return `p:${projectId}`;
 }
 
 /** Stores the selected area (undefined = "Alle"). */

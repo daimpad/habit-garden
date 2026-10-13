@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { Day, Task } from '../model.js';
-import { groupForList, inScope, isInbox, listGroupOf, projectStage } from '../services/planning.js';
+import { weekendDay } from '../services/move-day.js';
+import { groupForList, inScope, isInbox, listGroupOf, passesFilters, projectStage, searchRank } from '../services/planning.js';
 
 process.env.TZ = 'Europe/Berlin';
 
@@ -65,5 +66,36 @@ describe('project plant', () => {
     assert.equal(projectStage(2, 4), 3);
     assert.equal(projectStage(3, 4), 3);
     assert.equal(projectStage(4, 4), 4);
+  });
+});
+
+describe('move targets', () => {
+  test('weekend: coming Saturday, or today on the weekend', () => {
+    assert.equal(weekendDay('2026-10-13'), '2026-10-17');
+    assert.equal(weekendDay('2026-10-17'), '2026-10-17');
+    assert.equal(weekendDay('2026-10-18'), '2026-10-18');
+    assert.equal(weekendDay('2026-12-29'), '2027-01-02');
+  });
+});
+
+describe('search', () => {
+  test('rank: title before tag before description', () => {
+    const x = task({ title: 'Steuer machen', tagPaths: ['geld/belege'], description: 'Ordner im Keller' });
+    assert.equal(searchRank(x, 'steuer'), 0);
+    assert.equal(searchRank(x, 'belege'), 1);
+    assert.equal(searchRank(x, 'keller'), 2);
+    assert.equal(searchRank(x, 'urlaub'), -1);
+    assert.equal(searchRank(x, ''), 0);
+  });
+  test('filters: OR within a group, AND across groups', () => {
+    const a = task({ status: 'doing', important: 1, dueDay: TODAY });
+    const b = task({ status: 'open', urgent: 1 });
+    const sel = (...k: string[]): Set<string> => new Set(k);
+    assert.equal(passesFilters(a, sel(), TODAY), true);
+    assert.equal(passesFilters(a, sel('status:open', 'status:doing'), TODAY), true);
+    assert.equal(passesFilters(b, sel('status:doing'), TODAY), false);
+    assert.equal(passesFilters(a, sel('flag:important', 'date:today'), TODAY), true);
+    assert.equal(passesFilters(b, sel('flag:important', 'flag:urgent', 'date:noDate'), TODAY), true);
+    assert.equal(passesFilters(b, sel('flag:urgent', 'date:today'), TODAY), false);
   });
 });

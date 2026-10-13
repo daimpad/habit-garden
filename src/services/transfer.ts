@@ -300,7 +300,7 @@ function validatePlanning(value: unknown, path: string): PlanningState {
   return state;
 }
 
-const PLANNING_VIEWS: readonly PlanningView[] = ['projects', 'list'];
+const PLANNING_VIEWS: readonly PlanningView[] = ['projects', 'list', 'kanban', 'matrix'];
 
 function validateArea(value: unknown, path: string): Area {
   const r = asRecord(value, path);

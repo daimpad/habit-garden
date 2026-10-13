@@ -13,7 +13,7 @@ export interface Profile {
   /** Phase 3 (P1/P2): PLANUNG tab state — selected area (absent = "Alle") and the view per area key. */
   planning?: PlanningState;
 }
-export type PlanningView = 'projects'|'list';
+export type PlanningView = 'projects'|'list'|'kanban'|'matrix';
 export interface PlanningState { areaId?: Id; views?: Record<string, PlanningView>; }
 export type FirstStepId = 'focus'|'habit'|'note';
 export interface Area { id: Id; name: string; flower: FlowerId; tint: string; sortKey: SortKey; archived: 0|1; updatedAt: ISO; }

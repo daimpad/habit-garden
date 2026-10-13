@@ -3,7 +3,7 @@ import { db } from '../db.js';
 import { isFlowerId } from '../components/flora.js';
 import type { Area, Id } from '../model.js';
 import { nowIso } from '../util/date.js';
-import { newId, sortKeyBetween } from '../util/ids.js';
+import { newId, sortKeyBetween, sortKeysAfter } from '../util/ids.js';
 
 /** Thrown when the last non-archived area would be archived (S40). */
 export class LastAreaError extends Error {
@@ -80,6 +80,35 @@ export function updateArea(id: Id, patch: Partial<Omit<Area, 'id' | 'updatedAt'>
     const next: Area = { ...area, ...stripUndefined(patch), id, updatedAt: nowIso() };
     if (typeof patch.name === 'string') next.name = patch.name.trim();
     await db.areas.put(next);
+  });
+}
+
+/**
+ * Moves an area to position `toIndex` (clamped) of the full list ordered by sortKey, archived areas
+ * included (the order Einstellungen › Bereiche shows). Only the moved area gets a new sortKey (and
+ * updatedAt) between its new neighbours; when the neighbours' keys do not leave room (equal keys,
+ * e.g. after merging two exports), all areas are renumbered in the new order. PLANUNG, HEUTE and every
+ * other area list sort by sortKey, so they follow the new order.
+ */
+export function moveArea(id: Id, toIndex: number): Promise<void> {
+  return db.transaction('rw', db.areas, async () => {
+    const all = await db.areas.orderBy('sortKey').toArray();
+    const from = all.findIndex((a) => a.id === id);
+    const area = all[from];
+    if (!area) throw new Error(`unknown area ${id}`);
+    const rest = all.filter((a) => a.id !== id);
+    const to = Math.max(0, Math.min(rest.length, Number.isFinite(toIndex) ? Math.trunc(toIndex) : from));
+    if (to === from) return;
+    const prev = rest[to - 1]?.sortKey ?? null;
+    const next = rest[to]?.sortKey ?? null;
+    const stamp = nowIso();
+    if (prev === null || next === null || prev < next) {
+      await db.areas.put({ ...area, sortKey: sortKeyBetween(prev, next), updatedAt: stamp });
+      return;
+    }
+    rest.splice(to, 0, area);
+    const keys = sortKeysAfter(null, rest.length);
+    await db.areas.bulkPut(rest.map((a, i) => (a.sortKey === keys[i] ? a : { ...a, sortKey: keys[i] ?? a.sortKey, updatedAt: stamp })));
   });
 }
 
