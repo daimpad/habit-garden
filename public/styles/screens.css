@@ -517,14 +517,15 @@
 /* === /heute === */
 
 /* === island === */
-/* Garten-Insel in the HEUTE hero (Teil 1, 13.10.2026): the SVG from components/island.ts with transparent
-   place buttons, Keimi's speech bubble and the people (butterflies) laid over it in viewBox fractions
-   (--x/--y/--w/--h set by screens/garden.ts). Colour tokens --isl-* in tokens.css (light and dark).
-   Phone: the island fills the width under the hero text; ≥ 900 px: right of the greeting. */
+/* Garten-Insel in the HEUTE hero (Teil 1 and 2, 13.10.2026): the SVG from components/island.ts with
+   transparent place buttons, Keimi's speech bubble, the people (sprout figures), the balance pills and the
+   switch "Garten · Balance" laid over it in viewBox fractions (--x/--y/--w/--h set by screens/garden.ts).
+   Colour tokens --isl-* in tokens.css (light and dark). Phone: the island fills the width under the hero
+   text; ≥ 900 px: right of the greeting. Pill and figure sizes follow the stage width (cqw). */
 /* The island lies above the hero text (its sky overlaps the text's last row); only its controls take pointers. */
 .ol-isl { position: relative; z-index: 2; margin: -44px calc(var(--space-4) * -1) -6px; pointer-events: none; }
-.ol-isl__place, .ol-isl__flyer, .ol-isl__bubble { pointer-events: auto; }
-.ol-isl__stage { position: relative; aspect-ratio: 600 / 560; }
+.ol-isl__place, .ol-isl__fig, .ol-isl__bubble, .ol-isl__pill, .ol-isl__more-people, .ol-isl__mode { pointer-events: auto; }
+.ol-isl__stage { position: relative; aspect-ratio: 600 / 560; container-type: inline-size; }
 .ol-isl__art { position: absolute; inset: 0; }
 .ol-isl__svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--font-sans); }
 @media (min-width: 600px) and (max-width: 899px) {
@@ -635,7 +636,9 @@
 
 /* Places: transparent buttons over the artwork (≥ 70 viewBox units, about 50 px on a 390 px phone). */
 .ol-isl__places { position: absolute; inset: 0; }
-.ol-isl__place, .ol-isl__flyer, .ol-isl__bubble { position: absolute; left: calc(var(--x, 0) * 100%); top: calc(var(--y, 0) * 100%); }
+.ol-isl__place, .ol-isl__person, .ol-isl__bubble, .ol-isl__pill[data-place], .ol-isl__total, .ol-isl__more-people {
+  position: absolute; left: calc(var(--x, 0) * 100%); top: calc(var(--y, 0) * 100%);
+}
 .ol-isl__place {
   width: calc(var(--w, 0) * 100%); height: calc(var(--h, 0) * 100%); margin: 0; padding: 0;
   border: 0; border-radius: 40%; background: transparent; cursor: pointer;
@@ -665,40 +668,85 @@
   .ol-isl__bubble { max-width: 250px; padding: 9px 14px 10px; font-size: .875rem; line-height: 1.25rem; }
 }
 
-/* People: in rhythm they flutter in their colour around the big tree, overdue they rest pale on its crown. */
-.ol-isl__people { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
-.ol-isl__flyer { translate: -50% -50%; pointer-events: auto; }
-.ol-isl__butterfly {
-  display: grid; place-items: center; width: 40px; height: 40px; margin: 0; padding: 0; border: 0;
-  border-radius: 50%; background: none; color: inherit; cursor: pointer; touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
+/* Switch "Garten · Balance" (ol-segmented) under the island, overlapping its lower clouds a little. */
+.ol-isl__mode {
+  position: relative; z-index: 4; width: max-content; min-width: 184px; margin: -22px auto 8px;
+  box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--isl-shadow) 45%, transparent);
 }
-.ol-isl__butterfly:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 0; }
-.ol-isl__wings { display: block; line-height: 0; }
-.ol-isl__wings .ol-butterfly__svg { width: 24px; height: auto; }
-@media (min-width: 900px) { .ol-isl__wings .ol-butterfly__svg { width: 28px; } }
-.ol-butterfly__wing { transform-box: view-box; transform-origin: 16px 14px; }
-.ol-isl__flyer[data-state="fresh"] .ol-isl__butterfly { animation: ol-flutter 8s ease-in-out var(--bd, 0s) infinite; }
-.ol-isl__flyer[data-state="fresh"] .ol-butterfly__wing { animation: ol-flap .34s ease-in-out infinite alternate; }
-.ol-isl__flyer[data-state="due"] .ol-isl__wings { opacity: .85; filter: saturate(.4) brightness(1.04); }
-.ol-isl__flyer[data-state="due"] .ol-butterfly__wing { transform: scaleX(.72); }
-.ol-isl__flyer[data-lift] .ol-isl__butterfly { animation: ol-lift 1.5s cubic-bezier(.2, .8, .3, 1) both; }
-@keyframes ol-flap { from { transform: scaleX(1); } to { transform: scaleX(.28); } }
-@keyframes ol-flutter {
-  0%, 100% { transform: translate(0, 0) rotate(-6deg); }
-  25% { transform: translate(10px, -7px) rotate(5deg); }
-  50% { transform: translate(-3px, -12px) rotate(-3deg); }
-  75% { transform: translate(-10px, -4px) rotate(6deg); }
+@media (min-width: 900px) { .ol-isl__mode { margin-bottom: 30px; } }
+
+/* Balance view: pills on the places, the overall chip; hidden in the garden view (data-mode). */
+.ol-isl__labels { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.ol-isl__labels[hidden] { display: none; }
+.ol-isl__pill {
+  display: inline-flex; align-items: center; gap: .4em; width: max-content; min-height: 24px; height: 2.1em;
+  margin: 0; padding: 0 .75em 0 .55em; border: 0; border-radius: var(--radius-full);
+  background: var(--isl-label-bg); color: var(--color-text);
+  font: inherit; font-size: clamp(.625rem, 2.8cqw, .8125rem); line-height: 1; font-weight: 600; white-space: nowrap;
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--isl-shadow) 35%, transparent);
+  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
-@keyframes ol-lift {
-  0% { transform: translateY(26px) scale(.9); }
-  45% { transform: translateY(-28px) scale(1.18) rotate(-8deg); }
-  100% { transform: none; }
+.ol-isl__pill[data-place] { translate: -50% -50%; }
+@media (hover: hover) { .ol-isl__pill:hover { background: var(--isl-pill-hover); } }
+.ol-isl__pill:focus-visible, .ol-isl__fig:focus-visible .ol-isl__pill--person { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.ol-isl__dot { flex: none; width: .72em; height: .72em; border-radius: 50%; background: var(--tint, var(--color-sage)); box-shadow: 0 0 0 1px var(--isl-label-bg); }
+.ol-isl__pill-pct { color: var(--color-text-2); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ol-isl__total {
+  translate: -50% -50%; display: inline-flex; align-items: center; gap: .45em; width: max-content; min-height: 28px;
+  margin: 0; padding: .3em 1em .3em .75em; border-radius: var(--radius-full);
+  background: var(--color-primary); color: var(--color-on-primary);
+  font-size: clamp(.6875rem, 3cqw, .875rem); line-height: 1.2; font-weight: 600; white-space: nowrap; box-shadow: var(--shadow-raised);
+}
+.ol-isl__total-icon { display: inline-flex; }
+.ol-isl__total-icon .ol-icon { width: 1.25em; height: 1.25em; }
+
+/* People as sprout figures (Keimi's family) by the big tree: the li is a point at the figure's feet, the
+   button stands on it; the pill "Lena · 80 %" is part of the button (offset --dx/--dy from the layout).
+   Overdue: paler, drooping leaves (the shape is in the SVG). In rhythm the leaves sway gently. */
+.ol-isl__people { position: absolute; inset: 0; z-index: 2; margin: 0; padding: 0; list-style: none; pointer-events: none; }
+.ol-isl__person { width: 0; height: 0; }
+.ol-isl__fig {
+  position: absolute; left: 0; top: 0; translate: -50% -100%; display: block; margin: 0; padding: 3px 4px 1px;
+  border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; line-height: 0;
+  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.ol-isl__fig:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 0; }
+.ol-isl__fig-art { display: block; }
+.ol-isl__fig-svg { display: block; width: max(17px, 5.4cqw); height: auto; overflow: visible; }
+.ol-isl__fig .ol-isl__pill--person { position: absolute; left: var(--dx, 50%); top: var(--dy, -14px); translate: -50% -50%; }
+.ol-isl__pill--person[data-off] { visibility: hidden; }
+.ol-isl__pill--person .ol-isl__pill-name { max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
+.ol-isl__person[data-state="due"] .ol-isl__fig-art { opacity: .8; filter: saturate(.6); }
+.ol-isl__fig-svg .f-leaf { fill: var(--isl-leaf); stroke: color-mix(in oklab, var(--isl-leaf) 75%, var(--isl-shadow)); stroke-width: .6; }
+.ol-isl__fig-svg .f-stem { fill: none; stroke: color-mix(in oklab, var(--isl-leaf) 75%, var(--isl-shadow)); }
+.ol-isl__fig-svg .f-sh { fill: var(--isl-shadow); opacity: .22; }
+.ol-isl__fig-svg .i-night { display: none; }
+:root[data-theme="dark"] .ol-isl__fig-svg .i-night, .ol-hero[data-phase="night"] .ol-isl__fig-svg .i-night { display: inline; }
+:root[data-theme="dark"] .ol-isl__fig-svg .i-day, .ol-hero[data-phase="night"] .ol-isl__fig-svg .i-day { display: none; }
+.ol-isl__fig-svg .f-leaves { transform-box: view-box; transform-origin: 16px 15px; }
+.ol-isl__person[data-state="fresh"] .f-leaves { animation: ol-sprout-sway 4.5s ease-in-out var(--bd, 0s) infinite alternate; }
+.ol-isl__person[data-hop] .ol-isl__fig-art { animation: ol-hop .9s cubic-bezier(.3, .7, .4, 1) both; }
+@keyframes ol-sprout-sway { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@keyframes ol-hop {
+  0%, 100% { transform: none; }
+  22% { transform: translateY(-34%) scale(1.04, .97); }
+  44% { transform: none; }
+  60% { transform: translateY(-14%); }
+  78% { transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ol-isl__butterfly, .ol-butterfly__wing { animation: none !important; }
+  .ol-isl__fig-svg .f-leaves, .ol-isl__fig-art { animation: none !important; }
 }
-:root[data-motion="reduced"] :is(.ol-isl__butterfly, .ol-butterfly__wing) { animation: none !important; }
+:root[data-motion="reduced"] :is(.ol-isl__fig-svg .f-leaves, .ol-isl__fig-art) { animation: none !important; }
+.ol-isl__more-people {
+  z-index: 2; translate: -50% -100%; min-width: 28px; min-height: 24px; margin: 0; padding: 0 .6em;
+  border: 0; border-radius: var(--radius-full); background: var(--isl-label-bg); color: var(--color-text);
+  font: inherit; font-size: clamp(.6875rem, 2.8cqw, .8125rem); font-weight: 600;
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--isl-shadow) 35%, transparent);
+  cursor: pointer; touch-action: manipulation;
+}
+.ol-isl__more-people[hidden] { display: none; }
+.ol-isl__more-people:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* Place sheet (sheets/place.ts): the area's routines with plant, stage and watering toggle. */
 .ol-place { display: grid; gap: var(--space-4); padding-bottom: var(--space-2); }

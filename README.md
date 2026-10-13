@@ -1,6 +1,6 @@
 # Habit Garden
 
-Habit Garden ist ein Garten für deinen Alltag. Jede Gewohnheit, die du pflegen möchtest, wächst darin als Pflanze. Je regelmäßiger du sie pflegst, desto weiter wächst sie: vom Samen über Spross, Blätter und Knospe bis zur Blüte. Menschen, bei denen du dich melden möchtest, fliegen als Schmetterlinge durch den Garten.
+Habit Garden ist ein Garten für deinen Alltag. Jede Gewohnheit, die du pflegen möchtest, wächst darin als Pflanze. Je regelmäßiger du sie pflegst, desto weiter wächst sie: vom Samen über Spross, Blätter und Knospe bis zur Blüte. Menschen, bei denen du dich melden möchtest, stehen als kleine Keimlinge unter dem großen Baum der Garten-Insel.
 
 **Ausprobieren:** [daimpad.github.io/habit-garden](https://daimpad.github.io/habit-garden/). Unter Einstellungen › Info kannst du Beispieldaten laden und den Garten gleich gefüllt sehen.
 
@@ -16,7 +16,7 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 
 - **Der Garten auf einen Blick.** Oben auf der Startseite schwebt deine Garten-Insel. Jeder Lebensbereich hat dort einen eigenen Ort – das Haus, den Teich, die Bank unter dem Baum, die Werkstatt und weitere –, und jede Gewohnheit wächst daneben als Pflanze. Je besser ein Bereich gepflegt ist, desto mehr blüht sein Ort auf. Ein Tipp auf einen Ort zeigt seine Routinen zum Gießen. Der kleine Keimi sagt dir, was als Nächstes ansteht, und der Himmel folgt der Tageszeit.
 - **Gewohnheiten pflegen.** Jede Gewohnheit hat eine eigene Karte mit ihrer Pflanze, der Anzahl der Tage in Folge und einem Überblick über die letzten zwölf Wochen. Ein Tipp auf „Heute gießen“ genügt; die Karte zeigt auch, wie lange es bis zur nächsten Stufe dauert. Gewohnheiten können täglich, an bestimmten Wochentagen oder einige Male pro Woche stattfinden.
-- **In Kontakt bleiben.** Du trägst Menschen ein, die dir wichtig sind, und legst fest, wie oft du dich melden möchtest. „Melde dich bei“ erinnert dich an die, bei denen es Zeit wird. Wer im Rhythmus ist, fliegt als bunter Schmetterling; wer länger nichts von dir gehört hat, ruht blass im Gras.
+- **In Kontakt bleiben.** Du trägst Menschen ein, die dir wichtig sind, und legst fest, wie oft du dich melden möchtest. „Melde dich bei“ erinnert dich an die, bei denen es Zeit wird. Wer im Rhythmus ist, steht fröhlich bei der Bank; wer länger nichts von dir gehört hat, wartet blass etwas abseits. Die Ansicht „Balance“ zeigt zu jedem Bereich, wie gut seine Routinen in den letzten 30 Tagen gepflegt waren, und zu jeder Person, wie nah du an eurem Rhythmus bist.
 - **Fokus für den Tag.** Du wählst bis zu drei Aufgaben, die heute wirklich zählen. Fällige Aufgaben erscheinen darunter, auf Wunsch mit einer Erinnerung, solange die Seite geöffnet ist.
 - **Aufgaben, die wiederkommen.** Eine Aufgabe kann sich täglich, werktags, wöchentlich, monatlich oder einige Tage nach dem Erledigen wiederholen. Hakst du sie ab, steht die nächste schon bereit. Unteraufgaben machen aus einer Aufgabe eine kleine Checkliste.
 - **Schnell notieren.** Beim Anlegen genügt eine Zeile: „Steuer machen @finanzen morgen ! #geld 14:00“ wird zu einer wichtigen Aufgabe im Bereich Finanzen, morgen um 14 Uhr.

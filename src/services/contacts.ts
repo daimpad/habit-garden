@@ -88,6 +88,21 @@ export function suggestions(contacts: readonly Contact[], logs: readonly Contact
   return due.slice(0, max);
 }
 
+/**
+ * How close a person is to the desired rhythm, as an integer percent (Garten-Insel Teil 2):
+ * - in rhythm (daysSince < rhythm): 100;
+ * - from the day the rhythm is reached it falls linearly to 0 at twice the rhythm:
+ *   round(100 × (2·rhythm − daysSince) / rhythm), at most 99 once due, so 100 % always means "in rhythm";
+ * - never contacted, or daysSince ≥ 2·rhythm: 0.
+ */
+export function closeness(status: ContactStatus): number {
+  const d = status.daysSince;
+  const r = Math.max(1, status.contact.rhythmDays);
+  if (d === null) return 0;
+  if (d < r) return 100;
+  return Math.max(0, Math.min(99, Math.round((100 * (2 * r - d)) / r)));
+}
+
 /** "Wöchentlich", "Alle 2 Wochen", "Monatlich", "Vierteljährlich"; other values "Alle {n} Tage". */
 export function rhythmLabel(days: number): string {
   switch (days) {
