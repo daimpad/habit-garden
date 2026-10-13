@@ -100,6 +100,15 @@ export function appendJournal(day: Day, text: string): Promise<Note> {
   });
 }
 
+/** All notes, archived ones included (Markdown export). */
+export function listNotes(): Promise<Note[]> {
+  return db.notes.toArray();
+}
+
+export function getNotes(ids: readonly Id[]): Promise<Array<Note | undefined>> {
+  return db.notes.bulkGet([...ids]);
+}
+
 export function getNote(id: Id): Promise<Note | undefined> {
   return db.notes.get(id);
 }

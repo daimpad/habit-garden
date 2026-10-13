@@ -220,3 +220,55 @@ export function tagTint(path: string | undefined, colors?: ReadonlyMap<string, s
   for (const ch of root) hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
   return TAG_TINTS[hash % TAG_TINTS.length];
 }
+
+// --- Links (W5) ---
+// A link to another note is a regular Markdown link with the `note:` scheme: `[Titel](note:<id>)`. It
+// survives renaming the target, stays readable in the Markdown export, and the preview turns it into an
+// in-app link (services/markdown.ts). `[[` in the editor inserts it from a note search.
+
+const NOTE_LINK = /\]\(note:([A-Za-z0-9_-]+)\)/gu;
+
+/** Ids of the notes a body links to, without duplicates, in order. */
+export function noteLinks(body: string): string[] {
+  const out: string[] = [];
+  for (const match of body.matchAll(NOTE_LINK)) {
+    const id = match[1] ?? '';
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/** Markdown for a link to a note; brackets in the title are escaped. */
+export function noteLinkMarkdown(title: string, id: string): string {
+  const label = (title.trim() || id).replace(/([\\[\]])/gu, '\\$1');
+  return `[${label}](note:${id})`;
+}
+
+/** Notes that link to `id` (Rückverweise), newest first; the note itself is left out. */
+export function backlinksOf<T extends Pick<Note, 'id' | 'body' | 'updatedAt'>>(notes: readonly T[], id: string): T[] {
+  return notes.filter((n) => n.id !== id && noteLinks(n.body).includes(id)).sort(byUpdatedDesc);
+}
+
+/** The line around `caret`: [start, end) and its text. */
+export function lineAt(body: string, caret: number): { start: number; end: number; text: string } {
+  const at = Math.max(0, Math.min(caret, body.length));
+  const start = body.lastIndexOf('\n', at - 1) + 1;
+  const nl = body.indexOf('\n', at);
+  const end = nl < 0 ? body.length : nl;
+  return { start, end, text: body.slice(start, end) };
+}
+
+/** Task title from a note line ("Aufgabe aus Zeile"): Markdown marks, tags and links stripped to text. */
+export function taskTitleFromLine(line: string): string {
+  const text = plainLine(line.replace(/\[([^\]]*)\]\((?:note:[^)]*|[^)]*)\)/gu, '$1'));
+  return clip(text, TITLE_MAX);
+}
+
+/** Notes matching `query` by title for the `[[` picker (newest first, max `limit`), the current note excluded. */
+export function linkCandidates<T extends Pick<Note, 'id' | 'title' | 'updatedAt'>>(notes: readonly T[], query: string, exclude: string, limit = 6): T[] {
+  const q = normalizeForSearch(query.trim());
+  return notes
+    .filter((n) => n.id !== exclude && n.title !== '' && (q === '' || normalizeForSearch(n.title).includes(q)))
+    .sort(byUpdatedDesc)
+    .slice(0, limit);
+}

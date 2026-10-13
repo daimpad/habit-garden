@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { Note } from '../model.js';
 import {
+  backlinksOf, lineAt, linkCandidates, noteLinkMarkdown, noteLinks, taskTitleFromLine,
   buildTagTree, deriveTitle, explicitTags, filterNotes, inlineTags, matchesTags, matchRange, mergeTags,
   parseTagQuery, previewLine, relativeTime, tagQueryString, tagTint,
 } from '../services/notes.js';
@@ -100,5 +101,32 @@ describe('display', () => {
     assert.equal(tagTint('garten/beet'), tagTint('garten/rosen'));
     assert.equal(tagTint('garten', new Map([['garten', '#123456']])), '#123456');
     assert.equal(tagTint(undefined), undefined);
+  });
+});
+
+describe('links', () => {
+  test('note links: parse, build, escape', () => {
+    assert.deepEqual(noteLinks('a [X](note:n1) b [Y](note:n2) [X](note:n1) [web](https://x.de)'), ['n1', 'n2']);
+    assert.equal(noteLinkMarkdown('Balkon [alt]', 'n9'), '[Balkon \\[alt\\]](note:n9)');
+    assert.deepEqual(noteLinks(noteLinkMarkdown('Balkon [alt]', 'n9')), ['n9']);
+  });
+  test('backlinks exclude the note itself, newest first', () => {
+    const target = note({ id: 'T', body: 'self [T](note:T)' });
+    const a = note({ id: 'A', body: 'siehe [T](note:T)', updatedAt: '2026-10-01T08:00:00.000Z' });
+    const b = note({ id: 'B', body: '[T](note:T)', updatedAt: '2026-10-05T08:00:00.000Z' });
+    const c = note({ id: 'C', body: 'nichts' });
+    assert.deepEqual(backlinksOf([target, a, b, c], 'T').map((n) => n.id), ['B', 'A']);
+  });
+  test('line at caret and task title from a line', () => {
+    const body = 'Titel\n- [ ] **Erde** kaufen [Balkon](note:n1) #garten\nEnde';
+    const line = lineAt(body, 10);
+    assert.equal(line.text, '- [ ] **Erde** kaufen [Balkon](note:n1) #garten');
+    assert.equal(taskTitleFromLine(line.text), 'Erde kaufen Balkon #garten');
+    assert.deepEqual(lineAt('abc', 3), { start: 0, end: 3, text: 'abc' });
+  });
+  test('link candidates by title, current note and untitled excluded', () => {
+    const list = [note({ id: 'a', title: 'Balkon' }), note({ id: 'b', title: 'Balkonkasten' }), note({ id: 'c', title: '' }), note({ id: 'd', title: 'Suppe' })];
+    assert.deepEqual(linkCandidates(list, 'balk', 'a').map((n) => n.id), ['b']);
+    assert.equal(linkCandidates(list, '', 'x').length, 3);
   });
 });

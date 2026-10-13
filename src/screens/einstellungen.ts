@@ -24,7 +24,7 @@
 //   button (the other direction when it reached an end) and a polite live region announces the new
 //   position. The order covers archived areas too, as listed here.
 // - Info (S39): version, build hash, licences, privacy sentence, provenance of the plant geometry.
-// TODO(phase-4): Markdown export of the notes and ICS export (A.3 Daten, W6) next to the JSON export.
+// - Daten also offers the Markdown export of all notes and an ICS file of all open dated tasks (W6).
 import type { Observable, Subscription } from 'dexie';
 import '../components/ol-app-bar.js';
 import '../components/ol-button.js';
@@ -58,6 +58,9 @@ import {
 import { appUrl } from '../util/base.js';
 import { dayOfIso, formatDayFull, formatTime } from '../util/date.js';
 import { buildHash, h, icon, render, setVar, type SafeHtml } from '../util/dom.js';
+import { listNotes } from '../repo/notes.js';
+import { exportAllIcs } from '../services/ics.js';
+import { exportNotesMarkdown } from '../services/notes-export.js';
 import { exportWithNotice } from './export-flow.js';
 
 export const APP_VERSION = '0.1.0';
@@ -283,6 +286,14 @@ class SettingsScreen {
         <p class="ol-settings__hint ol-settings__last-export"></p>
       </div>
       <div class="ol-settings__item">
+        <ol-button class="ol-settings__export-md" variant="tonal" icon="notebook-pen" label="${t.exportMarkdown}"></ol-button>
+        <p class="ol-settings__hint">${t.exportMarkdownHint}</p>
+      </div>
+      <div class="ol-settings__item">
+        <ol-button class="ol-settings__export-ics" variant="tonal" icon="calendar" label="${t.exportIcsAll}"></ol-button>
+        <p class="ol-settings__hint">${t.exportIcsAllHint}</p>
+      </div>
+      <div class="ol-settings__item">
         <ol-button class="ol-settings__import" variant="tonal" icon="upload" label="${t.importJson}"></ol-button>
         <input class="ol-settings__file ol-visually-hidden" type="file" accept="application/json,.json" tabindex="-1" aria-hidden="true">
         <p class="ol-settings__hint">${t.importNewDeviceHint}</p>
@@ -424,6 +435,10 @@ class SettingsScreen {
   private bind(): void {
     const els = this.els;
     els.exportBtn.addEventListener('click', () => void this.onExport());
+    this.view.querySelector('.ol-settings__export-md')?.addEventListener('click', () => {
+      void listNotes().then((notes) => exportNotesMarkdown(notes), () => showToast(t.notesExportFailed));
+    });
+    this.view.querySelector('.ol-settings__export-ics')?.addEventListener('click', () => void exportAllIcs());
     // The file picker opens from the click itself (user activation).
     els.importBtn.addEventListener('click', () => {
       if (!this.importing) els.file.click();

@@ -19,14 +19,18 @@ import type { OlInput } from '../components/ol-input.js';
 import { createSheet, type OlSheet } from '../components/ol-sheet.js';
 import { fmt, t } from '../i18n/de.js';
 import type { Note, Tag } from '../model.js';
-import { notes$, tags$ } from '../repo/notes.js';
+import { notes$, setNoteArchived, tags$ } from '../repo/notes.js';
+import { showToast } from '../components/ol-toast.js';
 import type { Route } from '../router.js';
 import {
   buildTagTree, filterNotes, matchRange, parseTagQuery, previewLine, relativeTime, tagQueryString, tagTint,
   type TagNode, type TagOp,
 } from '../services/notes.js';
 import { now } from '../util/date.js';
-import { emit, h, raw, render, setVar, type SafeHtml } from '../util/dom.js';
+import { emit, h, icon, raw, render, setVar, type SafeHtml } from '../util/dom.js';
+import { attachLongPress } from '../util/long-press.js';
+import { attachSwipe } from '../util/swipe.js';
+import { archiveNote, openNoteMenu, togglePin } from './note-actions.js';
 
 /** Search text of the list; kept across remounts caused by filter changes. */
 let lastQuery = '';
@@ -54,7 +58,7 @@ function cardContent(note: Note, query: string): SafeHtml {
   const shown = leaves.slice(0, 2);
   const more = leaves.length - shown.length;
   const time = relativeTime(note.updatedAt, now(), { justNow: t.wissenJustNow, minutesAgo: (n) => fmt(t.wissenMinutesAgo, { n }) });
-  return h`<button type="button" class="ol-wissen__card" data-id="${note.id}">
+  return h`<button type="button" class="ol-wissen__card">
     <span class="ol-wissen__leaf">${raw(LEAF)}</span>
     <span class="ol-wissen__body">
       <span class="ol-wissen__head">
@@ -71,7 +75,10 @@ function cardContent(note: Note, query: string): SafeHtml {
 
 class WissenScreen {
   private readonly subs: Subscription[] = [];
+  private readonly detach: Array<() => void> = [];
   private notes: Note[] | null = null;
+  private archived: Note[] = [];
+  private archiveSheet: ArchivedNotesSheet | null = null;
   private tags: Tag[] = [];
   private readonly selected: string[];
   private readonly op: TagOp;
@@ -86,13 +93,22 @@ class WissenScreen {
     currentTags = [...parsed.tags];
     this.render();
     this.bind();
-    this.subs.push(notes$().subscribe({ next: (rows) => { this.notes = rows; this.update(); }, error: (err: unknown) => console.error(err) }));
+    this.subs.push(notes$(true).subscribe({
+      next: (rows) => {
+        this.notes = rows.filter((n) => n.archived !== 1);
+        this.archived = rows.filter((n) => n.archived === 1);
+        this.update();
+        this.archiveSheet?.update(this.archived);
+      },
+      error: (err: unknown) => console.error(err),
+    }));
     this.subs.push(tags$().subscribe({ next: (rows) => { this.tags = rows; }, error: (err: unknown) => console.error(err) }));
     this.clock = window.setInterval(() => this.update(), 60_000);
   }
 
   destroy(): void {
     for (const sub of this.subs) sub.unsubscribe();
+    for (const off of this.detach) off();
     window.clearTimeout(this.timer);
     window.clearInterval(this.clock);
     this.sheet?.close();
@@ -120,6 +136,10 @@ class WissenScreen {
           <ul class="ol-wissen__list ol-wissen__list--recent"></ul>
         </section>
         <p class="ol-wissen__nohits ol-body-s" hidden>${t.wissenNoHits}</p>
+        <button type="button" class="ol-wissen__archive" hidden>
+          <span class="ol-wissen__archive-icon" aria-hidden="true">${icon('archive', 20)}</span>
+          <span class="ol-wissen__archive-label"></span>
+        </button>
         <ol-empty-state class="ol-wissen__empty" icon="notebook-pen" message="${t.emptyWissen}" hidden></ol-empty-state>
       </div>`);
     const field = this.view.querySelector<OlInput>('.ol-wissen__search');
@@ -132,6 +152,9 @@ class WissenScreen {
       if (event.currentTarget instanceof Element) emit(event.currentTarget, 'ol-navigate', { path: '/einstellungen' });
     });
     view.querySelector('.ol-wissen__tag-open')?.addEventListener('click', () => this.openTagSheet());
+    view.querySelector('.ol-wissen__archive')?.addEventListener('click', () => {
+      this.archiveSheet = new ArchivedNotesSheet(this.archived, () => { this.archiveSheet = null; });
+    });
     const field = view.querySelector<OlInput>('.ol-wissen__search');
     field?.addEventListener('input', () => {
       window.clearTimeout(this.timer);
@@ -149,9 +172,37 @@ class WissenScreen {
     view.addEventListener('click', (event) => {
       const card = event.target instanceof Element ? event.target.closest<HTMLElement>('.ol-wissen__card') : null;
       if (!card) return;
-      const id = card.dataset['id'];
+      const id = card.closest<HTMLElement>('li[data-id]')?.dataset['id'];
       if (id) emit(card, 'ol-navigate', { path: `/wissen/n/${encodeURIComponent(id)}` });
     });
+    // Swipe (A.3 Notizkarte): right pins or unpins, left archives; both with Rückgängig. Long press opens ⋯.
+    this.detach.push(attachSwipe(view, {
+      rowSelector: 'li.ol-wissen__item',
+      actionFor: (row, direction) => {
+        if (direction === 'left') return { label: t.noteArchive, icon: 'archive', tone: 'neutral' };
+        return row.dataset['pinned'] === 'true'
+          ? { label: t.noteUnpin, icon: 'pin-off', tone: 'neutral' }
+          : { label: t.notePin, icon: 'pin', tone: 'done' };
+      },
+      onSwipe: (row, direction) => {
+        const note = this.noteOf(row);
+        if (!note) return;
+        if (direction === 'left') void archiveNote(note);
+        else void togglePin(note);
+      },
+      renderLayer: (layer, action) => render(layer, h`<span class="ol-swipe-layer__icon">${icon(action.icon, 20)}</span><span class="ol-swipe-layer__label">${action.label}</span>`),
+    }));
+    for (const list of view.querySelectorAll<HTMLElement>('.ol-wissen__list')) {
+      this.detach.push(attachLongPress(list, (row) => {
+        const note = this.noteOf(row);
+        if (note) openNoteMenu(note);
+      }));
+    }
+  }
+
+  private noteOf(row: HTMLElement): Note | undefined {
+    const id = row.dataset['id'];
+    return id ? this.notes?.find((n) => n.id === id) : undefined;
   }
 
   private applyFilter(tags: readonly string[], op: TagOp): void {
@@ -177,6 +228,12 @@ class WissenScreen {
     if (empty) empty.hidden = notes.length > 0;
     const nohits = this.view.querySelector<HTMLElement>('.ol-wissen__nohits');
     if (nohits) nohits.hidden = notes.length === 0 || hits.length > 0;
+    const archive = this.view.querySelector<HTMLElement>('.ol-wissen__archive');
+    if (archive) {
+      archive.hidden = this.archived.length === 0;
+      const label = archive.querySelector('.ol-wissen__archive-label');
+      if (label) label.textContent = this.archived.length === 1 ? t.wissenArchiveOne : fmt(t.wissenArchive, { n: this.archived.length });
+    }
     const search = this.view.querySelector<HTMLElement>('.ol-wissen__search');
     if (search) search.hidden = notes.length === 0 && !filtering;
   }
@@ -188,9 +245,9 @@ class WissenScreen {
     section.hidden = notes.length === 0;
     const active = document.activeElement;
     const focusedId = active instanceof HTMLElement && list.contains(active) ? active.closest<HTMLElement>('[data-id]')?.dataset['id'] : undefined;
-    render(list, h`${notes.map((note) => h`<li class="ol-wissen__item" data-note="${note.id}" data-pinned="${String(note.pinned === 1)}">${cardContent(note, query)}</li>`)}`);
+    render(list, h`${notes.map((note) => h`<li class="ol-wissen__item" data-id="${note.id}" data-pinned="${String(note.pinned === 1)}">${cardContent(note, query)}</li>`)}`);
     for (const item of list.querySelectorAll<HTMLElement>('.ol-wissen__item')) {
-      const note = notes.find((n) => n.id === item.dataset['note']);
+      const note = notes.find((n) => n.id === item.dataset['id']);
       const tint = tagTint(note?.tagPaths[0], colors);
       if (tint) setVar(item, '--tint', tint);
     }
@@ -250,6 +307,45 @@ class WissenScreen {
     sheet.footerEl.querySelector('.ol-tagtree__apply')?.addEventListener('click', () => finish([...chosen]));
     void sheet.closed.then(() => { if (this.sheet === sheet) this.sheet = null; }, () => undefined);
     sheet.open();
+  }
+}
+
+/** Archived notes (A.3 Notizkarte "Archivieren"): open a note or bring it back to the list. */
+class ArchivedNotesSheet {
+  private readonly sheet: OlSheet;
+
+  constructor(notes: readonly Note[], onClose: () => void) {
+    this.sheet = createSheet({ title: t.wissenArchiveTitle, detent: 'full' });
+    this.sheet.bodyEl.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const id = target?.closest<HTMLElement>('li[data-id]')?.dataset['id'];
+      if (!target || !id) return;
+      if (target.closest('.ol-wissen-archive__restore')) {
+        void setNoteArchived(id, false).then(() => showToast(t.toastNoteRestored), () => showToast(t.toastError));
+      } else if (target.closest('.ol-wissen-archive__open')) {
+        this.sheet.close('action');
+        void this.sheet.closed.then(() => emit(document.body, 'ol-navigate', { path: `/wissen/n/${encodeURIComponent(id)}` }), () => undefined);
+      }
+    });
+    void this.sheet.closed.then(onClose, onClose);
+    this.update(notes);
+    this.sheet.open();
+  }
+
+  update(notes: readonly Note[]): void {
+    const active = document.activeElement;
+    const focusIndex = active instanceof HTMLElement && this.sheet.bodyEl.contains(active)
+      ? [...this.sheet.bodyEl.querySelectorAll('.ol-wissen-archive__restore')].indexOf(active) : -1;
+    render(this.sheet.bodyEl, notes.length
+      ? h`<ul class="ol-wissen-archive">${notes.map((note) => h`<li class="ol-wissen-archive__row" data-id="${note.id}">
+          <button type="button" class="ol-wissen-archive__open">${note.title || t.wissenUntitled}</button>
+          <ol-button class="ol-wissen-archive__restore" variant="tonal" size="sm" label="${t.wissenArchiveRestore}"></ol-button>
+        </li>`)}</ul>`
+      : h`<p class="ol-wissen-archive__empty ol-body-s">${t.wissenArchiveEmpty}</p>`);
+    if (focusIndex >= 0) {
+      const buttons = [...this.sheet.bodyEl.querySelectorAll<HTMLElement>('.ol-wissen-archive__restore')];
+      (buttons[Math.min(focusIndex, buttons.length - 1)] ?? this.sheet.bodyEl).focus({ preventScroll: true });
+    }
   }
 }
 

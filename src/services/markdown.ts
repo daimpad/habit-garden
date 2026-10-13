@@ -250,3 +250,225 @@ export function toggleTaskLine(source: string, line: number): string {
   lines[line] = `${match[1] ?? ''}${mark}${match[3] ?? ''}${current.slice(match[0].length)}`;
   return lines.join('\n');
 }
+
+// ---------------------------------------------------------------------------
+// Source editing helpers for the note editor (pure, node-testable). Each returns a TextEdit: replace
+// [start, end) of the value with `text`, then select [selStart, selEnd) (positions in the new value).
+
+export interface TextEdit { start: number; end: number; text: string; selStart: number; selEnd: number }
+
+/** Applies an edit to a string (what setRangeText does in the textarea). */
+export function applyEdit(value: string, edit: TextEdit): string {
+  return value.slice(0, edit.start) + edit.text + value.slice(edit.end);
+}
+
+function lineStartOf(value: string, pos: number): number {
+  return value.lastIndexOf('\n', pos - 1) + 1;
+}
+
+function lineEndOf(value: string, pos: number): number {
+  const at = value.indexOf('\n', pos);
+  return at < 0 ? value.length : at;
+}
+
+function runLength(value: string, from: number, step: 1 | -1, ch: string): number {
+  let n = 0;
+  for (let i = step === 1 ? from : from - 1; i >= 0 && i < value.length && value[i] === ch; i += step) n++;
+  return n;
+}
+
+export type InlineMark = 'bold' | 'italic' | 'code';
+
+/**
+ * Bold `**`, italic `*` or inline code `` ` `` around the selection (surrounding whitespace stays outside).
+ * Toggles: an already marked selection is unmarked. An empty selection inserts the pair, caret inside.
+ */
+export function toggleInline(value: string, selStart: number, selEnd: number, mark: InlineMark): TextEdit {
+  let s = Math.min(selStart, selEnd);
+  let e = Math.max(selStart, selEnd);
+  while (s < e && /\s/u.test(value[s] ?? '')) s++;
+  while (e > s && /\s/u.test(value[e - 1] ?? '')) e--;
+  const ch = mark === 'code' ? '`' : '*';
+  const size = mark === 'bold' ? 2 : 1;
+  const left = runLength(value, s, -1, ch);
+  const right = runLength(value, e, 1, ch);
+  const run = Math.min(left, right);
+  const marked = mark === 'bold' ? run >= 2 : mark === 'italic' ? run % 2 === 1 : run >= 1;
+  if (marked && s < e) {
+    return { start: s - size, end: e + size, text: value.slice(s, e), selStart: s - size, selEnd: e - size };
+  }
+  const pair = ch.repeat(size);
+  const inner = value.slice(s, e);
+  return { start: s, end: e, text: pair + inner + pair, selStart: s + size, selEnd: e + size };
+}
+
+/** Heading on the caret's line cycles: none → `# ` → `## ` → none (deeper levels → none). */
+export function cycleHeading(value: string, selStart: number, selEnd: number): TextEdit {
+  const start = lineStartOf(value, selStart);
+  const end = lineEndOf(value, start);
+  const line = value.slice(start, end);
+  const match = /^(#{1,6})[ \t]+/u.exec(line);
+  const level = match?.[1]?.length ?? 0;
+  const prefix = level === 0 ? '# ' : level === 1 ? '## ' : '';
+  const old = match?.[0].length ?? 0;
+  const delta = prefix.length - old;
+  const rest = line.slice(old);
+  const move = (pos: number): number => Math.max(start + prefix.length, pos + delta);
+  return { start, end, text: prefix + rest, selStart: move(selStart), selEnd: move(selEnd) };
+}
+
+export type LineKind = 'bullet' | 'ordered' | 'task';
+
+const LIST_MARK = /^(\s*)(?:([-*+])[ \t]+\[[ xX]\][ \t]+|([-*+])[ \t]+|(\d{1,9})([.)])[ \t]+)?/u;
+
+function kindOf(line: string): { indent: string; marker: number; kind: LineKind | null } {
+  const m = LIST_MARK.exec(line);
+  const indent = m?.[1] ?? '';
+  const marker = (m?.[0].length ?? 0) - indent.length;
+  const kind: LineKind | null = m?.[2] ? 'task' : m?.[3] ? 'bullet' : m?.[4] ? 'ordered' : null;
+  return { indent, marker, kind };
+}
+
+/**
+ * List markers on the selected lines: `- `, `1. ` (numbered from 1) or `- [ ] `. When every non-empty line
+ * already has this kind, the markers are removed; otherwise every line gets it (other markers are replaced).
+ */
+export function toggleLines(value: string, selStart: number, selEnd: number, kind: LineKind): TextEdit {
+  const s = Math.min(selStart, selEnd);
+  let e = Math.max(selStart, selEnd);
+  // A selection ending at the start of a line does not include that line.
+  if (e > s && value[e - 1] === '\n') e--;
+  const start = lineStartOf(value, s);
+  const end = lineEndOf(value, e);
+  const lines = value.slice(start, end).split('\n');
+  const multi = lines.length > 1;
+  const content = lines.filter((line) => !multi || line.trim() !== '');
+  const remove = content.length > 0 && content.every((line) => kindOf(line).kind === kind);
+  let n = 0;
+  const out = lines.map((line) => {
+    if (multi && line.trim() === '') return line;
+    const info = kindOf(line);
+    const body = line.slice(info.indent.length + info.marker);
+    if (remove) return info.indent + body;
+    n++;
+    const marker = kind === 'bullet' ? '- ' : kind === 'task' ? '- [ ] ' : `${n}. `;
+    return info.indent + marker + body;
+  });
+  const text = out.join('\n');
+  if (!multi && selStart === selEnd) {
+    const info = kindOf(lines[0] ?? '');
+    const oldPrefix = info.indent.length + info.marker;
+    const newPrefix = (out[0] ?? '').length - ((lines[0] ?? '').length - oldPrefix);
+    const offset = Math.max(oldPrefix, s - start) - oldPrefix;
+    const caret = start + newPrefix + offset;
+    return { start, end, text, selStart: caret, selEnd: caret };
+  }
+  return { start, end, text, selStart: start, selEnd: start + text.length };
+}
+
+/** Code: inline backticks, or a fenced block around the selected lines when the selection spans lines. */
+export function toggleCode(value: string, selStart: number, selEnd: number): TextEdit {
+  const s = Math.min(selStart, selEnd);
+  let e = Math.max(selStart, selEnd);
+  if (!value.slice(s, e).includes('\n')) return toggleInline(value, s, e, 'code');
+  if (value[e - 1] === '\n') e--;
+  const start = lineStartOf(value, s);
+  const end = lineEndOf(value, e);
+  const block = value.slice(start, end);
+  const text = `\`\`\`\n${block}\n\`\`\``;
+  return { start, end, text, selStart: start + 4, selEnd: start + 4 + block.length };
+}
+
+/** `#` from the toolbar: inserts `#` (a space before it when it would follow a word), caret after it. */
+export function insertTagMark(value: string, selStart: number, selEnd: number): TextEdit {
+  const s = Math.min(selStart, selEnd);
+  const e = Math.max(selStart, selEnd);
+  const before = s === 0 ? '' : value[s - 1] ?? '';
+  const space = before !== '' && !TAG_BEFORE.test(before) ? ' ' : '';
+  const selected = value.slice(s, e);
+  const asTag = /^[\p{L}][\p{L}\p{N}_/-]*$/u.test(selected) ? selected : '';
+  const text = `${space}#${asTag}`;
+  const caret = s + text.length;
+  return { start: s, end: e, text, selStart: caret, selEnd: caret };
+}
+
+const CONTINUE = /^(\s*(?:>[ \t]?)*)(?:([-*+])([ \t]+)\[[ xX]\]([ \t]+)|([-*+])([ \t]+)|(\d{1,9})([.)])([ \t]+))/u;
+
+/**
+ * Enter inside a list item: continues the list on the next line (`- `, `1.` → `2.`, `- [ ] `); Enter on an
+ * empty item removes its marker (ends the list). null: not in a list item (or caret inside the marker).
+ */
+export function continueList(value: string, caret: number): TextEdit | null {
+  const start = lineStartOf(value, caret);
+  const end = lineEndOf(value, caret);
+  const line = value.slice(start, end);
+  const m = CONTINUE.exec(line);
+  if (!m) return null;
+  if (caret < start + m[0].length) return null;
+  if (line.slice(m[0].length).trim() === '') {
+    return { start, end, text: '', selStart: start, selEnd: start };
+  }
+  const indent = m[1] ?? '';
+  let marker: string;
+  if (m[2]) marker = `${m[2]}${m[3] ?? ' '}[ ]${m[4] ?? ' '}`;
+  else if (m[5]) marker = `${m[5]}${m[6] ?? ' '}`;
+  else marker = `${Number(m[7] ?? '0') + 1}${m[8] ?? '.'}${m[9] ?? ' '}`;
+  const text = `\n${indent}${marker}`;
+  return { start: caret, end: caret, text, selStart: caret + text.length, selEnd: caret + text.length };
+}
+
+const TAG_CHAR = /[\p{L}\p{N}_/-]/u;
+
+/** Whether pos lies in code: an open inline code span on its line or a fenced block. */
+function inCode(value: string, pos: number): boolean {
+  const start = lineStartOf(value, pos);
+  if ((value.slice(start, pos).match(/`/gu)?.length ?? 0) % 2 === 1) return true;
+  let fence: string | null = null;
+  for (const line of value.slice(0, start).split('\n')) {
+    const mark = /^\s{0,3}(`{3,}|~{3,})/u.exec(line)?.[1];
+    if (fence === null && mark) fence = mark[0] ?? null;
+    else if (fence !== null && mark?.[0] === fence) fence = null;
+  }
+  return fence !== null;
+}
+
+export interface TagToken { hash: number; start: number; end: number; query: string }
+
+/**
+ * The `#tag` token the caret is in or right after (same rule as inline tags; `query` may be '' right after
+ * typing `#`). hash = index of '#', [start, end) = the tag text after it.
+ */
+export function tagTokenAt(value: string, caret: number): TagToken | null {
+  let start = caret;
+  while (start > 0 && TAG_CHAR.test(value[start - 1] ?? '')) start--;
+  const hash = start - 1;
+  if (hash < 0 || value[hash] !== '#') return null;
+  const before = hash === 0 ? '' : value[hash - 1] ?? '';
+  if (before !== '' && !TAG_BEFORE.test(before)) return null;
+  const query = value.slice(start, caret);
+  if (query !== '' && !/^\p{L}/u.test(query)) return null;
+  let end = caret;
+  while (end < value.length && TAG_CHAR.test(value[end] ?? '')) end++;
+  if (inCode(value, hash)) return null;
+  return { hash, start, end, query };
+}
+
+/**
+ * Existing tag paths matching a query: prefix of the path or of any segment ("bal" finds "garten/balkon").
+ * Path prefixes first, then alphabetical; the query itself and `exclude` are left out.
+ */
+export function suggestTags(paths: readonly string[], query: string, exclude: ReadonlySet<string> = new Set(), max = 6): string[] {
+  const q = query.normalize('NFC').toLocaleLowerCase('de').replace(/^#+/u, '');
+  const hits: Array<{ path: string; rank: number }> = [];
+  for (const path of new Set(paths)) {
+    if (path === q || exclude.has(path)) continue;
+    if (q === '' || path.startsWith(q)) {
+      hits.push({ path, rank: 0 });
+      continue;
+    }
+    const segments = path.split('/');
+    if (segments.some((_, i) => segments.slice(i).join('/').startsWith(q))) hits.push({ path, rank: 1 });
+  }
+  hits.sort((a, b) => a.rank - b.rank || a.path.localeCompare(b.path, 'de'));
+  return hits.slice(0, max).map((hit) => hit.path);
+}
