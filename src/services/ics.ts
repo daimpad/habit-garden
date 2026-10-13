@@ -261,13 +261,13 @@ export function buildIcs(tasks: readonly Task[], opts: IcsOptions): string {
 
 // Transliteration for file names; escapes keep German literals out of code (check-src).
 const TRANSLIT: Readonly<Record<string, string>> = {
-  'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss',
+  '\u00e4': 'ae', '\u00f6': 'oe', '\u00fc': 'ue', '\u00df': 'ss',
 };
 const SLUG_MAX = 40;
 
 /** "Steuererklärung 2026" → "steuererklaerung-2026"; "" when nothing usable is left. */
 export function slugify(name: string): string {
-  const lowered = name.toLowerCase().replace(/[äöüß]/gu, (ch) => TRANSLIT[ch] ?? ch);
+  const lowered = name.toLowerCase().replace(/[\u00e4\u00f6\u00fc\u00df]/gu, (ch) => TRANSLIT[ch] ?? ch);
   const plain = lowered.normalize('NFKD').replace(/[̀-ͯ]/gu, '');
   return plain.replace(/[^a-z0-9]+/gu, '-').replace(/^-+|-+$/gu, '').slice(0, SLUG_MAX).replace(/-+$/u, '');
 }

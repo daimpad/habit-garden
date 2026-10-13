@@ -350,13 +350,11 @@ export class PlanungBoard {
     const li = document.createElement('li');
     li.className = 'ol-board__card';
     render(li, h`<button type="button" class="ol-board__title"></button>
-      <span class="ol-board__foot">
-        <span class="ol-board__meta ol-caption">
-          <span class="ol-board__project"></span>
-          <span class="ol-board__date"></span>
-          <span class="ol-board__ratio ol-num"></span>
-        </span>
-        <ol-icon-button class="ol-board__move" icon="ellipsis" label="${t.boardMove}"></ol-icon-button>
+      <ol-icon-button class="ol-board__move" icon="ellipsis" label="${t.boardMove}"></ol-icon-button>
+      <span class="ol-board__meta ol-caption">
+        <span class="ol-board__project"></span>
+        <span class="ol-board__date"></span>
+        <span class="ol-board__ratio ol-num"></span>
       </span>`);
     return li;
   }
@@ -393,6 +391,7 @@ export class PlanungBoard {
     setText(ratioEl, hasRatio ? fmt(t.subtaskProgress, { done: ratio.done, total: ratio.total }) : '');
     if (hasRatio) setAttr(ratioEl, 'aria-label', fmt(t.subtaskProgressAria, { done: ratio.done, total: ratio.total }));
     ratioEl.hidden = !hasRatio;
+    req<HTMLElement>(card, '.ol-board__meta').hidden = !project && !date && !hasRatio;
 
     const moveBtn = req<HTMLElement>(card, '.ol-board__move');
     setAttr(moveBtn, 'label', fmt(t.boardMoveAria, { title: task.title }));

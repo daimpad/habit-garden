@@ -709,7 +709,7 @@ class PlanungScreen {
     openActionMenu(project.name, [
       { label: t.projectRename, icon: 'pencil', run: () => this.openRename(project) },
       { label: t.projectMove, icon: 'folder-input', run: () => this.openMove(project) },
-      { label: t.projectExportIcs, icon: 'download', run: () => void exportProjectIcs(project).catch(failed) },
+      { label: t.projectExportIcs, icon: 'download', run: () => void exportProjectIcs(project) },
       { label: t.actionArchive, icon: 'archive', run: () => void this.archive(project) },
       { label: t.actionDelete, icon: 'trash-2', danger: true, run: () => void this.remove(project) },
     ]);

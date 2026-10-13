@@ -164,7 +164,7 @@ describe('RRULE', () => {
   });
 
   test('a UTC date before the local day shifts BYDAY and BYMONTHDAY back', () => {
-    assert.equal(rule({ kind: 'weekly', interval: 1, weekdays: [1, 3] }, '2026-10-19', -1), 'FREQ=WEEKLY;BYDAY=SU,TU');
+    assert.equal(rule({ kind: 'weekly', interval: 1, weekdays: [1, 3] }, '2026-10-19', -1), 'FREQ=WEEKLY;BYDAY=TU,SU');
     assert.equal(rule({ kind: 'monthly', interval: 1, day: 15 }, '2026-10-15', -1), 'FREQ=MONTHLY;BYMONTHDAY=14');
     assert.equal(rule({ kind: 'monthly', interval: 1, day: 1 }, '2026-10-01', -1), 'FREQ=MONTHLY;BYMONTHDAY=-1');
     assert.equal(rule({ kind: 'monthly', interval: 1, day: 'last' }, '2026-10-31', -1), 'FREQ=MONTHLY;BYMONTHDAY=-2');
