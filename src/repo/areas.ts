@@ -83,32 +83,49 @@ export function updateArea(id: Id, patch: Partial<Omit<Area, 'id' | 'updatedAt'>
   });
 }
 
+export interface AreaMove { index: number; total: number }
+
 /**
  * Moves an area to position `toIndex` (clamped) of the full list ordered by sortKey, archived areas
- * included (the order Einstellungen › Bereiche shows). Only the moved area gets a new sortKey (and
- * updatedAt) between its new neighbours; when the neighbours' keys do not leave room (equal keys,
- * e.g. after merging two exports), all areas are renumbered in the new order. PLANUNG, HEUTE and every
- * other area list sort by sortKey, so they follow the new order.
+ * included (the order Einstellungen › Bereiche shows); resolves with the new position. Only the moved
+ * area gets a new sortKey (and updatedAt) between its new neighbours; when the neighbours' keys leave
+ * no room (equal keys, e.g. after merging two exports), all areas are renumbered in the new order.
+ * PLANUNG, HEUTE and every other area list sort by sortKey, so they follow the new order.
  */
-export function moveArea(id: Id, toIndex: number): Promise<void> {
+export function moveArea(id: Id, toIndex: number): Promise<AreaMove> {
+  return relocateArea(id, () => toIndex);
+}
+
+/** Moves an area by `delta` positions (−1 = up, +1 = down), computed inside the transaction. */
+export function moveAreaBy(id: Id, delta: number): Promise<AreaMove> {
+  return relocateArea(id, (from) => from + delta);
+}
+
+function relocateArea(id: Id, target: (from: number) => number): Promise<AreaMove> {
   return db.transaction('rw', db.areas, async () => {
     const all = await db.areas.orderBy('sortKey').toArray();
     const from = all.findIndex((a) => a.id === id);
     const area = all[from];
     if (!area) throw new Error(`unknown area ${id}`);
     const rest = all.filter((a) => a.id !== id);
-    const to = Math.max(0, Math.min(rest.length, Number.isFinite(toIndex) ? Math.trunc(toIndex) : from));
-    if (to === from) return;
+    const wanted = target(from);
+    const to = Math.max(0, Math.min(rest.length, Number.isFinite(wanted) ? Math.trunc(wanted) : from));
+    const result: AreaMove = { index: to, total: all.length };
+    if (to === from) return result;
     const prev = rest[to - 1]?.sortKey ?? null;
     const next = rest[to]?.sortKey ?? null;
     const stamp = nowIso();
     if (prev === null || next === null || prev < next) {
       await db.areas.put({ ...area, sortKey: sortKeyBetween(prev, next), updatedAt: stamp });
-      return;
+      return result;
     }
     rest.splice(to, 0, area);
     const keys = sortKeysAfter(null, rest.length);
-    await db.areas.bulkPut(rest.map((a, i) => (a.sortKey === keys[i] ? a : { ...a, sortKey: keys[i] ?? a.sortKey, updatedAt: stamp })));
+    await db.areas.bulkPut(rest.map((a, i) => {
+      const key = keys[i] ?? a.sortKey;
+      return a.sortKey === key && a.id !== id ? a : { ...a, sortKey: key, updatedAt: stamp };
+    }));
+    return result;
   });
 }
 
