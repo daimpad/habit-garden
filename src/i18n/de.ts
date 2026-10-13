@@ -666,6 +666,9 @@ export const t = {
   wissenArchiveRestore: 'Zurückholen',
   wissenArchiveEmpty: 'Im Archiv liegt keine Notiz mehr.',
   toastNoteRestored: 'Notiz ist wieder in der Liste',
+  // --- additions: phase5-dark ---
+  // --- additions: phase5-review ---
+  // --- additions: phase5-day ---
   // --- additions: phase3b-planung ---
   planViewKanban: 'Kanban',
   planViewMatrix: 'Matrix',

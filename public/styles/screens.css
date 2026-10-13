@@ -1589,3 +1589,9 @@
 }
 :root[data-motion="reduced"] :is(.ol-note__text, .ol-note__tool, .ol-md-check) { transition: none; }
 /* === /note-editor === */
+
+/* === review === */
+/* === /review === */
+
+/* === day-calendar === */
+/* === /day-calendar === */

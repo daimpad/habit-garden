@@ -48,7 +48,9 @@ import {
   type Route, type RouteChange, type RouteName,
 } from './router.js';
 import * as einstellungenScreen from './screens/einstellungen.js';
+import * as dayScreen from './screens/day.js';
 import * as heuteScreen from './screens/heute.js';
+import * as reviewScreen from './screens/review.js';
 import * as planungScreen from './screens/planung.js';
 import { planningContext } from './screens/planung.js';
 import { openCapture } from './screens/sheets/capture.js';
@@ -71,6 +73,10 @@ function screenFor(name: RouteName): ScreenMount | null {
       return startScreen.mount;
     case 'heute':
       return heuteScreen.mount;
+    case 'heute-review':
+      return reviewScreen.mount;
+    case 'heute-day':
+      return dayScreen.mount;
     case 'planung':
     case 'planung-inbox':
     case 'planung-project':
@@ -290,6 +296,8 @@ function depthOf(route: Route): number {
     case 'planung-inbox':
     case 'planung-project':
     case 'wissen-note':
+    case 'heute-review':
+    case 'heute-day':
     case 'einstellungen':
       return 1;
     default:
