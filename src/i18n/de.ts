@@ -486,7 +486,6 @@ export const t = {
   // --- additions: phase2-capture ---
   // The syntax markers {important}/{urgent} are filled from services/quick-syntax (QUICK_IMPORTANT,
   // QUICK_URGENT): they are syntax, not prose exclamation marks, and stay in step with the parser.
-  captureQuickHint: 'Kurzschrift: {important} wichtig, {urgent} dringend, @bereich, #tag, morgen, fr 14:00',
   captureQuickSummary: 'Wird gespeichert mit: {items}',
   captureQuickToday: 'Heute',
   captureQuickTomorrow: 'Morgen',
