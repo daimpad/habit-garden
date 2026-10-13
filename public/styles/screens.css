@@ -1141,7 +1141,7 @@
   border-radius: 14px; text-align: center; color: var(--color-text-2);
 }
 .ol-board__zone.is-drop-target .ol-board__empty { border-color: var(--color-sage-strong); }
-.ol-board__list { display: grid; gap: var(--space-2); }
+.ol-board__list { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
 
 /* Card */
 .ol-board__card {
@@ -1156,7 +1156,7 @@
 .ol-board__title {
   grid-column: 1; grid-row: 1; min-width: 0; min-height: 48px; margin: 0; padding: var(--space-3) var(--space-2) var(--space-2);
   border: 0; border-radius: var(--radius-sm); background: transparent; color: inherit; font: inherit; font-weight: 550;
-  line-height: 1.25rem; text-align: left; overflow-wrap: anywhere; cursor: pointer;
+  line-height: 1.25rem; text-align: left; overflow-wrap: anywhere; hyphens: auto; cursor: pointer;
 }
 @media (hover: hover) { .ol-board__title:hover { background-color: var(--color-overlay-hover); } }
 .ol-board__move { grid-column: 2; grid-row: 1; color: var(--color-text-2); }
@@ -1220,7 +1220,7 @@
   border: 0; border-radius: 14px; background: transparent; color: var(--color-primary); font: inherit; text-align: left; cursor: pointer;
 }
 @media (hover: hover) { .ol-board__qhead:hover { background-color: var(--color-overlay-hover); } }
-.ol-board__qtitle { flex: 1 1 auto; min-width: 0; font-size: .875rem; line-height: 1.125rem; font-weight: 650; overflow-wrap: anywhere; }
+.ol-board__qtitle { flex: 1 1 auto; min-width: 0; font-size: .875rem; line-height: 1.125rem; font-weight: 650; overflow-wrap: anywhere; hyphens: auto; }
 .ol-board__qback, .ol-board__qchev { display: inline-flex; flex: none; color: var(--color-text-2); }
 .ol-board__qback { display: none; }
 .ol-board__quad.is-expanded .ol-board__qback { display: inline-flex; }
@@ -1229,9 +1229,15 @@
 .ol-board__quad.is-expanded { height: auto; min-height: 50dvh; padding: var(--space-2); }
 .ol-board__quad.is-expanded .ol-board__list { overflow: visible; }
 .ol-board__quad.is-expanded .ol-board__qtitle { font-size: 1rem; line-height: 1.375rem; }
-@media (max-width: 399px) {
-  .ol-board__quad .ol-board__title { padding-right: 0; }
-  .ol-board__quad .ol-board__meta { padding-right: var(--space-2); }
+/* Narrow quadrants: the title gets the full card width, the move button sits beside the meta line;
+   the head drops its decorative chevron. */
+@media (max-width: 599px) {
+  .ol-board__quad:not(.is-expanded) .ol-board__card { grid-template-columns: minmax(0, 1fr) auto; }
+  .ol-board__quad:not(.is-expanded) .ol-board__title { grid-column: 1 / -1; padding-bottom: 0; font-size: .9375rem; }
+  .ol-board__quad:not(.is-expanded) .ol-board__move { grid-column: 2; grid-row: 2; }
+  .ol-board__quad:not(.is-expanded) .ol-board__meta { grid-column: 1; grid-row: 2; align-self: center; margin-top: 0; padding: 0 0 0 var(--space-2); }
+  .ol-board__quad:not(.is-expanded) .ol-board__qchev { display: none; }
+  .ol-board__quad .ol-board__qhead { padding-right: 0; }
 }
 
 /* Drag ghost (appended to <body>; positioned only through custom properties) */

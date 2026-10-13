@@ -116,5 +116,7 @@ export function openTaskSearch(opts: { areaId?: Id; areas: readonly Area[] }): O
   };
   void sheet.closed.then(finish, finish);
   sheet.open();
+  // Safety net when no [autofocus] target was focusable at open time (as in capture.ts).
+  if (field && !field.contains(document.activeElement)) field.focusInput();
   return sheet;
 }
