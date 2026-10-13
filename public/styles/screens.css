@@ -274,7 +274,7 @@
 
 /* --- Habit Garden: wide column for the card grid; the list sections keep the reading width --- */
 .ol-view[data-screen="heute"] { max-width: 1120px; }
-.ol-heute > :is(.ol-heute__first, .ol-heute__backup, .ol-heute__people, .ol-heute__focus, .ol-heute__mood-section, .ol-heute__due) { max-width: 720px; }
+.ol-heute > :is(.ol-heute__first, .ol-heute__backup, .ol-heute__people, .ol-heute__focus, .ol-heute__mood-section, .ol-heute__evening, .ol-heute__due) { max-width: 720px; }
 
 /* --- Hero: sky by phase of the day, sun on an arc, hills, greeting, progress, meadow --- */
 .ol-hero {
@@ -537,6 +537,28 @@
 }
 @media (hover: hover) { .ol-garden-add:hover { background-color: var(--color-overlay-hover); color: var(--color-primary); } }
 .ol-garden-add:active { background-color: var(--color-overlay-pressed); }
+
+/* Morgen vorbereiten (Phase 2, H7): evening card above "Fällig heute" */
+.ol-heute__evening {
+  display: grid; gap: var(--space-2); margin-top: var(--space-5); padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  background: linear-gradient(135deg, #EEEAF4 0%, #F8EEDF 100%);
+}
+.ol-heute__evening-head { display: flex; align-items: flex-start; gap: var(--space-3); }
+.ol-heute__evening-icon {
+  display: inline-grid; place-items: center; flex: none; width: 40px; height: 40px; margin-top: var(--space-1);
+  border-radius: 50%; background: var(--color-surface); color: var(--color-primary);
+}
+.ol-heute__evening-text { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--space-1); padding-top: var(--space-2); }
+.ol-heute__evening-list { display: grid; margin-left: calc(40px + var(--space-3)); }
+.ol-heute__evening-row { display: flex; align-items: center; gap: var(--space-1); min-height: 48px; border-top: 1px solid rgba(47, 79, 58, .1); }
+.ol-heute__evening-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.ol-heute__evening-actions { display: flex; margin-left: calc(40px + var(--space-3)); }
+
+/* Unteraufgaben: progress next to the title of focus and due rows */
+.ol-heute__progress {
+  flex: none; padding: 0 var(--space-2); border-radius: var(--radius-full);
+  background: var(--color-primary-soft); color: var(--color-text-2); line-height: 1.5rem;
+}
 
 /* Melde dich bei */
 .ol-heute__person { gap: var(--space-2); padding: var(--space-1) 0; }

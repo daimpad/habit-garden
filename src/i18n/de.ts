@@ -457,6 +457,21 @@ export const t = {
   heuteContactedAria: '{name}: kontaktiert',
   heuteContactLogged: '{name}: Kontakt eingetragen',
   heuteContactOpenAria: '{name}: Person öffnen',
+  // --- additions: phase2-tasks ---
+  // --- additions: phase2-capture ---
+  // --- additions: phase2-evening ---
+  eveningTitle: 'Morgen vorbereiten',
+  eveningEmpty: 'Wähle bis zu drei Aufgaben, die morgen zählen. Morgens stehen sie dann im Fokus.',
+  eveningSome: 'Für morgen im Fokus: {n} von 3',
+  eveningFull: 'Der Fokus für morgen steht.',
+  eveningPick: 'Fokus für morgen wählen',
+  eveningRemoveAria: '{title}: aus dem Fokus für morgen nehmen',
+  eveningRemoved: 'Aus dem Fokus für morgen genommen',
+  focusPickTitleTomorrow: 'Fokus für morgen',
+  focusGroupDueTomorrow: 'Morgen fällig',
+  focusGroupDueUntilToday: 'Bis heute fällig',
+  subtaskProgress: '{done}/{total}',
+  subtaskProgressAria: '{done} von {total} Unteraufgaben erledigt',
   // --- additions: people ---
   peopleTitle: 'Personen',
   peopleAdd: 'Person hinzufügen',

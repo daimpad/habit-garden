@@ -10,8 +10,11 @@
 // - "Neu anlegen" creates a task titled with the search text in the first active area (Phase-1 default,
 //   decision 8) and adds it to the focus in one transaction (createTaskInFocus: a full focus creates
 //   nothing); an empty search field gets t.captureTitleRequired and focus.
-// - The picker belongs to `day`: when the day changes while it is open (midnight), it closes, and a
-//   pick or "Neu anlegen" re-checks today() before writing, so nothing lands in a past DayPlan.
+// - The picker belongs to `day`: when the day changes while it is open (midnight) and `day` lies in the
+//   past, it closes, and a pick or "Neu anlegen" re-checks today() before writing, so nothing lands in a
+//   past DayPlan.
+// - Phase 2 (H7 evening card): `day` may be tomorrow; then title and group labels speak of tomorrow
+//   ("Morgen fällig", "Bis heute fällig").
 import { liveQuery, type Subscription } from 'dexie';
 import type { OlButton } from '../../components/ol-button.js';
 import type { OlInput } from '../../components/ol-input.js';
@@ -28,10 +31,10 @@ import { h, render, type SafeHtml } from '../../util/dom.js';
 type GroupKey = keyof FocusCandidates;
 
 /** Group order (F §4.13, D.1). */
-const GROUPS: ReadonlyArray<{ key: GroupKey; label: string }> = [
-  { key: 'dueToday', label: t.focusGroupDueToday },
-  { key: 'overdue', label: t.focusGroupOverdue },
-  { key: 'noDate', label: t.focusGroupNoDate },
+const GROUPS: ReadonlyArray<{ key: GroupKey; label: string; future: string }> = [
+  { key: 'dueToday', label: t.focusGroupDueToday, future: t.focusGroupDueTomorrow },
+  { key: 'overdue', label: t.focusGroupOverdue, future: t.focusGroupDueUntilToday },
+  { key: 'noDate', label: t.focusGroupNoDate, future: t.focusGroupNoDate },
 ];
 
 interface PickData { candidates: FocusCandidates; full: boolean; areas: Map<Id, Area> }
@@ -51,13 +54,14 @@ function req<T extends Element>(root: ParentNode, selector: string): T {
 }
 
 export function openFocusPick(day: Day): OlSheet {
-  const sheet = createSheet({ title: t.focusPickTitle, detent: 'full' });
+  const future = day > today();
+  const sheet = createSheet({ title: future ? t.focusPickTitleTomorrow : t.focusPickTitle, detent: 'full' });
   const key = sheet.sheetKey;
   render(sheet.bodyEl, h`<div class="ol-focus-pick">
     <ol-input class="ol-focus-pick__search" type="search" label="${t.focusSearchLabel}" autocomplete="off"></ol-input>
     <p class="ol-focus-pick__hint ol-body-s" hidden>${t.focusLimitHint}</p>
     ${GROUPS.map((g) => h`<section class="ol-focus-pick__group" data-group="${g.key}" aria-labelledby="${key}-${g.key}" hidden>
-      <h3 class="ol-label" id="${key}-${g.key}">${g.label}</h3>
+      <h3 class="ol-label" id="${key}-${g.key}">${future ? g.future : g.label}</h3>
       <ul class="ol-focus-pick__list"></ul>
     </section>`)}
     <p class="ol-focus-pick__empty ol-body-s" hidden>${t.emptyFocusPickNone}</p>
@@ -96,7 +100,7 @@ export function openFocusPick(day: Day): OlSheet {
 
   const meta = (task: Task, data: PickData, group: GroupKey): SafeHtml => {
     const area = data.areas.get(task.areaId)?.name ?? t.noArea;
-    if (group === 'overdue' && task.dueDay) {
+    if (group === 'overdue' && task.dueDay && task.dueDay < today()) {
       return h`<span class="ol-focus-pick__overdue">${t.overdueLabel} <span class="ol-num">${formatDayShort(task.dueDay)}</span></span><span>${area}</span>`;
     }
     if (group === 'dueToday' && task.dueHasTime === 1 && task.dueAt) {
@@ -161,9 +165,9 @@ export function openFocusPick(day: Day): OlSheet {
     });
   };
 
-  /** True while `day` is still today; otherwise the picker closes without writing. */
+  /** True while `day` is today or later; otherwise the picker closes without writing. */
   const current = (): boolean => {
-    if (today() === day) return true;
+    if (day >= today()) return true;
     sheet.close('action');
     return false;
   };

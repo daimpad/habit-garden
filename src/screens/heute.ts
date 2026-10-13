@@ -26,7 +26,10 @@
 // - Heatmap cells on a card toggle past days like the habit sheet (toast with Rückgängig); today's cell
 //   runs the same flow as the card's toggle.
 // TODO(phase-3): swipe left on a focus row removes it from the focus (A.3); Phase 1 uses the task sheet.
-// TODO(phase-2): evening card "Morgen vorbereiten" above Fällig heute (H7 [Ext]).
+// - Evening card "Morgen vorbereiten" (Phase 2, H7): from settings.eveningHour on, above "Fällig heute";
+//   it lists tomorrow's focus (each removable) and opens the focus picker for tomorrow. Dismissing it
+//   stores the day in Profile.eveningCardDismissedFor, so it returns the next evening.
+// - Focus and due rows show the subtask progress "2/5" next to the title (Phase 2, decision 13.10.2026).
 // TODO(phase-5): tapping the date opens the calendar sheet (H8), review card (H9).
 import { liveQuery, type Observable, type Subscription } from 'dexie';
 import { butterfly, flower, petalColor } from '../components/flora.js';
@@ -45,20 +48,20 @@ import {
 } from '../model.js';
 import { areas$ } from '../repo/areas.js';
 import { contactLogs$, contacts$, logContact, undoLogContact } from '../repo/contacts.js';
-import { anyFocusEver, getFocus } from '../repo/dayPlans.js';
+import { addToFocus, anyFocusEver, getFocus, removeFromFocus } from '../repo/dayPlans.js';
 import { habitLogId, logsByHabit$, toggleLog, type ToggleResult } from '../repo/habitLogs.js';
 import { habits$ } from '../repo/habits.js';
 import { mood$, setMood } from '../repo/moodLogs.js';
 import { noteCount$ } from '../repo/notes.js';
 import { profile$, updateProfile } from '../repo/profile.js';
-import { compareDue, completeTask, dueOn, getTask, reopenTask } from '../repo/tasks.js';
+import { compareDue, completeTask, dueOn, getTask, reopenTask, subtaskProgress$ } from '../repo/tasks.js';
 import type { Route } from '../router.js';
 import { butterflyColor, contactStatuses, lastContactText, rhythmLabel, suggestions, type ContactStatus } from '../services/contacts.js';
 import { bestStreak, isScheduledOn, nextStage, stageFor, streak, weekProgress, type NextStage } from '../services/growth.js';
 import { backupCardState } from '../services/storage-hints.js';
 import { takeRevealDue } from '../services/reminders.js';
 import {
-  currentHour, formatDayFull, formatDayLong, formatDayShort, formatTime, formatWeekdayLong, now, nowIso, today,
+  addDays, currentHour, formatDayFull, formatDayLong, formatDayShort, formatTime, formatWeekdayLong, now, nowIso, today,
 } from '../util/date.js';
 import { emit, h, HAPTIC, icon, motionReduced, raw, render, setVar, vibrate, type SafeHtml } from '../util/dom.js';
 import { exportWithNotice } from './export-flow.js';
@@ -174,6 +177,11 @@ interface Els {
   moodMeta: HTMLElement;
   moods: HTMLElement;
   journal: HTMLElement;
+  evening: HTMLElement;
+  eveningText: HTMLElement;
+  eveningList: HTMLElement;
+  eveningPick: HTMLElement;
+  eveningDismiss: HTMLElement;
   due: HTMLElement;
   dueHeading: HTMLElement;
   dueCount: HTMLElement;
@@ -432,6 +440,10 @@ class HeuteScreen {
   private mood: MoodLog | undefined;
   private moodLoaded = false;
   private due: Task[] | null = null;
+  private tomorrow: FocusData | null = null;
+  private progress = new Map<Id, { done: number; total: number }>();
+  private progressSub: Subscription | null = null;
+  private progressKey: string | null = null;
   private contacts: Contact[] | null = null;
   private contactLogs: ContactLog[] | null = null;
   /** People just marked "Kontaktiert" whose log has not reached the snapshot yet. */
@@ -472,6 +484,7 @@ class HeuteScreen {
       this.renderHero();
       this.renderFirstSteps();
       this.renderBackup();
+      this.renderEvening();
       this.renderRoutines();
     });
     this.watch(areas$(true), (list) => {
@@ -490,6 +503,7 @@ class HeuteScreen {
         this.focus = focus;
         this.renderFocus();
         this.renderDue();
+        this.watchProgress();
       },
     );
     this.watch(habits$(true), (list) => {
@@ -506,7 +520,20 @@ class HeuteScreen {
     this.watch(dueOn(day), (list) => {
       this.due = list;
       this.renderDue();
+      this.watchProgress();
     });
+    const tomorrow = addDays(day, 1);
+    this.watch(
+      liveQuery(async (): Promise<FocusData> => {
+        const ids = await getFocus(tomorrow);
+        const tasks = await Promise.all(ids.map((id) => getTask(id)));
+        return { ids, tasks: tasks.filter((task): task is Task => task !== undefined).slice(0, MAX_FOCUS) };
+      }),
+      (focus) => {
+        this.tomorrow = focus;
+        this.renderEvening();
+      },
+    );
     this.watch(contacts$(), (list) => {
       this.contacts = list;
       this.renderPeople();
@@ -542,6 +569,8 @@ class HeuteScreen {
     this.subs.length = 0;
     this.logsSub?.unsubscribe();
     this.logsSub = null;
+    this.progressSub?.unsubscribe();
+    this.progressSub = null;
     for (const timer of this.timers) window.clearTimeout(timer);
     this.timers.clear();
     for (const entry of this.leaving.values()) window.clearTimeout(entry.timer);
@@ -608,6 +637,7 @@ class HeuteScreen {
     this.later(() => {
       this.renderHero();
       this.renderRoutines();
+      this.renderEvening();
       this.armHourTimer();
     }, Math.max(1000, next.getTime() - n.getTime()));
   }
@@ -703,6 +733,16 @@ class HeuteScreen {
     this.rememberOpener();
     try {
       openCapture({ type });
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  /** Focus picker for another day (evening card: tomorrow); focus returns to the opener. */
+  private openPickerFor(day: Day): void {
+    this.rememberOpener();
+    try {
+      openFocusPick(day);
     } catch (err) {
       console.error(err);
     }
@@ -844,6 +884,20 @@ class HeuteScreen {
             </div>
           </ol-card>
         </section>
+        <ol-card class="ol-heute__evening" hidden>
+          <div class="ol-heute__evening-head">
+            <span class="ol-heute__evening-icon" aria-hidden="true">${icon('moon')}</span>
+            <div class="ol-heute__evening-text">
+              <h2 class="ol-heading" id="heute-evening" tabindex="-1">${t.eveningTitle}</h2>
+              <p class="ol-body-s ol-text-2"></p>
+            </div>
+            <ol-icon-button class="ol-heute__evening-dismiss" icon="x" label="${fmt(t.cardDismissNamed, { label: t.eveningTitle })}"></ol-icon-button>
+          </div>
+          <ul class="ol-heute__evening-list"></ul>
+          <div class="ol-heute__evening-actions">
+            <ol-button class="ol-heute__evening-pick" variant="tonal" icon="list-checks" label="${t.eveningPick}"></ol-button>
+          </div>
+        </ol-card>
         <section class="ol-section ol-heute__due" aria-labelledby="heute-due" hidden>
           <div class="ol-section__head">
             <h2 class="ol-label" id="heute-due" tabindex="-1">${t.sectionDueToday} <span class="ol-heute__due-count ol-num"></span></h2>
@@ -869,6 +923,7 @@ class HeuteScreen {
     const ring = req<HTMLElement>(view, '.ol-heute__ring');
     const routineEmpty = req<HTMLElement>(view, '.ol-heute__routine-empty');
     const due = req<HTMLElement>(view, '.ol-heute__due');
+    const evening = req<HTMLElement>(view, '.ol-heute__evening');
     return {
       root: req<HTMLElement>(view, '.ol-heute'),
       hero,
@@ -912,6 +967,11 @@ class HeuteScreen {
       dueCount: req<HTMLElement>(due, '.ol-heute__due-count'),
       dueToggle: req<HTMLElement>(due, '.ol-heute__due-toggle'),
       dueList: req<HTMLElement>(due, '.ol-heute__due-list'),
+      evening,
+      eveningText: req<HTMLElement>(evening, '.ol-heute__evening-text p'),
+      eveningList: req<HTMLElement>(evening, '.ol-heute__evening-list'),
+      eveningPick: req<HTMLElement>(evening, '.ol-heute__evening-pick'),
+      eveningDismiss: req<HTMLElement>(evening, '.ol-heute__evening-dismiss'),
     };
   }
 
@@ -1014,6 +1074,18 @@ class HeuteScreen {
     els.moods.addEventListener('keydown', (event) => this.onMoodKey(event));
     els.journal.addEventListener('click', () => this.openJournalSheet());
 
+    // Morgen vorbereiten
+    els.eveningPick.addEventListener('click', () => this.openPickerFor(addDays(this.day, 1)));
+    els.eveningDismiss.addEventListener('click', () => {
+      this.els.focusHeading.focus({ preventScroll: true });
+      updateProfile({ eveningCardDismissedFor: this.day }).catch(() => showToast(t.toastError));
+    });
+    els.eveningList.addEventListener('click', (event) => {
+      const button = event.target instanceof Element ? event.target.closest('.ol-heute__evening-remove') : null;
+      const id = button?.closest<HTMLElement>('li[data-id]')?.dataset['id'];
+      if (id) void this.removeTomorrow(id);
+    });
+
     // Fällig heute
     els.dueToggle.addEventListener('click', () => {
       this.dueExpanded = !this.dueExpanded;
@@ -1042,7 +1114,7 @@ class HeuteScreen {
   private dataReady(): boolean {
     return this.profile !== null && this.areasLoaded && this.focus !== null && this.habits !== null
       && this.logs !== null && this.moodLoaded && this.due !== null && this.anyFocus !== null && this.noteCount !== null
-      && this.contacts !== null && this.contactLogs !== null;
+      && this.contacts !== null && this.contactLogs !== null && this.tomorrow !== null;
   }
 
   private maybeReveal(): void {
@@ -1166,7 +1238,7 @@ class HeuteScreen {
   private createTaskRow(): HTMLElement {
     const li = document.createElement('li');
     li.className = 'ol-heute__row ol-heute__task';
-    render(li, h`<ol-checkbox></ol-checkbox><button type="button" class="ol-heute__title"></button><span class="ol-heute__meta ol-caption"></span>`);
+    render(li, h`<ol-checkbox></ol-checkbox><button type="button" class="ol-heute__title"></button><span class="ol-heute__progress ol-caption ol-num" hidden></span><span class="ol-heute__meta ol-caption"></span>`);
     return li;
   }
 
@@ -1208,6 +1280,7 @@ class HeuteScreen {
   }
 
   private updateFocusRow(row: HTMLElement, task: Task): void {
+    this.updateProgress(row);
     const done = this.focusDone(task);
     const box = row.querySelector('ol-checkbox');
     if (box) {
@@ -1868,6 +1941,87 @@ class HeuteScreen {
     if (MOODS.includes(value as MoodValue)) void this.selectMood(value as MoodValue);
   }
 
+  // --- Morgen vorbereiten (Phase 2, H7) ---
+
+  private renderEvening(): void {
+    const data = this.tomorrow;
+    const profile = this.profile;
+    if (!data || !profile) return;
+    const els = this.els;
+    const settings = profile.settings ?? DEFAULT_SETTINGS;
+    const show = currentHour() >= settings.eveningHour && profile.eveningCardDismissedFor !== this.day;
+    if (!show) {
+      if (!els.evening.hidden && els.evening.contains(document.activeElement)) els.focusHeading.focus({ preventScroll: true });
+      els.evening.hidden = true;
+      return;
+    }
+    const n = data.tasks.length;
+    setText(els.eveningText, n === 0 ? t.eveningEmpty : n >= MAX_FOCUS ? t.eveningFull : fmt(t.eveningSome, { n }));
+    syncKeyed(
+      els.eveningList,
+      data.tasks,
+      (task) => task.id,
+      () => {
+        const li = document.createElement('li');
+        li.className = 'ol-heute__evening-row';
+        render(li, h`<span class="ol-heute__evening-title"></span><ol-icon-button class="ol-heute__evening-remove" icon="x"></ol-icon-button>`);
+        return li;
+      },
+      (row, task) => {
+        const title = row.querySelector('.ol-heute__evening-title');
+        if (title) setText(title, task.title);
+        const remove = row.querySelector('.ol-heute__evening-remove');
+        if (remove) setAttr(remove, 'label', fmt(t.eveningRemoveAria, { title: task.title }));
+      },
+      () => els.eveningPick,
+    );
+    if (n >= MAX_FOCUS && els.eveningPick.contains(document.activeElement)) els.eveningList.querySelector<HTMLElement>('ol-icon-button')?.focus();
+    els.eveningPick.hidden = n >= MAX_FOCUS;
+    els.evening.hidden = false;
+  }
+
+  private async removeTomorrow(id: Id): Promise<void> {
+    const tomorrow = addDays(this.day, 1);
+    try {
+      await removeFromFocus(tomorrow, id);
+      showToast(t.eveningRemoved, { action: { label: t.actionUndo, onAction: () => void addToFocus(tomorrow, id).catch(() => showToast(t.toastError)) } });
+    } catch {
+      showToast(t.toastError);
+    }
+  }
+
+  // --- Unteraufgaben: progress "2/5" in focus and due rows ---
+
+  private watchProgress(): void {
+    const ids = [...new Set([...(this.focus?.ids ?? []), ...(this.due ?? []).map((task) => task.id)])].sort();
+    const key = ids.join('|');
+    if (key === this.progressKey) return;
+    this.progressKey = key;
+    this.progressSub?.unsubscribe();
+    this.progressSub = subtaskProgress$(ids).subscribe({
+      next: (map: Map<Id, { done: number; total: number }>) => {
+        if (this.destroyed) return;
+        this.progress = map;
+        for (const list of [this.els.focusList, this.els.dueList]) {
+          for (const row of rowsOf(list)) this.updateProgress(row);
+        }
+      },
+      error: (err: unknown) => console.error(err),
+    });
+  }
+
+  /** Writes the subtask progress of a task row ("2/5", hidden without subtasks). */
+  private updateProgress(row: HTMLElement): void {
+    const id = row.dataset['id'];
+    const el = row.querySelector<HTMLElement>('.ol-heute__progress');
+    if (!id || !el) return;
+    const p = this.progress.get(id);
+    el.hidden = !p;
+    if (!p) return;
+    setText(el, fmt(t.subtaskProgress, { done: p.done, total: p.total }));
+    setAttr(el, 'aria-label', fmt(t.subtaskProgressAria, { done: p.done, total: p.total }));
+  }
+
   // --- Fällig heute (H5, S16, B.4) ---
 
   private renderDue(): void {
@@ -1929,6 +2083,7 @@ class HeuteScreen {
   }
 
   private updateDueRow(row: HTMLElement, task: Task): void {
+    this.updateProgress(row);
     const leaving = this.leaving.get(task.id);
     const checked = leaving !== undefined && !leaving.cancelled;
     const box = row.querySelector('ol-checkbox');

@@ -270,6 +270,7 @@ function validateProfile(value: unknown, path: string): Profile {
   };
   setOpt(profile, 'lastExportAt', optIso(r, 'lastExportAt', path));
   setOpt(profile, 'backupCardDismissedAt', optIso(r, 'backupCardDismissedAt', path));
+  setOpt(profile, 'eveningCardDismissedFor', optDay(r, 'eveningCardDismissedFor', path));
   if (present(r.firstStepsDismissed)) {
     const steps = strings(r.firstStepsDismissed, `${path}.firstStepsDismissed`);
     steps.forEach((step, i) => {
