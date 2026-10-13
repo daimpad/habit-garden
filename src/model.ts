@@ -10,7 +10,11 @@ export interface Profile {
   firstStepsDismissed?: FirstStepId[];
   /** Phase 2 (H7): the day whose evening card "Morgen vorbereiten" was dismissed. */
   eveningCardDismissedFor?: Day;
+  /** Phase 3 (P1/P2): PLANUNG tab state — selected area (absent = "Alle") and the view per area key. */
+  planning?: PlanningState;
 }
+export type PlanningView = 'projects'|'list';
+export interface PlanningState { areaId?: Id; views?: Record<string, PlanningView>; }
 export type FirstStepId = 'focus'|'habit'|'note';
 export interface Area { id: Id; name: string; flower: FlowerId; tint: string; sortKey: SortKey; archived: 0|1; updatedAt: ISO; }
 export interface Project { id: Id; areaId: Id; name: string; description?: string; status: 'active'|'archived'; sortKey: SortKey; dueAt?: ISO; kanbanColumns?: string[]; updatedAt: ISO; }

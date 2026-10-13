@@ -15,6 +15,8 @@ export const ICONS = [
   'shield', 'sprout', 'sun', 'trash-2', 'undo-2', 'upload', 'x',
   // Garden and people (Habit Garden redesign)
   'coffee', 'droplets', 'heart-handshake', 'message-circle', 'moon', 'phone', 'user-plus', 'users',
+  // Planung (Phase 3)
+  'folder', 'folder-input', 'folder-plus',
 ];
 
 const parts = [];

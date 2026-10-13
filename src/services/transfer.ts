@@ -11,7 +11,8 @@ import { db, TABLES, type TableName } from '../db.js';
 import {
   SCHEMA_VERSION, DEFAULT_SETTINGS,
   type Area, type Contact, type ContactLog, type Day, type DayPlan, type FirstStepId, type FlowerId, type Habit,
-  type HabitLog, type HabitSchedule, type ISO, type MoodLog, type Note, type Profile, type Project, type Recurrence,
+  type HabitLog, type HabitSchedule, type ISO, type MoodLog, type Note, type PlanningState, type PlanningView,
+  type Profile, type Project, type Recurrence,
   type Reminder, type Tag, type Task,
 } from '../model.js';
 import { defaultProfile, updateProfile } from '../repo/profile.js';
@@ -271,6 +272,7 @@ function validateProfile(value: unknown, path: string): Profile {
   setOpt(profile, 'lastExportAt', optIso(r, 'lastExportAt', path));
   setOpt(profile, 'backupCardDismissedAt', optIso(r, 'backupCardDismissedAt', path));
   setOpt(profile, 'eveningCardDismissedFor', optDay(r, 'eveningCardDismissedFor', path));
+  if (present(r.planning)) profile.planning = validatePlanning(r.planning, `${path}.planning`);
   if (present(r.firstStepsDismissed)) {
     const steps = strings(r.firstStepsDismissed, `${path}.firstStepsDismissed`);
     steps.forEach((step, i) => {
@@ -280,6 +282,25 @@ function validateProfile(value: unknown, path: string): Profile {
   }
   return profile;
 }
+
+/** PLANUNG tab state (Phase 3): optional area id and a view per area key ('all' or an area id). */
+function validatePlanning(value: unknown, path: string): PlanningState {
+  const r = asRecord(value, path);
+  const state: PlanningState = {};
+  setOpt(state, 'areaId', optId(r, 'areaId', path));
+  if (present(r.views)) {
+    const views = asRecord(r.views, `${path}.views`);
+    const out: Record<string, PlanningView> = {};
+    for (const key of Object.keys(views).slice(0, 1000)) {
+      if (key.length > ID_MAX) fail(`${path}.views`, 'key too long');
+      out[key] = oneOf(views, key, PLANNING_VIEWS, `${path}.views`);
+    }
+    state.views = out;
+  }
+  return state;
+}
+
+const PLANNING_VIEWS: readonly PlanningView[] = ['projects', 'list'];
 
 function validateArea(value: unknown, path: string): Area {
   const r = asRecord(value, path);

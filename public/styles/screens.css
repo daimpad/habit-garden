@@ -650,9 +650,9 @@
 /* === /capture === */
 
 /* === task === */
-/* Task sheet (A.3): checkbox + title on one line, due row, Wiederholung row, flag and area chips,
-   disabled project, "Mehr anzeigen"; full detent: description, subtasks, reminders. Footer: focus
-   action. */
+/* Task sheet (A.3): checkbox + title on one line, due row, Wiederholung row, flag, status and area
+   chips, Projekt row, "Mehr anzeigen"; full detent: description, subtasks, reminders, Verlauf. Footer:
+   focus action. */
 /* The bottom padding keeps room for a toast (it sits above the footer), so the last field can be
    scrolled clear of it. */
 .ol-task-sheet {
@@ -665,6 +665,7 @@
 .ol-task-sheet[data-done] .ol-task-sheet__title .ol-input__field { text-decoration: line-through; color: var(--color-text-2); }
 .ol-task-sheet__row { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-3); }
 .ol-task-sheet__chips,
+.ol-task-sheet__status,
 .ol-task-sheet__areas { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-2); }
 .ol-task-sheet__field,
 .ol-task-sheet__section { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -685,21 +686,31 @@
 .ol-task-sheet__reminder > ol-icon-button { margin-right: calc(var(--space-3) * -1); }
 .ol-task-sheet__reminder-form { display: flex; flex-direction: column; gap: var(--space-3); }
 .ol-task-sheet__reminder-form > ol-button { align-self: flex-start; }
-/* Wiederholung row (A.2 P8): repeat icon, label and current rule, chevron; framed like the date
-   fields above it, 48 px minimum, the rule wraps instead of overflowing at 360 px. */
-.ol-task-sheet__repeat {
+/* Picker rows (Wiederholung, A.2 P8, and Projekt): icon, label and current value, chevron; framed like
+   the date fields, 48 px minimum, the value wraps instead of overflowing at 360 px. */
+.ol-task-sheet__picker {
   display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: var(--touch);
   margin: 0; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
   border: 1.5px solid var(--color-text-2); border-radius: var(--radius-sm);
   background-color: var(--color-surface); color: var(--color-text); text-align: left; cursor: pointer;
 }
-.ol-task-sheet__repeat[hidden] { display: none; }
-.ol-task-sheet__repeat:hover { background-image: linear-gradient(var(--color-overlay-hover), var(--color-overlay-hover)); }
-.ol-task-sheet__repeat:active { background-image: linear-gradient(var(--color-overlay-pressed), var(--color-overlay-pressed)); }
-.ol-task-sheet__repeat-icon,
-.ol-task-sheet__repeat-chevron { display: inline-flex; flex: none; color: var(--color-text-2); }
-.ol-task-sheet__repeat-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-.ol-task-sheet__repeat-value { overflow-wrap: anywhere; }
+.ol-task-sheet__picker[hidden] { display: none; }
+.ol-task-sheet__picker:hover:not(:disabled) { background-image: linear-gradient(var(--color-overlay-hover), var(--color-overlay-hover)); }
+.ol-task-sheet__picker:active:not(:disabled) { background-image: linear-gradient(var(--color-overlay-pressed), var(--color-overlay-pressed)); }
+.ol-task-sheet__picker:disabled { border-color: var(--color-border); cursor: default; }
+.ol-task-sheet__picker:disabled .ol-task-sheet__picker-chevron { visibility: hidden; }
+.ol-task-sheet__picker-icon,
+.ol-task-sheet__picker-chevron { display: inline-flex; flex: none; color: var(--color-text-2); }
+.ol-task-sheet__picker-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.ol-task-sheet__picker-value { overflow-wrap: anywhere; }
+.ol-task-sheet__project-hint { color: var(--color-text-2); }
+.ol-task-sheet__project-hint[hidden] { display: none; }
+/* Verlauf (A.3): label and timestamp per row; they stack when the line is too narrow. */
+.ol-task-sheet__history { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; }
+.ol-task-sheet__history-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 var(--space-3); }
+.ol-task-sheet__history-row[hidden] { display: none; }
+.ol-task-sheet__history-row > dt { color: var(--color-text-2); }
+.ol-task-sheet__history-row > dd { margin: 0; color: var(--color-text); }
 /* Subtasks: head with progress, rows of checkbox + title + remove (48 px each), add input with +. */
 .ol-task-sheet__subtasks[hidden] { display: none; }
 .ol-task-sheet__section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
@@ -734,6 +745,17 @@
 .ol-task-repeat__hint { color: var(--color-text-2); }
 .ol-task-repeat__hint[hidden] { display: none; }
 .ol-task-repeat__apply { display: flex; }
+
+/* Projekt sheet: "Kein Projekt" + the area's projects as radio chips (16 px row gap), empty hint, name
+   field with the create button; full-width apply. */
+.ol-task-project { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-2) 0 var(--space-4); }
+.ol-task-project__options { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-2); }
+.ol-task-project__empty { color: var(--color-text-2); }
+.ol-task-project__empty[hidden] { display: none; }
+.ol-task-project__new { display: flex; align-items: flex-end; gap: var(--space-1); }
+.ol-task-project__new > ol-input { flex: 1 1 auto; min-width: 0; }
+.ol-task-project__new > ol-icon-button { margin-right: calc(var(--space-3) * -1); }
+.ol-task-project__apply { display: flex; }
 /* === /task === */
 
 /* === habit === */
@@ -767,8 +789,116 @@
 /* === /habit === */
 
 /* === planung === */
-/* Placeholder (TODO(phase-3)): app bar with ⚙ and the empty state; the FAB comes from the shell. */
-.ol-planung { display: block; }
+/* PLANUNG (Phase 3 part 1): the HEUTE card language — soft cards, area colour strip (--tint), flower chips,
+   a project's progress as a small plant. */
+.ol-plan[data-loading] { visibility: hidden; }
+.ol-plan [hidden] { display: none !important; }
+.ol-plan__chips {
+  display: flex; gap: var(--space-2); margin: 0 calc(var(--space-4) * -1); padding: var(--space-2) var(--space-4);
+  overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+}
+.ol-plan__chips::-webkit-scrollbar { display: none; }
+.ol-plan__chips ol-chip { flex: none; }
+.ol-plan__views { max-width: 360px; margin-top: var(--space-2); }
+.ol-plan__projects-view, .ol-plan__list-view { margin-top: var(--space-4); }
+
+.ol-plan__inbox-row {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px; padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); border-radius: 18px;
+  background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-primary-soft) 100%);
+  color: var(--color-text); font: inherit; text-align: left; cursor: pointer;
+}
+.ol-plan__inbox-icon { display: inline-flex; color: var(--color-primary); }
+.ol-plan__inbox-label { flex: 1 1 auto; font-weight: 600; }
+.ol-plan__inbox-count {
+  min-width: 28px; padding: 0 var(--space-2); border-radius: var(--radius-full); background: var(--color-primary); color: var(--color-on-primary);
+  font-size: .8125rem; line-height: 1.5rem; font-weight: 600; text-align: center;
+}
+.ol-plan__projects-view .ol-section__head { margin-top: var(--space-5); }
+.ol-plan__projects { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-3); }
+.ol-plan__project {
+  --tint: var(--color-sage);
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 88px; padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); border-left: 4px solid var(--tint); border-radius: 18px;
+  background: var(--color-surface); box-shadow: 0 1px 2px rgba(47, 79, 58, .06), 0 6px 18px rgba(47, 79, 58, .07);
+  color: var(--color-text); font: inherit; text-align: left; cursor: pointer;
+}
+@media (hover: hover) { .ol-plan__project:hover { box-shadow: 0 2px 4px rgba(47, 79, 58, .08), 0 10px 24px rgba(47, 79, 58, .1); } }
+.ol-plan__project-plant {
+  flex: none; padding: 4px 6px 0; border-radius: 999px 999px 12px 12px;
+  background: color-mix(in srgb, var(--tint) 18%, var(--color-surface));
+}
+.ol-plan__project-body { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.ol-plan__project-name { font-weight: 650; font-size: 1.0625rem; line-height: 1.375rem; color: var(--color-primary); overflow-wrap: anywhere; }
+.ol-plan__project-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); margin-top: var(--space-1); }
+.ol-plan__bar {
+  position: relative; display: block; overflow: hidden; width: 96px; height: 8px; border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-sage) 28%, var(--color-surface));
+}
+.ol-plan__bar-fill {
+  position: absolute; inset: 0; border-radius: inherit; transform-origin: left center; transform: scaleX(var(--progress, 0));
+  background: linear-gradient(90deg, var(--color-sage-strong), var(--color-primary)); transition: transform var(--duration-slow) var(--ease-standard);
+}
+.ol-plan__add-project {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2); width: 100%; min-height: 64px; margin-top: var(--space-3);
+  border: 2px dashed var(--color-border); border-radius: 18px; background: transparent; color: var(--color-text-2);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+@media (hover: hover) { .ol-plan__add-project:hover, .ol-plan__inbox-row:hover { background-color: var(--color-overlay-hover); color: var(--color-primary); } }
+.ol-plan__empty { padding: var(--space-3) 0; color: var(--color-text-2); }
+.ol-plan__hint { margin-top: var(--space-2); }
+
+/* Grouped task rows (list view, project, inbox) */
+.ol-plan__group { margin-top: var(--space-4); }
+.ol-plan__group-count { color: var(--color-text-2); }
+.ol-plan__list {
+  display: grid; padding: var(--space-1) var(--space-2); border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); background: var(--color-surface);
+}
+.ol-plan--inbox .ol-plan__list { margin-top: var(--space-3); }
+.ol-plan__row {
+  --tint: var(--color-sage);
+  display: flex; align-items: center; gap: var(--space-1); min-height: 56px; padding-left: var(--space-1);
+  border-left: 3px solid var(--tint); border-radius: 4px;
+}
+.ol-plan__row + .ol-plan__row { box-shadow: 0 -1px 0 color-mix(in srgb, var(--color-border) 60%, transparent); }
+.ol-plan__row-text { flex: 1 1 auto; min-width: 0; display: grid; }
+.ol-plan__title {
+  min-height: 0; margin: 0; padding: var(--space-2) var(--space-2) 0; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--color-text); font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer;
+}
+.ol-plan__row-text .ol-plan__title:only-child { padding-bottom: var(--space-2); }
+@media (hover: hover) { .ol-plan__title:hover { background-color: var(--color-overlay-hover); } }
+.ol-plan__meta { padding: 0 var(--space-2) var(--space-2); color: var(--color-text-2); }
+.ol-plan__meta--overdue { color: var(--color-warning-text); }
+.ol-plan__assign { flex: none; margin-right: var(--space-1); }
+
+/* Project screen */
+.ol-plan__progress {
+  --tint: var(--color-sage);
+  display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-2); padding: var(--space-3) var(--space-4);
+  border-radius: 18px; background: linear-gradient(135deg, color-mix(in srgb, var(--tint) 14%, var(--color-surface)) 0%, var(--color-surface) 100%);
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+.ol-plan__progress-text { display: grid; gap: var(--space-1); flex: 1 1 auto; min-width: 0; }
+.ol-plan__progress .ol-plan__bar { width: min(240px, 100%); }
+.ol-plan__gone { padding: var(--space-5) 0; color: var(--color-text-2); }
+
+/* Small sheets: new project, rename, move, assign */
+.ol-plan-sheet { display: grid; gap: var(--space-4); }
+.ol-plan-sheet__areas { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-2); padding: var(--space-2) 0; }
+.ol-plan-sheet__group { display: grid; gap: var(--space-1); }
+.ol-plan-sheet__group-head { display: flex; align-items: center; gap: var(--space-2); }
+.ol-plan-sheet__projects { display: grid; }
+.ol-plan-sheet__project {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 48px; padding: 0 var(--space-3);
+  border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-text); font: inherit; text-align: left; cursor: pointer;
+}
+.ol-plan-sheet__project .ol-icon { color: var(--color-primary); }
+@media (hover: hover) { .ol-plan-sheet__project:hover { background-color: var(--color-overlay-hover); } }
+
+@media (prefers-reduced-motion: reduce) { .ol-plan__bar-fill { transition: none; } }
+:root[data-motion="reduced"] .ol-plan__bar-fill { transition: none; }
 /* === /planung === */
 
 /* === wissen === */
