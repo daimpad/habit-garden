@@ -1,5 +1,5 @@
-// TODO(phase-4): in-memory search over notes and tasks; ranking title > tag > text;
-// 150 ms debounce (C.4). Phase 1 only needs the normalization for the focus picker.
+// Search normalisation (C.4): lower case, no diacritics, ß → ss. The rankings live with their screens:
+// services/notes.ts (notes: title > tag > text) and services/planning.ts (tasks).
 
 /** Lower case, NFD without diacritics, ß → ss (C.4). */
 export function normalizeForSearch(text: string): string {

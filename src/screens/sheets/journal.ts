@@ -11,7 +11,7 @@ import { showToast } from '../../components/ol-toast.js';
 import { t } from '../../i18n/de.js';
 import type { Day, Note } from '../../model.js';
 import { appendJournal, journalFor$ } from '../../repo/notes.js';
-import { h, render } from '../../util/dom.js';
+import { emit, h, render } from '../../util/dom.js';
 
 interface Entry { time: string; text: string }
 
@@ -76,8 +76,11 @@ export function openJournal(day: Day): OlSheet {
     }
     save.setAttribute('loading', '');
     try {
-      await appendJournal(day, text);
-      showToast(t.toastJournalSaved);
+      const note = await appendJournal(day, text);
+      // Phase 4: the journal is a note in WISSEN; the toast leads there.
+      showToast(t.toastJournalSaved, {
+        action: { label: t.journalOpenNote, onAction: () => emit(document.body, 'ol-navigate', { path: `/wissen/n/${encodeURIComponent(note.id)}` }) },
+      });
       sheet.close('action');
     } catch {
       save.removeAttribute('loading');

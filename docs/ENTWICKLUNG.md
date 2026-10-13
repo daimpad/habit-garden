@@ -4,7 +4,7 @@ Technische Dokumentation zu Habit Garden: Aufbau, Build, Auslieferung, Lizenzen.
 
 Habit Garden ist eine local-first Website. Alle Daten liegen ausschließlich im Browser (IndexedDB). Es gibt kein Konto, keine Datenbank auf dem Server und keine Telemetrie; Export und Import (JSON) sind der einzige Transferweg.
 
-Stand: Phase 1 (Grundgerüst) mit dem Garten-Redesign vom 12.10.2026 und Phase 2 vom 13.10.2026 (Wiederholungen mit Folgeinstanz, Unteraufgaben, Schnellsyntax, Abendkarte) sowie Phase 3 (PLANUNG mit Bereichs-Chips, Projekten, Liste, Inbox und Projektseite; Kanban und Matrix mit Ziehen, Suche mit Filterchips, Wischgesten, ICS-Export eines Projekts, Bereiche umsortieren, Archiv; Projekt, Status und Verlauf im Aufgaben-Sheet). WISSEN ist als Screen mit Leerzustand vorhanden und folgt in Phase 4.
+Stand: Phase 1 (Grundgerüst) mit dem Garten-Redesign vom 12.10.2026 und Phase 2 vom 13.10.2026 (Wiederholungen mit Folgeinstanz, Unteraufgaben, Schnellsyntax, Abendkarte) sowie Phase 3 (PLANUNG mit Bereichs-Chips, Projekten, Liste, Inbox und Projektseite; Kanban und Matrix mit Ziehen, Suche mit Filterchips, Wischgesten, ICS-Export eines Projekts, Bereiche umsortieren, Archiv; Projekt, Status und Verlauf im Aufgaben-Sheet). Phase 4 (WISSEN: Notizliste mit Suche, Schlagwort-Baum mit UND/ODER als URL-Zustand, Markdown-Editor mit Werkzeugleiste, Vorschau und Autosave, Notiz-Links `[Titel](note:<id>)` mit Rückverweisen, „Aufgabe aus Zeile“, Anheften und Archivieren per Wischen, Markdown-Export, ICS aller Aufgaben). Markdown wird mit markdown-it (`html: false`) gerendert und mit DOMPurify bereinigt (ohne `style`, Bilder nur als Links wegen `img-src 'self'`).
 
 ## Garten und Personen
 

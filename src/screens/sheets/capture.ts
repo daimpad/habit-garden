@@ -8,7 +8,7 @@
 //   Phase 1 through the focus picker's "Ohne Datum" group; the Inbox view is TODO(phase-3).
 // - Habit: daily (interval 1), period 'any', startDay today, no area unless opts.areaId is given
 //   (S17: generic flower); the toast offers "Bearbeiten" (habit editor).
-// - Note: kind 'note' whose body is the title as well (D8); the notes list in WISSEN is TODO(phase-4).
+// - Note: kind 'note' whose body is the title as well (D8); it appears in the WISSEN list.
 // - Quick syntax (A.2 G2, services/quick-syntax): only for "Aufgabe". The title is parsed on every input;
 //   recognised parts show as non-interactive chips below the field (aria-hidden) with a visually hidden
 //   aria-live="polite" summary, so it is clear what will be saved. "@" resolves active projects first,

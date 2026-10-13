@@ -291,8 +291,7 @@ function prefersShare(): boolean {
  * (allowed by the CSP; same pattern as services/transfer exportJson). A failing share (other than a
  * cancel) falls back to the download. Must run close to the user's tap (share needs user activation).
  */
-export async function downloadIcs(fileName: string, text: string): Promise<IcsDelivery> {
-  const type = 'text/calendar';
+export async function downloadIcs(fileName: string, text: string, type = 'text/calendar'): Promise<IcsDelivery> {
   if (prefersShare() && typeof File === 'function') {
     const file = new File([text], fileName, { type });
     const data: ShareData = { files: [file] };
@@ -354,6 +353,37 @@ export async function exportProjectIcs(project: Project): Promise<IcsExportResul
     }
     const text = buildIcs(tasks, { calendarName: project.name, now: now() });
     const delivery = await downloadIcs(icsFileName(project.name), text);
+    if (delivery !== 'cancelled') await toast(fmt(tasks.length === 1 ? t.icsExportDoneOne : t.icsExportDone, { n: tasks.length }));
+    return { events: tasks.length, delivery };
+  } catch (err) {
+    console.error(err);
+    await toast(t.icsExportFailed).catch(() => undefined);
+    return { events: 0, delivery: 'failed' };
+  }
+}
+
+/** Open (open/doing), dated, top-level tasks of all projects and areas, in due order (Einstellungen › Daten). */
+export async function allIcsTasks(): Promise<Task[]> {
+  const rows = await db.tasks.filter((task) => (task.parentId === null || task.parentId === undefined) && task.status !== 'done').toArray();
+  return rows
+    .filter((task) => dueDayOf(task) !== undefined)
+    .sort((a, b) => compareIso(startOf(a), startOf(b)) || (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
+}
+
+/** "Aufgaben als Kalender (ICS)" in Einstellungen › Daten (W6): every open dated task; same toasts as a project. */
+export async function exportAllIcs(): Promise<IcsExportResult> {
+  const toast = async (message: string): Promise<void> => {
+    const { showToast } = await import('../components/ol-toast.js');
+    showToast(message);
+  };
+  try {
+    const tasks = await allIcsTasks();
+    if (tasks.length === 0) {
+      await toast(t.icsExportAllEmpty);
+      return { events: 0, delivery: 'empty' };
+    }
+    const text = buildIcs(tasks, { calendarName: t.appName, now: now() });
+    const delivery = await downloadIcs(icsFileName(t.icsAllFileName), text);
     if (delivery !== 'cancelled') await toast(fmt(tasks.length === 1 ? t.icsExportDoneOne : t.icsExportDone, { n: tasks.length }));
     return { events: tasks.length, delivery };
   } catch (err) {

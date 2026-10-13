@@ -106,7 +106,7 @@ export function attachSwipe(root: HTMLElement, opts: SwipeOptions): () => void {
     const hit = target?.closest<HTMLElement>(opts.rowSelector);
     if (!target || !hit || !root.contains(hit)) return;
     // Controls inside the row keep their own click; the gesture starts on the row body.
-    if (target.closest(IGNORE) && !target.closest('.ol-heute__title, .ol-plan__title')) return;
+    if (target.closest(IGNORE) && !target.closest('.ol-heute__title, .ol-plan__title, .ol-wissen__card')) return;
     row = hit;
     pointerId = event.pointerId;
     startX = event.clientX;

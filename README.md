@@ -23,6 +23,7 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 - **Den Abend nutzen.** Am Abend erscheint eine Karte „Morgen vorbereiten“. Dort wählst du die Aufgaben für morgen, und am Morgen stehen sie schon im Fokus.
 - **Planen in Projekten.** Unter „Planung“ wählst du oben einen Bereich und siehst seine Projekte. Bei jedem wächst eine kleine Pflanze mit dem Fortschritt. Die Liste ordnet alle offenen Aufgaben nach überfällig, heute, diese Woche und später; in der Inbox sammelt sich, was noch kein Projekt und kein Datum hat.
 - **Aufgaben verschieben.** Auf einer Tafel mit den Spalten Offen, In Arbeit und Erledigt oder in einer Matrix nach wichtig und dringend ziehst du Aufgaben mit dem Finger an ihren Platz. In Listen genügt ein Wischen: nach rechts ist erledigt, nach links verschiebst du auf morgen oder das Wochenende. Eine Suche mit Filtern findet jede Aufgabe, und ein Projekt lässt sich als Kalenderdatei mitnehmen.
+- **Wissen sammeln.** Unter „Wissen“ schreibst du Notizen in Markdown; die erste Zeile ist der Titel. Schlagworte wie #garten/balkon schreibst du einfach in den Text, sie ordnen sich zu einem Baum, nach dem du filtern kannst, auch mit UND und ODER. Eine Suche findet Titel, Schlagworte und Text. Notizen lassen sich anheften, archivieren, untereinander verlinken, und aus einer Zeile wird mit einem Tipp eine Aufgabe.
 - **Stimmung und Journal.** Mit einem Tipp hältst du fest, wie es dir heute geht, und kannst einen kurzen Gedanken dazuschreiben.
 
 <p>
@@ -32,12 +33,11 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 
 ## Was noch kommt
 
-- **Wissen:** Notizen mit Schlagworten und einer Suche, damit Gedanken nicht verloren gehen.
 - **Rückblick und Kalender:** ein Blick zurück auf die vergangenen Wochen und ein dunkles Erscheinungsbild für den Abend.
 
 ## Deine Daten
 
-Habit Garden braucht kein Konto. Alles, was du einträgst, bleibt in deinem Browser auf deinem Gerät und wird an keinen Server geschickt. Deshalb lohnt es sich, unter Einstellungen › Daten regelmäßig eine Sicherung zu speichern. Mit der Sicherungsdatei kannst du deinen Garten auch auf ein anderes Gerät mitnehmen. Safari löscht Daten von Websites, die sieben Tage nicht geöffnet wurden; liegt deine letzte Sicherung einige Tage zurück, erinnert dich die App daran.
+Habit Garden braucht kein Konto. Alles, was du einträgst, bleibt in deinem Browser auf deinem Gerät und wird an keinen Server geschickt. Deshalb lohnt es sich, unter Einstellungen › Daten regelmäßig eine Sicherung zu speichern. Dort kannst du auch alle Notizen als Markdown-Datei und deine Aufgaben mit Datum als Kalenderdatei mitnehmen. Mit der Sicherungsdatei kannst du deinen Garten auch auf ein anderes Gerät mitnehmen. Safari löscht Daten von Websites, die sieben Tage nicht geöffnet wurden; liegt deine letzte Sicherung einige Tage zurück, erinnert dich die App daran.
 
 ---
 

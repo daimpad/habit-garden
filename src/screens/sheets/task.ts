@@ -54,8 +54,9 @@ import { createSheet, type OlSheet } from '../../components/ol-sheet.js';
 import { showToast } from '../../components/ol-toast.js';
 import { fmt, t, weekdayShort } from '../../i18n/de.js';
 import {
-  GENERIC_TINT, MAX_FOCUS, type Area, type Day, type Id, type ISO, type Project, type Recurrence, type Reminder, type Task,
+  GENERIC_TINT, MAX_FOCUS, type Area, type Day, type Id, type ISO, type Note, type Project, type Recurrence, type Reminder, type Task,
 } from '../../model.js';
+import { getNotes } from '../../repo/notes.js';
 import { areas$ } from '../../repo/areas.js';
 import { addToFocus, FocusFullError, getFocus, removeFromFocus } from '../../repo/dayPlans.js';
 import { getProfile } from '../../repo/profile.js';
@@ -69,7 +70,7 @@ import { ensureReminderPermission, fireTime } from '../../services/reminders.js'
 import {
   dayOfIso, formatDayFull, formatDayShort, formatTime, isDay, isoAt, isoWeekday, onDayChange, timeOfIso, today,
 } from '../../util/date.js';
-import { h, icon, render } from '../../util/dom.js';
+import { emit, h, icon, render } from '../../util/dom.js';
 
 interface Sub { unsubscribe(): void }
 
@@ -551,6 +552,10 @@ class TaskSheet {
         <ol-button class="ol-task-sheet__add" variant="tonal" icon="bell" label="${t.reminderAdd}"></ol-button>
       </div>
     </section>
+    <section class="ol-task-sheet__section ol-task-sheet__linked" aria-labelledby="${historyLabel}-notes" hidden>
+      <h3 class="ol-label" id="${historyLabel}-notes">${t.taskLinkedNotes}</h3>
+      <ul class="ol-task-sheet__linked-list"></ul>
+    </section>
     <section class="ol-task-sheet__section" aria-labelledby="${historyLabel}">
       <h3 class="ol-label" id="${historyLabel}">${t.sectionHistory}</h3>
       <dl class="ol-task-sheet__history ol-body-s">
@@ -783,6 +788,29 @@ class TaskSheet {
     const completed = task.status === 'done' && task.completedAt ? task.completedAt : undefined;
     this.historyCompletedRow.hidden = completed === undefined;
     this.historyCompleted.textContent = completed ? stamp(completed) : '';
+    void this.syncLinkedNotes(task);
+  }
+
+  /** W5: notes this task was created from ("Aufgabe aus Zeile"); each opens the note in WISSEN. */
+  private async syncLinkedNotes(task: Task): Promise<void> {
+    const section = this.sheet.bodyEl.querySelector<HTMLElement>('.ol-task-sheet__linked');
+    const list = section?.querySelector<HTMLElement>('.ol-task-sheet__linked-list');
+    if (!section || !list) return;
+    const ids = task.linkedNoteIds ?? [];
+    const key = ids.join(',');
+    if (list.dataset['key'] === key) return;
+    list.dataset['key'] = key;
+    const notes = ids.length ? (await getNotes(ids)).filter((n): n is Note => n !== undefined) : [];
+    section.hidden = notes.length === 0;
+    render(list, h`${notes.map((n) => h`<li><button type="button" class="ol-task-sheet__linked-note" data-note="${n.id}">${icon('notebook-pen', 20)}<span>${n.title || t.wissenUntitled}</span></button></li>`)}`);
+    if (!list.dataset['bound']) {
+      list.dataset['bound'] = '1';
+      list.addEventListener('click', (event) => {
+        const btn = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-note]') : null;
+        const id = btn?.dataset['note'];
+        if (btn && id) emit(btn, 'ol-navigate', { path: `/wissen/n/${encodeURIComponent(id)}` });
+      });
+    }
   }
 
   private syncMore(): void {
