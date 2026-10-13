@@ -9,7 +9,13 @@
 // - Habit: daily (interval 1), period 'any', startDay today, no area unless opts.areaId is given
 //   (S17: generic flower); the toast offers "Bearbeiten" (habit editor).
 // - Note: kind 'note' whose body is the title as well (D8); the notes list in WISSEN is TODO(phase-4).
-// - Quick syntax (A.2 G2: "!", "@projekt", "#tag", dates): TODO(phase-2).
+// - Quick syntax (A.2 G2, services/quick-syntax): only for "Aufgabe". The title is parsed on every input;
+//   recognised parts show as non-interactive chips below the field (aria-hidden) with a visually hidden
+//   aria-live="polite" summary, so it is clear what will be saved. Until Phase 3 "@" picks the area
+//   (PO decision 13.10.2026). The helper text lists the syntax until something is recognised (then the
+//   chips take its place); habits and notes save the text as typed.
+// - Saving a task parses again with the current day and areas: title = parsed title (the raw text when
+//   nothing else is left), flags, area (else the default), tags (ensureTags first), dueAt via isoAt.
 import '../../components/ol-button.js';
 import '../../components/ol-chip.js';
 import '../../components/ol-input.js';
@@ -18,13 +24,18 @@ import type { ChipChange } from '../../components/ol-chip.js';
 import type { OlInput } from '../../components/ol-input.js';
 import { createSheet, type OlSheet } from '../../components/ol-sheet.js';
 import { showToast } from '../../components/ol-toast.js';
-import { t } from '../../i18n/de.js';
-import type { Id } from '../../model.js';
-import { firstActiveArea } from '../../repo/areas.js';
+import { fmt, t } from '../../i18n/de.js';
+import type { Area, Day, Id } from '../../model.js';
+import { firstActiveArea, listAreas } from '../../repo/areas.js';
 import { createHabit } from '../../repo/habits.js';
 import { createNote } from '../../repo/notes.js';
+import { ensureTags } from '../../repo/tags.js';
 import { createTask } from '../../repo/tasks.js';
-import { h, render } from '../../util/dom.js';
+import {
+  parseQuickSyntax, QUICK_IMPORTANT, QUICK_TAG, QUICK_URGENT, type QuickParse,
+} from '../../services/quick-syntax.js';
+import { addDays, formatDayShort, formatWeekdayShort, isoAt, today } from '../../util/date.js';
+import { h, icon, render } from '../../util/dom.js';
 import { openHabitEditor } from './habit.js';
 import { failed } from './task.js';
 
@@ -45,6 +56,34 @@ async function defaultAreaId(areaId: Id | undefined): Promise<Id | undefined> {
   return areaId ?? (await firstActiveArea())?.id;
 }
 
+const QUICK_HINT = fmt(t.captureQuickHint, { important: QUICK_IMPORTANT, urgent: QUICK_URGENT });
+
+/** "Heute" / "Morgen" / "Übermorgen" / "Fr, 16.10.", with ", 14:00" when timed. */
+function dueLabel(day: Day, time: string | undefined, base: Day): string {
+  const date = day === base ? t.captureQuickToday
+    : day === addDays(base, 1) ? t.captureQuickTomorrow
+      : day === addDays(base, 2) ? t.captureQuickDayAfter
+        : fmt(t.captureQuickWeekdayDate, { weekday: formatWeekdayShort(day), date: formatDayShort(day) });
+  return time ? fmt(t.captureQuickDayTime, { date, time }) : date;
+}
+
+interface QuickItem { icon: string; label: string; spoken: string }
+
+/** The recognised parts in a fixed order: flags, area, due, tags. */
+function quickItems(quick: QuickParse, areas: readonly Area[], base: Day): QuickItem[] {
+  const items: QuickItem[] = [];
+  if (quick.important) items.push({ icon: 'flag', label: t.flagImportant, spoken: t.flagImportant });
+  if (quick.urgent) items.push({ icon: 'alarm-clock', label: t.flagUrgent, spoken: t.flagUrgent });
+  const area = quick.areaId ? areas.find((a) => a.id === quick.areaId) : undefined;
+  if (area) items.push({ icon: 'sprout', label: area.name, spoken: area.name });
+  if (quick.dueDay) {
+    const label = dueLabel(quick.dueDay, quick.time, base);
+    items.push({ icon: 'calendar', label, spoken: label });
+  }
+  for (const path of quick.tagPaths) items.push({ icon: 'hash', label: path, spoken: `${QUICK_TAG}${path}` });
+  return items;
+}
+
 export function openCapture(opts: CaptureOptions = {}): OlSheet {
   let type: CaptureType = opts.type ?? 'task';
   let saving = false;
@@ -56,6 +95,8 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
     ${TYPES.map((o) => h`<ol-chip kind="radio" value="${o.type}" icon="${o.icon}" label="${o.label}" ${o.type === type ? 'selected' : ''}></ol-chip>`)}
   </div>
   <ol-input class="ol-capture__title" label="${t.captureFieldTitle}" autocomplete="off" autofocus></ol-input>
+  <ul class="ol-capture__parsed" aria-hidden="true" hidden></ul>
+  <p class="ol-capture__summary ol-visually-hidden" aria-live="polite"></p>
 </div>`,
   );
   render(sheet.footerEl, h`<ol-button class="ol-capture__save" variant="filled" label="${t.actionSave}"></ol-button>`);
@@ -63,8 +104,32 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
   const input = sheet.bodyEl.querySelector<OlInput>('.ol-capture__title');
   const types = sheet.bodyEl.querySelector<HTMLElement>('.ol-capture__types');
   const button = sheet.footerEl.querySelector<OlButton>('.ol-capture__save');
-  if (!input || !types || !button) throw new Error('capture: markup missing');
+  const parsed = sheet.bodyEl.querySelector<HTMLElement>('.ol-capture__parsed');
+  const summary = sheet.bodyEl.querySelector<HTMLElement>('.ol-capture__summary');
+  if (!input || !types || !button || !parsed || !summary) throw new Error('capture: markup missing');
   input.field?.setAttribute('enterkeyhint', 'done');
+
+  // Active areas for "@"; loaded once, the save path reads them again.
+  let areas: Area[] = [];
+  let shownKey = '';
+  const updateQuick = (): void => {
+    const isTask = type === 'task';
+    const base = today();
+    const items = isTask ? quickItems(parseQuickSyntax(input.value, { today: base, areas }), areas, base) : [];
+    // The hint gives way to the chips: the fit sheet is at most half the screen high (S27).
+    if (isTask && items.length === 0) input.setAttribute('helper', QUICK_HINT);
+    else input.removeAttribute('helper');
+    const key = items.map((item) => `${item.icon}:${item.label}`).join('|');
+    if (key === shownKey) return;
+    shownKey = key;
+    render(parsed, h`${items.map((item) => h`<li class="ol-capture__parsed-item">${icon(item.icon, 20)}<span class="ol-capture__parsed-label">${item.label}</span></li>`)}`);
+    parsed.hidden = items.length === 0;
+    summary.textContent = items.length ? fmt(t.captureQuickSummary, { items: items.map((item) => item.spoken).join(', ') }) : '';
+  };
+  void listAreas().then((list) => {
+    areas = list;
+    updateQuick();
+  }, failed);
 
   const save = async (): Promise<void> => {
     if (saving) return;
@@ -78,9 +143,20 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
     button.setAttribute('loading', '');
     try {
       if (type === 'task') {
-        const areaId = await defaultAreaId(opts.areaId);
+        const quick = parseQuickSyntax(title, { today: today(), areas: await listAreas() });
+        const areaId = quick.areaId ?? (await defaultAreaId(opts.areaId));
         if (!areaId) throw new Error('capture: no active area');
-        await createTask({ title, areaId, projectId: opts.projectId ?? null });
+        if (quick.tagPaths.length > 0) await ensureTags(quick.tagPaths);
+        await createTask({
+          title: quick.title || title,
+          areaId,
+          // A project given by the caller belongs to its area; "@" naming another area drops it.
+          projectId: quick.areaId && quick.areaId !== opts.areaId ? null : opts.projectId ?? null,
+          important: quick.important,
+          urgent: quick.urgent,
+          ...(quick.tagPaths.length > 0 ? { tagPaths: quick.tagPaths } : {}),
+          ...(quick.dueDay ? { dueAt: isoAt(quick.dueDay, quick.time), dueHasTime: quick.time ? 1 : 0 } : {}),
+        });
         sheet.close('action');
         showToast(t.toastTaskCreated);
       } else if (type === 'habit') {
@@ -104,9 +180,11 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
   types.addEventListener('ol-change', (event) => {
     const detail = event instanceof CustomEvent ? (event.detail as ChipChange) : null;
     if (detail?.selected && isCaptureType(detail.value)) type = detail.value;
+    updateQuick();
   });
   input.addEventListener('input', () => {
     if (input.value.trim() !== '') input.removeAttribute('error');
+    updateQuick();
   });
   input.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' || event.isComposing || event.shiftKey) return;
@@ -115,6 +193,7 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
   });
   button.addEventListener('click', () => void save());
 
+  updateQuick();
   sheet.open();
   // Safety net when no [autofocus] target was focusable at open time.
   if (!input.contains(document.activeElement)) input.focusInput();

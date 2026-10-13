@@ -339,6 +339,7 @@ function validateTask(value: unknown, path: string): Task {
     task.recurrence = recurrence(r.recurrence, `${path}.recurrence`, ['daily', 'weekly', 'monthly', 'afterCompletion']);
   }
   setOpt(task, 'recurrenceAnchor', optDay(r, 'recurrenceAnchor', path));
+  setOpt(task, 'followUpId', optId(r, 'followUpId', path));
   if (present(r.tagPaths)) task.tagPaths = tagPaths(r.tagPaths, `${path}.tagPaths`);
   if (present(r.linkedNoteIds)) task.linkedNoteIds = strings(r.linkedNoteIds, `${path}.linkedNoteIds`);
   // Due invariants: dueDay is stored as written (never re-derived across time zones);

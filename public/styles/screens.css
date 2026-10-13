@@ -632,11 +632,27 @@
 /* B.3: type chips above the title field, Save in the footer. Chip rows keep a 16 px row gap (S28). */
 .ol-capture { display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-2); }
 .ol-capture__types { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-2); }
+/* Quick-syntax preview (A.2 G2): small read-only chips, not ol-chip (no role, no hit area), packed
+   tightly so three rows still fit the half-height fit sheet. The negative top margin pulls them towards
+   the field they describe. */
+.ol-capture__parsed {
+  display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); margin: calc(var(--space-2) * -1) 0 0;
+  padding: 0; list-style: none;
+}
+.ol-capture__parsed[hidden] { display: none; }
+.ol-capture__parsed-item {
+  display: inline-flex; align-items: center; gap: var(--space-1); max-width: 100%; min-height: 24px;
+  padding: 2px var(--space-2); border-radius: var(--radius-full); background-color: var(--color-primary-soft);
+  font-size: .8125rem; line-height: 1rem; font-weight: 500;
+}
+.ol-capture__parsed-item > .ol-icon { flex: none; width: 16px; height: 16px; }
+.ol-capture__parsed-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* === /capture === */
 
 /* === task === */
-/* Task sheet (A.3): checkbox + title on one line, due row, flag and area chips, disabled project,
-   "Mehr anzeigen"; full detent: description, subtasks placeholder, reminders. Footer: focus action. */
+/* Task sheet (A.3): checkbox + title on one line, due row, Wiederholung row, flag and area chips,
+   disabled project, "Mehr anzeigen"; full detent: description, subtasks, reminders. Footer: focus
+   action. */
 /* The bottom padding keeps room for a toast (it sits above the footer), so the last field can be
    scrolled clear of it. */
 .ol-task-sheet {
@@ -656,7 +672,6 @@
 .ol-task-sheet__more-btn { align-self: flex-start; margin-left: calc(var(--space-3) * -1); }
 .ol-task-sheet__more { display: flex; flex-direction: column; gap: var(--space-5); }
 .ol-task-sheet__more[hidden] { display: none; }
-.ol-task-sheet__placeholder,
 .ol-task-sheet__needs-due,
 .ol-task-sheet__focus-hint { color: var(--color-text-2); }
 .ol-task-sheet__reminders { display: flex; flex-direction: column; }
@@ -670,6 +685,41 @@
 .ol-task-sheet__reminder > ol-icon-button { margin-right: calc(var(--space-3) * -1); }
 .ol-task-sheet__reminder-form { display: flex; flex-direction: column; gap: var(--space-3); }
 .ol-task-sheet__reminder-form > ol-button { align-self: flex-start; }
+/* Wiederholung row (A.2 P8): repeat icon, label and current rule, chevron; framed like the date
+   fields above it, 48 px minimum, the rule wraps instead of overflowing at 360 px. */
+.ol-task-sheet__repeat {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: var(--touch);
+  margin: 0; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border: 1.5px solid var(--color-text-2); border-radius: var(--radius-sm);
+  background-color: var(--color-surface); color: var(--color-text); text-align: left; cursor: pointer;
+}
+.ol-task-sheet__repeat[hidden] { display: none; }
+.ol-task-sheet__repeat:hover { background-image: linear-gradient(var(--color-overlay-hover), var(--color-overlay-hover)); }
+.ol-task-sheet__repeat:active { background-image: linear-gradient(var(--color-overlay-pressed), var(--color-overlay-pressed)); }
+.ol-task-sheet__repeat-icon,
+.ol-task-sheet__repeat-chevron { display: inline-flex; flex: none; color: var(--color-text-2); }
+.ol-task-sheet__repeat-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.ol-task-sheet__repeat-value { overflow-wrap: anywhere; }
+/* Subtasks: head with progress, rows of checkbox + title + remove (48 px each), add input with +. */
+.ol-task-sheet__subtasks[hidden] { display: none; }
+.ol-task-sheet__section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.ol-task-sheet__progress { color: var(--color-text-2); }
+.ol-task-sheet__progress[hidden],
+.ol-task-sheet__subtask-list[hidden] { display: none; }
+.ol-task-sheet__subtask-list { display: flex; flex-direction: column; }
+.ol-task-sheet__subtask {
+  display: flex; align-items: center; min-height: 48px; margin-left: calc(var(--space-3) * -1);
+  border-bottom: 1px solid var(--color-border);
+}
+.ol-task-sheet__subtask > ol-checkbox { flex: none; }
+.ol-task-sheet__subtask-title {
+  flex: 1 1 auto; min-width: 0; padding: var(--space-3) var(--space-1); overflow-wrap: anywhere; cursor: pointer;
+}
+.ol-task-sheet__subtask[data-done] .ol-task-sheet__subtask-title { text-decoration: line-through; color: var(--color-text-2); }
+.ol-task-sheet__subtask > ol-icon-button { margin-right: calc(var(--space-3) * -1); }
+.ol-task-sheet__subtask-add { display: flex; align-items: flex-end; gap: var(--space-1); }
+.ol-task-sheet__subtask-add > ol-input { flex: 1 1 auto; }
+.ol-task-sheet__subtask-add > ol-icon-button { margin-right: calc(var(--space-3) * -1); }
 .ol-task-sheet__focus { display: flex; flex-direction: column; gap: var(--space-2); }
 .ol-task-sheet__focus > ol-button { display: flex; }
 
@@ -677,6 +727,13 @@
 .ol-menu-sheet { display: flex; flex-direction: column; gap: var(--space-1); padding-bottom: var(--space-2); }
 .ol-menu-sheet__item { display: flex; }
 .ol-menu-sheet__item .ol-button__btn { justify-content: flex-start; padding-left: var(--space-3); }
+
+/* Wiederholung sheet: preset radio chips (16 px row gap, S28), days field, hint; full-width apply. */
+.ol-task-repeat { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-2) 0 var(--space-4); }
+.ol-task-repeat__options { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-2); }
+.ol-task-repeat__hint { color: var(--color-text-2); }
+.ol-task-repeat__hint[hidden] { display: none; }
+.ol-task-repeat__apply { display: flex; }
 /* === /task === */
 
 /* === habit === */

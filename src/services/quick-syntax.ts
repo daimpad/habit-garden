@@ -14,7 +14,8 @@
 //   projects first and fall back to areas (matchNamed is exported for that).
 // - "#a/b": tag path, normalised like repo/tags normalizeTagPath (reimplemented here because repo/tags
 //   imports the database; a test keeps both in step). A path needs a letter, so "#4711" stays.
-// - Dates: heute, morgen, übermorgen/uebermorgen, weekdays (mo … so, optional ".", montag … sonntag:
+// - Dates: heute, morgen, übermorgen/uebermorgen, weekdays (mo … so, optional ".", montag … sonntag;
+//   a bare "so" only right before a time:
 //   the next such day, today included), "15.10." (this year, next year once past), "15.10.2026",
 //   "15.10.26". Impossible dates (31.02.) stay in the title.
 // - Times: "14:00", "9:30", "14 uhr", "14uhr", "14h", "14:30 uhr". A time without a date means today,
@@ -106,6 +107,9 @@ function defaultResolver(areas: readonly Pick<Area, 'id' | 'name'>[]): (query: s
 }
 
 const RELATIVE_DAYS: Readonly<Record<string, number>> = { heute: 0, morgen: 1, ubermorgen: 2, uebermorgen: 2 };
+
+/** Abbreviation that is also a common word; see parseQuickSyntax. */
+const AMBIGUOUS_WEEKDAY = 'so';
 
 // ISO weekday by name (normalised); abbreviations may carry a trailing dot ("Fr.").
 const WEEKDAYS: Readonly<Record<string, number>> = {
@@ -217,7 +221,10 @@ export function parseQuickSyntax(input: string, ctx: QuickContext): QuickParse {
         continue;
       }
     }
-    if (out.dueDay === undefined) {
+    // "so" is also an everyday word ("Das so lassen"): bare, it means Sunday only right before a time
+    // ("so 10:00"); "so." and "sonntag" always do.
+    const ambiguous = normalizeForSearch(text) === AMBIGUOUS_WEEKDAY && parseTime(words, i + 1) === undefined;
+    if (out.dueDay === undefined && !ambiguous) {
       const day = parseDate(text, ctx.today);
       if (day !== undefined) {
         out.dueDay = day;

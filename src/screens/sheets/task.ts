@@ -1,8 +1,10 @@
 // Task sheet /aufgabe/:id (F §4.13, A.3 Task-Sheet, D.1, D.5).
-// Half detent: checkbox + title, due date and time (native inputs), Wichtig/Dringend chips (icon and
-// text, not colour alone), Bereich (radio chips with flowers), Projekt (disabled), "Mehr anzeigen";
-// footer: "In den Fokus" / "Aus dem Fokus nehmen" for today, disabled with the limit hint when three
-// other tasks are in focus (D.1). Full detent: description, subtasks placeholder, reminders (D.5).
+// Half detent: checkbox + title, due date and time (native inputs), Wiederholung row (A.2 P8: repeat
+// icon + current rule, opens a small preset sheet), Wichtig/Dringend chips (icon and text, not colour
+// alone), Bereich (radio chips with flowers), Projekt (disabled), "Mehr anzeigen"; footer: "In den
+// Fokus" / "Aus dem Fokus nehmen" for today, disabled with the limit hint when three other tasks are in
+// focus (D.1). Full detent: description, subtasks (checkbox list, progress "2 von 5" in the section
+// head, one-line input to add), reminders (D.5).
 // Header: ⋯ opens a small menu sheet (A.3 "⋯ ⇡") with "Löschen" (destructive dialog, undo toast).
 //
 // Details of this implementation:
@@ -12,7 +14,16 @@
 //   never overwritten, so typing is not disturbed.
 // - Text fields save on change (blur/Enter); pending edits are flushed again when the sheet closes.
 // - "Mehr anzeigen" is the keyboard/tap path to the full detent (D7); dragging up works as well.
-// - Status chip and Verlauf (A.3): TODO(phase-3). Wiederholung: TODO(phase-2). Linked notes: [Ext].
+// - Wiederholung presets: Keine, Täglich, Werktags, Wöchentlich (due day's weekday), Monatlich (due day
+//   of the month), N Tage nach Abschluss (1–365). A schedule preset on a task without date sets the
+//   due date to today; the anchor follows the due day (repo/tasks). Rules from elsewhere (e.g. an
+//   import) show as an extra chip and stay unless another preset is chosen.
+// - Completing a recurring task: toast "Erledigt · nächste am {date}" with Rückgängig (reopenTask also
+//   takes the untouched follow-up back).
+// - Subtasks (one level, never recurring): Enter in the input adds one and keeps focus for the next;
+//   checking uses completeTask/reopenTask; × removes with toast + Rückgängig. A subtask opened by its
+//   own route shows neither the Wiederholung row nor the subtasks section.
+// - Status chip and Verlauf (A.3): TODO(phase-3). Linked notes: [Ext].
 // - Shared helpers for the habit sheets: openActionMenu() and syncAreaChips().
 import { liveQuery } from 'dexie';
 import '../../components/ol-button.js';
@@ -29,16 +40,20 @@ import type { OlInput } from '../../components/ol-input.js';
 import type { OlSegmented, SegmentedChange } from '../../components/ol-segmented.js';
 import { createSheet, type OlSheet } from '../../components/ol-sheet.js';
 import { showToast } from '../../components/ol-toast.js';
-import { fmt, t } from '../../i18n/de.js';
-import { GENERIC_TINT, MAX_FOCUS, type Area, type Id, type Reminder, type Task } from '../../model.js';
+import { fmt, t, weekdayShort } from '../../i18n/de.js';
+import { GENERIC_TINT, MAX_FOCUS, type Area, type Day, type Id, type Recurrence, type Reminder, type Task } from '../../model.js';
 import { areas$ } from '../../repo/areas.js';
 import { addToFocus, FocusFullError, getFocus, removeFromFocus } from '../../repo/dayPlans.js';
 import { getProfile } from '../../repo/profile.js';
 import {
-  addReminder, completeTask, deleteTask, getTask, removeReminder, reopenTask, restoreTask, task$, updateTask,
+  addReminder, completeTask, createSubtask, deleteTask, getTask, removeReminder, reopenTask, restoreTask, subtasks$,
+  task$, updateTask, type CompleteResult,
 } from '../../repo/tasks.js';
+import { presetOf, presetRecurrence, type RecurrencePreset } from '../../services/recurrence.js';
 import { ensureReminderPermission, fireTime } from '../../services/reminders.js';
-import { dayOfIso, formatDayShort, formatTime, isDay, isoAt, onDayChange, timeOfIso, today } from '../../util/date.js';
+import {
+  dayOfIso, formatDayShort, formatTime, isDay, isoAt, isoWeekday, onDayChange, timeOfIso, today,
+} from '../../util/date.js';
 import { h, icon, render } from '../../util/dom.js';
 
 interface Sub { unsubscribe(): void }
@@ -133,6 +148,138 @@ export function syncAreaChips(group: HTMLElement, areas: readonly Area[], select
 }
 
 // ---------------------------------------------------------------------------
+// Wiederholung
+
+/**
+ * The rule as text ("Keine Wiederholung", "Täglich", "Werktags", "Wöchentlich am Mo", "Monatlich am
+ * 15.", "3 Tage nach Abschluss"); `anchor` names the weekday of a weekly rule without weekdays.
+ */
+export function recurrenceText(rec: Recurrence | undefined, anchor?: Day): string {
+  if (!rec) return t.recurrenceNone;
+  switch (rec.kind) {
+    case 'daily':
+      return rec.interval > 1 ? fmt(t.recurrenceEveryNDays, { n: rec.interval }) : t.recurrenceDaily;
+    case 'weekly': {
+      if (presetOf(rec) === 'weekdays') return t.recurrenceWeekdays;
+      const list = [...new Set(rec.weekdays)].sort((a, b) => a - b);
+      if (list.length === 0 && anchor) list.push(isoWeekday(anchor));
+      const days = list.map((d) => weekdayShort(d)).join(', ');
+      return rec.interval > 1 ? fmt(t.recurrenceEveryNWeeks, { n: rec.interval, days }) : fmt(t.recurrenceWeekly, { days });
+    }
+    case 'monthly':
+      if (rec.day === 'last') {
+        return rec.interval > 1 ? fmt(t.recurrenceEveryNMonthsLast, { n: rec.interval }) : t.recurrenceMonthlyLast;
+      }
+      return rec.interval > 1
+        ? fmt(t.recurrenceEveryNMonths, { n: rec.interval, day: rec.day })
+        : fmt(t.recurrenceMonthly, { day: rec.day });
+    case 'afterCompletion':
+      return rec.days === 1 ? t.recurrenceAfterOneDay : fmt(t.recurrenceAfterDays, { n: rec.days });
+    case 'timesPerWeek':
+      return t.recurrenceNone;
+  }
+}
+
+/** "Erledigt" or, for a recurring task, "Erledigt · nächste am 20.10.". */
+export function doneMessage(result: CompleteResult): string {
+  const day = result.followUp?.dueDay;
+  return day ? fmt(t.toastDoneNext, { date: formatDayShort(day) }) : t.toastDone;
+}
+
+const SCHEDULE_PRESETS: ReadonlySet<string> = new Set<RecurrencePreset>(['daily', 'weekdays', 'weekly', 'monthly']);
+
+/**
+ * Small sheet with the Wiederholung presets (radio chips) and, for "Tage nach Abschluss", the number of
+ * days (1–365). "Übernehmen" (or Enter in the number field) closes it and passes the patch to `apply`;
+ * nothing is applied when the selection did not change.
+ */
+function openRecurrenceSheet(task: Task, apply: (patch: Partial<Task>) => void): OlSheet {
+  const sheet = createSheet({ title: t.recurrenceTitle, fit: true });
+  const day = task.dueDay ?? today();
+  const current = presetOf(task.recurrence);
+  const currentText = recurrenceText(task.recurrence, task.recurrenceAnchor ?? task.dueDay);
+  // A weekly/monthly rule on another day than the due day is not what the preset would write now.
+  const own = current === 'custom' || ((current === 'weekly' || current === 'monthly')
+    && recurrenceText(presetRecurrence(current, day)) !== currentText);
+  const selected = own ? 'custom' : current;
+  const options: Array<{ value: RecurrencePreset | 'custom'; label: string }> = [
+    ...(own ? [{ value: 'custom' as const, label: currentText }] : []),
+    { value: 'none', label: t.recurrenceChipNone },
+    { value: 'daily', label: t.recurrenceDaily },
+    { value: 'weekdays', label: t.recurrenceWeekdays },
+    { value: 'weekly', label: recurrenceText(presetRecurrence('weekly', day)) },
+    { value: 'monthly', label: recurrenceText(presetRecurrence('monthly', day)) },
+    { value: 'afterCompletion', label: t.recurrenceChipAfter },
+  ];
+  const days = task.recurrence?.kind === 'afterCompletion' ? task.recurrence.days : 1;
+  render(
+    sheet.bodyEl,
+    h`<div class="ol-task-repeat">
+  <div class="ol-task-repeat__options" role="radiogroup" aria-label="${t.recurrenceOptionsAria}">${options.map((o) => h`<ol-chip kind="radio" value="${o.value}" label="${o.label}"></ol-chip>`)}</div>
+  <ol-input class="ol-task-repeat__days" type="number" inputmode="numeric" min="1" max="365" step="1" label="${t.recurrenceDaysLabel}" value="${String(days)}" hidden></ol-input>
+  <p class="ol-task-repeat__hint ol-body-s" hidden>${t.recurrenceStartsToday}</p>
+</div>`,
+  );
+  render(sheet.footerEl, h`<ol-button class="ol-task-repeat__apply" label="${t.recurrenceApply}"></ol-button>`);
+  const group = sheet.bodyEl.querySelector<HTMLElement>('.ol-task-repeat__options');
+  const daysInput = sheet.bodyEl.querySelector<OlInput>('.ol-task-repeat__days');
+  const hint = sheet.bodyEl.querySelector<HTMLElement>('.ol-task-repeat__hint');
+  if (!group || !daysInput || !hint) throw new Error('recurrence sheet: missing elements');
+  const chips = [...group.querySelectorAll<OlChip>('ol-chip')];
+  for (const chip of chips) chip.selected = chip.value === selected;
+  const value = (): string => chips.find((c) => c.selected)?.value ?? selected;
+  const sync = (): void => {
+    const v = value();
+    daysInput.hidden = v !== 'afterCompletion';
+    hint.hidden = task.dueDay !== undefined || !SCHEDULE_PRESETS.has(v);
+  };
+  const readDays = (): number | null => {
+    const raw = daysInput.value.trim();
+    const n = Number(raw);
+    if (raw === '' || !Number.isInteger(n) || n < 1 || n > 365) {
+      daysInput.setAttribute('error', t.recurrenceDaysInvalid);
+      daysInput.focusInput();
+      return null;
+    }
+    return n;
+  };
+  let done = false;
+  const submit = (): void => {
+    if (done) return;
+    const v = value();
+    if (v === 'custom') {
+      done = true;
+      sheet.close('action');
+      return;
+    }
+    const preset = v as RecurrencePreset;
+    const n = preset === 'afterCompletion' ? readDays() : 1;
+    if (n === null) return;
+    done = true;
+    sheet.close('action');
+    const rec = presetRecurrence(preset, day, n);
+    if (JSON.stringify(rec) === JSON.stringify(task.recurrence)) return;
+    const patch: Partial<Task> = { recurrence: rec };
+    if (!task.dueDay && SCHEDULE_PRESETS.has(preset)) {
+      patch.dueAt = isoAt(day);
+      patch.dueHasTime = 0;
+    }
+    apply(patch);
+  };
+  group.addEventListener('ol-change', sync);
+  daysInput.addEventListener('input', () => daysInput.removeAttribute('error'));
+  daysInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.isComposing) return;
+    event.preventDefault();
+    submit();
+  });
+  sheet.footerEl.querySelector('ol-button')?.addEventListener('click', submit);
+  sync();
+  sheet.open();
+  return sheet;
+}
+
+// ---------------------------------------------------------------------------
 // Task sheet
 
 class TaskSheet {
@@ -147,6 +294,11 @@ class TaskSheet {
   private addingReminder = false;
   private removing = new Set<Id>();
   private reminderSig: string | null = null;
+  private subtasks: Task[] = [];
+  private subtaskSig: string | null = null;
+  /** Subtask writes run one after another, so quickly added ones keep their order. */
+  private subtaskQueue: Promise<unknown> = Promise.resolve();
+  private subtaskBusy = new Set<Id>();
   private subs: Sub[] = [];
   private focusSub: Sub | null = null;
   private stopDay: (() => void) | null = null;
@@ -156,12 +308,19 @@ class TaskSheet {
   private title!: OlInput;
   private date!: OlInput;
   private time!: OlInput;
+  private repeatBtn!: HTMLButtonElement;
+  private repeatValue!: HTMLElement;
   private important!: OlChip;
   private urgent!: OlChip;
   private areaGroup!: HTMLElement;
   private moreBtn!: OlButton;
   private more!: HTMLElement;
   private description!: OlInput;
+  private subtaskSection!: HTMLElement;
+  private subtaskProgress!: HTMLElement;
+  private subtaskList!: HTMLElement;
+  private subtaskInput!: OlInput;
+  private subtaskAdd!: HTMLElement;
   private reminderList!: HTMLElement;
   private mode!: OlSegmented;
   private offset!: OlInput;
@@ -206,8 +365,7 @@ class TaskSheet {
     render(sheet.headerActionsEl, h`<ol-icon-button icon="ellipsis" label="${t.actionMore}"></ol-icon-button>`);
     // TODO(phase-3): project picker; projects cannot be created yet, so the field is disabled ("Kein
     // Projekt") and projectId stays null.
-    // TODO(phase-2): subtasks; only the section placeholder is rendered (no child tasks via parentId).
-    // TODO(phase-3): status chip and Verlauf. TODO(phase-2): Wiederholung.
+    // TODO(phase-3): status chip and Verlauf.
     render(
       sheet.bodyEl,
       h`<div class="ol-task-sheet">
@@ -219,6 +377,14 @@ class TaskSheet {
     <ol-input class="ol-task-sheet__date" type="date" label="${t.fieldDueDate}"></ol-input>
     <ol-input class="ol-task-sheet__time" type="time" label="${t.fieldDueTime}"></ol-input>
   </div>
+  <button type="button" class="ol-task-sheet__repeat" aria-haspopup="dialog">
+    <span class="ol-task-sheet__repeat-icon">${icon('repeat', 20)}</span>
+    <span class="ol-task-sheet__repeat-text">
+      <span class="ol-task-sheet__label">${t.recurrenceTitle}</span>
+      <span class="ol-task-sheet__repeat-value"></span>
+    </span>
+    <span class="ol-task-sheet__repeat-chevron">${icon('chevron-right', 20)}</span>
+  </button>
   <div class="ol-task-sheet__chips">
     <ol-chip class="ol-task-sheet__important" icon="flag" label="${t.flagImportant}" value="important"></ol-chip>
     <ol-chip class="ol-task-sheet__urgent" icon="alarm-clock" label="${t.flagUrgent}" value="urgent"></ol-chip>
@@ -231,9 +397,16 @@ class TaskSheet {
   <ol-button class="ol-task-sheet__more-btn" variant="ghost" icon="chevron-down" label="${t.actionShowMore}"></ol-button>
   <div class="ol-task-sheet__more" id="${moreId}" hidden>
     <ol-input class="ol-task-sheet__description" label="${t.fieldDescription}" multiline rows-max="8"></ol-input>
-    <section class="ol-task-sheet__section" aria-labelledby="${subtasksLabel}">
-      <h3 class="ol-label" id="${subtasksLabel}">${t.sectionSubtasks}</h3>
-      <p class="ol-task-sheet__placeholder ol-body-s">${t.subtasksPlaceholder}</p>
+    <section class="ol-task-sheet__section ol-task-sheet__subtasks" aria-labelledby="${subtasksLabel}">
+      <div class="ol-task-sheet__section-head">
+        <h3 class="ol-label" id="${subtasksLabel}">${t.sectionSubtasksTitle}</h3>
+        <span class="ol-task-sheet__progress ol-body-s ol-num" hidden></span>
+      </div>
+      <ul class="ol-task-sheet__subtask-list" hidden></ul>
+      <div class="ol-task-sheet__subtask-add">
+        <ol-input class="ol-task-sheet__subtask-input" placeholder="${t.subtaskAddLabel}" autocomplete="off" maxlength="500"></ol-input>
+        <ol-icon-button class="ol-task-sheet__subtask-add-btn" icon="plus" label="${t.subtaskAddLabel}"></ol-icon-button>
+      </div>
     </section>
     <section class="ol-task-sheet__section" aria-labelledby="${remindersLabel}">
       <h3 class="ol-label" id="${remindersLabel}">${t.sectionReminders}</h3>
@@ -271,12 +444,19 @@ class TaskSheet {
     this.title = q<OlInput>(body, '.ol-task-sheet__title');
     this.date = q<OlInput>(body, '.ol-task-sheet__date');
     this.time = q<OlInput>(body, '.ol-task-sheet__time');
+    this.repeatBtn = q<HTMLButtonElement>(body, '.ol-task-sheet__repeat');
+    this.repeatValue = q<HTMLElement>(body, '.ol-task-sheet__repeat-value');
     this.important = q<OlChip>(body, '.ol-task-sheet__important');
     this.urgent = q<OlChip>(body, '.ol-task-sheet__urgent');
     this.areaGroup = q<HTMLElement>(body, '.ol-task-sheet__areas');
     this.moreBtn = q<OlButton>(body, '.ol-task-sheet__more-btn');
     this.more = q<HTMLElement>(body, '.ol-task-sheet__more');
     this.description = q<OlInput>(body, '.ol-task-sheet__description');
+    this.subtaskSection = q<HTMLElement>(body, '.ol-task-sheet__subtasks');
+    this.subtaskProgress = q<HTMLElement>(body, '.ol-task-sheet__progress');
+    this.subtaskList = q<HTMLElement>(body, '.ol-task-sheet__subtask-list');
+    this.subtaskInput = q<OlInput>(body, '.ol-task-sheet__subtask-input');
+    this.subtaskAdd = q<HTMLElement>(body, '.ol-task-sheet__subtask-add-btn');
     this.reminderList = q<HTMLElement>(body, '.ol-task-sheet__reminders');
     this.mode = q<OlSegmented>(body, '.ol-task-sheet__mode');
     this.offset = q<OlInput>(body, '.ol-task-sheet__offset');
@@ -293,6 +473,8 @@ class TaskSheet {
     this.moreBtn.button?.setAttribute('aria-controls', moreId);
     this.moreBtn.button?.setAttribute('aria-expanded', 'false');
     this.focusBtn.button?.setAttribute('aria-describedby', hintId);
+    this.subtaskInput.field?.setAttribute('aria-label', t.subtaskAddLabel);
+    this.subtaskInput.field?.setAttribute('enterkeyhint', 'enter');
     this.offset.value = String(this.leadMinutes);
 
     sheet.headerActionsEl.querySelector('ol-icon-button')?.addEventListener('click', this.onMore);
@@ -303,11 +485,16 @@ class TaskSheet {
     this.title.addEventListener('focusout', this.onTitleBlur);
     this.date.addEventListener('ol-change', this.onDueChange);
     this.time.addEventListener('ol-change', this.onDueChange);
+    this.repeatBtn.addEventListener('click', this.onRepeat);
     this.important.addEventListener('ol-change', this.onFlagChange);
     this.urgent.addEventListener('ol-change', this.onFlagChange);
     this.areaGroup.addEventListener('ol-change', this.onAreaChange);
     this.moreBtn.addEventListener('click', this.onToggleDetent);
     this.description.addEventListener('ol-change', this.onDescriptionChange);
+    this.subtaskList.addEventListener('ol-change', this.onSubtaskCheck);
+    this.subtaskList.addEventListener('click', this.onSubtaskListClick);
+    this.subtaskInput.addEventListener('keydown', this.onSubtaskKeyDown);
+    this.subtaskAdd.addEventListener('click', this.onSubtaskAdd);
     this.reminderList.addEventListener('click', this.onReminderListClick);
     this.mode.addEventListener('ol-change', this.onModeChange);
     this.offset.addEventListener('input', () => this.offset.removeAttribute('error'));
@@ -336,6 +523,10 @@ class TaskSheet {
             this.sheet.close('action');
           }
         },
+        error: (err: unknown) => console.error(err),
+      }),
+      subtasks$(this.taskId).subscribe({
+        next: (list) => this.renderSubtasks(list),
         error: (err: unknown) => console.error(err),
       }),
       areas$(true).subscribe({
@@ -390,6 +581,11 @@ class TaskSheet {
     setIfIdle(this.date, day);
     setIfIdle(this.time, timed && task.dueAt ? timeOfIso(task.dueAt) : '');
     this.time.toggleAttribute('disabled', day === '');
+    // Subtasks never recur and have no subtasks of their own.
+    const isSubtask = task.parentId !== null && task.parentId !== undefined;
+    this.repeatBtn.hidden = isSubtask;
+    this.subtaskSection.hidden = isSubtask;
+    this.repeatValue.textContent = recurrenceText(task.recurrence, task.recurrenceAnchor ?? task.dueDay);
 
     if (this.important.selected !== (task.important === 1)) this.important.selected = task.important === 1;
     if (this.urgent.selected !== (task.urgent === 1)) this.urgent.selected = task.urgent === 1;
@@ -487,6 +683,53 @@ class TaskSheet {
     (next ?? this.addBtn).focus();
   }
 
+  /**
+   * Subtask rows: rebuilt only when ids or titles change (focus stays on the same row and control, or
+   * moves to the next row / the input when its row went away); check states are patched in place.
+   */
+  private renderSubtasks(list: Task[]): void {
+    this.subtasks = list;
+    const done = list.filter((s) => s.status === 'done').length;
+    this.subtaskProgress.hidden = list.length === 0;
+    this.subtaskProgress.textContent = fmt(t.subtasksProgress, { done, total: list.length });
+    const ul = this.subtaskList;
+    const signature = JSON.stringify(list.map((s) => [s.id, s.title]));
+    if (signature !== this.subtaskSig) {
+      this.subtaskSig = signature;
+      const active = document.activeElement;
+      const focusedRow = active instanceof HTMLElement && ul.contains(active) ? active.closest<HTMLElement>('[data-subtask]') : null;
+      const focusedId = focusedRow?.dataset['subtask'] ?? null;
+      const focusedRole = active instanceof HTMLElement && active.closest('ol-icon-button') ? 'remove' : 'check';
+      const before = [...ul.querySelectorAll<HTMLElement>('[data-subtask]')].map((el) => el.dataset['subtask']);
+      const base = ul.id || (ul.id = uid('task-subtasks-list'));
+      render(
+        ul,
+        h`${list.map((sub, index) => h`<li class="ol-task-sheet__subtask" data-subtask="${sub.id}">
+  <ol-checkbox class="ol-task-sheet__subtask-check" label="${sub.title}"></ol-checkbox>
+  <span class="ol-task-sheet__subtask-title" id="${`${base}-s${index}`}">${sub.title}</span>
+  <ol-icon-button class="ol-task-sheet__subtask-remove" icon="x" label="${fmt(t.subtaskRemoveAria, { title: sub.title })}"></ol-icon-button>
+</li>`)}`,
+      );
+      ul.hidden = list.length === 0;
+      if (focusedId !== null) {
+        const rows = [...ul.querySelectorAll<HTMLElement>('[data-subtask]')];
+        const index = before.indexOf(focusedId);
+        const row = rows.find((r) => r.dataset['subtask'] === focusedId) ?? rows[Math.min(Math.max(index, 0), rows.length - 1)];
+        const target = row?.querySelector<HTMLElement>(focusedRole === 'remove' ? 'ol-icon-button' : 'ol-checkbox');
+        if (target) target.focus();
+        else this.subtaskInput.focusInput();
+      }
+    }
+    for (const row of ul.querySelectorAll<HTMLElement>('[data-subtask]')) {
+      const sub = list.find((s) => s.id === row.dataset['subtask']);
+      if (!sub || this.subtaskBusy.has(sub.id)) continue;
+      const checked = sub.status === 'done';
+      const box = row.querySelector<OlCheckbox>('ol-checkbox');
+      if (box && box.checked !== checked) box.checked = checked;
+      row.toggleAttribute('data-done', checked);
+    }
+  }
+
   // --- Saving ---
 
   private save(patch: Partial<Task>): void {
@@ -528,10 +771,10 @@ class TaskSheet {
       return;
     }
     completeTask(id).then(
-      () => {
+      (result) => {
         // Unchecked again while the write ran: no "Erledigt" toast for an open task.
         if (!this.check.checked) return;
-        showToast(t.toastDone, { action: { label: t.actionUndo, onAction: () => void reopenTask(id).catch(failed) } });
+        showToast(doneMessage(result), { action: { label: t.actionUndo, onAction: () => void reopenTask(id).catch(failed) } });
       },
       failed,
     );
@@ -574,6 +817,11 @@ class TaskSheet {
     this.save({ dueAt: isoAt(day, hhmm || undefined), dueHasTime: hhmm ? 1 : 0 });
   };
 
+  private readonly onRepeat = (): void => {
+    if (!this.task || this.gone) return;
+    openRecurrenceSheet(this.task, (patch) => this.save(patch));
+  };
+
   private readonly onFlagChange = (event: Event): void => {
     const detail = detailOf<ChipChange>(event);
     if (!detail) return;
@@ -598,6 +846,82 @@ class TaskSheet {
 
   private readonly onDetentChange = (event: Event): void => {
     if (event.target === this.sheet) this.syncMore();
+  };
+
+  private subtaskTitle(): string {
+    return this.subtaskInput.value.replace(/\s+/gu, ' ').trim();
+  }
+
+  /** Adds the typed subtask; the input is cleared at once and keeps focus for the next one. */
+  private addSubtask(): void {
+    const title = this.subtaskTitle();
+    if (!title || this.gone) return;
+    this.subtaskInput.value = '';
+    const parentId = this.taskId;
+    this.subtaskQueue = this.subtaskQueue
+      .then(() => createSubtask(parentId, title))
+      .catch((err: unknown) => {
+        // Nothing typed since: the text comes back so it is not lost.
+        if (this.subtaskInput.value === '') this.subtaskInput.value = title;
+        failed(err);
+      });
+  }
+
+  private readonly onSubtaskKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' || event.isComposing) return;
+    event.preventDefault();
+    this.addSubtask();
+  };
+
+  private readonly onSubtaskAdd = (): void => {
+    if (this.subtaskTitle() === '') {
+      this.subtaskInput.focusInput();
+      return;
+    }
+    this.addSubtask();
+    this.subtaskInput.focusInput();
+  };
+
+  private readonly onSubtaskCheck = (event: Event): void => {
+    const box = event.target instanceof Element ? event.target.closest<OlCheckbox>('ol-checkbox') : null;
+    const id = box?.closest<HTMLElement>('[data-subtask]')?.dataset['subtask'];
+    if (!box || !id) return;
+    const checked = detailOf<CheckboxChange>(event)?.checked ?? box.checked;
+    box.closest('li')?.toggleAttribute('data-done', checked);
+    this.subtaskBusy.add(id);
+    this.subtaskQueue = this.subtaskQueue
+      .then(async () => {
+        if (checked) await completeTask(id);
+        else await reopenTask(id);
+      })
+      .catch((err: unknown) => {
+        box.checked = !checked;
+        box.closest('li')?.toggleAttribute('data-done', !checked);
+        failed(err);
+      })
+      .finally(() => {
+        this.subtaskBusy.delete(id);
+        this.renderSubtasks(this.subtasks);
+      });
+  };
+
+  private readonly onSubtaskListClick = (event: MouseEvent): void => {
+    if (!(event.target instanceof Element)) return;
+    const row = event.target.closest<HTMLElement>('[data-subtask]');
+    const id = row?.dataset['subtask'];
+    if (!row || !id) return;
+    // The title is part of the row's target: a tap on it toggles the checkbox.
+    if (event.target.closest('.ol-task-sheet__subtask-title')) {
+      row.querySelector<OlCheckbox>('ol-checkbox')?.click();
+      return;
+    }
+    if (!event.target.closest('ol-icon-button') || this.subtaskBusy.has(id)) return;
+    this.subtaskBusy.add(id);
+    deleteTask(id).then((deleted) => {
+      showToast(t.toastSubtaskRemoved, {
+        action: { label: t.actionUndo, onAction: () => void restoreTask(deleted).catch(failed) },
+      });
+    }, failed).finally(() => this.subtaskBusy.delete(id));
   };
 
   private readonly onModeChange = (event: Event): void => {
@@ -705,7 +1029,10 @@ class TaskSheet {
 
   private async confirmDelete(): Promise<void> {
     const confirmed = await confirmDialog({
-      title: t.actionConfirmDelete, body: t.confirmDeleteTask, confirmLabel: t.actionDelete, destructive: true,
+      title: t.actionConfirmDelete,
+      body: this.subtasks.length > 0 ? t.confirmDeleteTaskWithSubtasks : t.confirmDeleteTask,
+      confirmLabel: t.actionDelete,
+      destructive: true,
     });
     if (!confirmed || this.gone) return;
     this.gone = true;
