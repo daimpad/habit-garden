@@ -6,6 +6,7 @@
 //   like a routine (seed without tasks, bloom when everything is done).
 import type { Day, Id, Stage, Task } from '../model.js';
 import { compareDue } from '../repo/tasks.js';
+import { normalizeForSearch } from './search.js';
 import { addDays, startOfWeek } from '../util/date.js';
 
 export type ListGroupKey = 'overdue' | 'today' | 'week' | 'later' | 'noDate';
@@ -55,4 +56,32 @@ export function projectStage(done: number, total: number): Stage {
   if (share >= 0.5) return 3;
   if (share >= 0.25) return 2;
   return 1;
+}
+
+// --- Search (A.3 🔍): ranking and filter chips ---
+
+export type FilterGroup = 'status' | 'flag' | 'date';
+
+/** Rank of a task for `q` (already normalised): 0 title, 1 tag, 2 description, -1 no match; '' matches all. */
+export function searchRank(task: Pick<Task, 'title' | 'description' | 'tagPaths'>, q: string): number {
+  if (q === '') return 0;
+  if (normalizeForSearch(task.title).includes(q)) return 0;
+  if ((task.tagPaths ?? []).some((p) => normalizeForSearch(p).includes(q))) return 1;
+  if (task.description && normalizeForSearch(task.description).includes(q)) return 2;
+  return -1;
+}
+
+/**
+ * Whether a task passes the selected chips, given as "group:value" (status:open|doing|done,
+ * flag:important|urgent, date:overdue|today|week|later|noDate): OR within a group, AND across groups.
+ */
+export function passesFilters(task: Task, selected: ReadonlySet<string>, day: Day): boolean {
+  const of = (group: FilterGroup): string[] => [...selected].filter((k) => k.startsWith(`${group}:`)).map((k) => k.slice(group.length + 1));
+  const status = of('status');
+  if (status.length > 0 && !status.includes(task.status)) return false;
+  const flags = of('flag');
+  if (flags.length > 0 && !flags.some((f) => (f === 'important' ? task.important === 1 : task.urgent === 1))) return false;
+  const dates = of('date');
+  if (dates.length > 0 && !dates.includes(listGroupOf(task, day))) return false;
+  return true;
 }

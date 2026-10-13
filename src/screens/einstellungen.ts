@@ -18,7 +18,11 @@
 //   data-motion and the FAB side from the profile.
 // - Bereiche: rename inline, archive/reactivate (the last active area stays active), create with a flower
 //   choice; the tint comes from DEFAULT_AREAS for that flower, GENERIC_TINT for 'generic'.
-//   TODO(phase-3): reorder areas (A.3).
+//   Reorder (A.3): "Reihenfolge ändern" switches the rows from rename/archive to up/down buttons (48 px,
+//   keyboard operable, disabled at the ends; "Fertig" switches back). Each move is one moveAreaBy write
+//   (computed in the transaction, so quick repeated taps are not lost); focus stays on the moved row's
+//   button (the other direction when it reached an end) and a polite live region announces the new
+//   position. The order covers archived areas too, as listed here.
 // - Info (S39): version, build hash, licences, privacy sentence, provenance of the plant geometry.
 // TODO(phase-4): Markdown export of the notes and ICS export (A.3 Daten, W6) next to the JSON export.
 import type { Observable, Subscription } from 'dexie';
@@ -42,7 +46,7 @@ import { historySettled } from '../components/ol-sheet.js';
 import { showToast } from '../components/ol-toast.js';
 import { flowerName, fmt, t } from '../i18n/de.js';
 import { DEFAULT_AREAS, GENERIC_TINT, type Area, type FlowerId, type Id, type Profile } from '../model.js';
-import { areas$, createArea, LastAreaError, setAreaArchived, updateArea } from '../repo/areas.js';
+import { areas$, createArea, LastAreaError, moveAreaBy, setAreaArchived, updateArea } from '../repo/areas.js';
 import { profile$, updateSettings } from '../repo/profile.js';
 import { refresh, type Route } from '../router.js';
 import { notificationPermission, requestNotificationPermission } from '../services/reminders.js';
@@ -170,6 +174,8 @@ interface Els {
   dayStart: HTMLSelectElement;
   evening: HTMLSelectElement;
   areaList: HTMLElement;
+  reorderBtn: OlButton;
+  reorderStatus: HTMLElement;
   flowers: HTMLElement;
   newName: OlInput;
   createBtn: OlButton;
@@ -188,6 +194,9 @@ class SettingsScreen {
   private scrolled = false;
   private areas: Area[] = [];
   private editing: Id | null = null;
+  private reordering = false;
+  /** Row and direction whose button keeps focus once a move has been rendered. */
+  private moveFocus: { id: Id; dir: 'up' | 'down' } | null = null;
   private newFlower: FlowerId = 'generic';
   private importing = false;
 
@@ -338,6 +347,11 @@ class SettingsScreen {
       </div>`;
     const bereiche = h`
       <ul class="ol-settings__areas"></ul>
+      <div class="ol-settings__item ol-settings__reorder">
+        <ol-button class="ol-settings__reorder-btn" variant="tonal" size="sm" label="${t.areaReorder}" aria-describedby="settings-reorder-hint"></ol-button>
+        <p class="ol-settings__hint" id="settings-reorder-hint">${t.areaReorderHint}</p>
+        <p class="ol-visually-hidden ol-settings__reorder-status" role="status" aria-live="polite"></p>
+      </div>
       <div class="ol-settings__item ol-settings__create" role="group" aria-label="${t.areaAdd}">
         <span class="ol-settings__label" id="settings-flower-label">${t.areaFlower}</span>
         <div class="ol-settings__flowers" role="radiogroup" aria-labelledby="settings-flower-label">
@@ -399,6 +413,8 @@ class SettingsScreen {
       dayStart: req<HTMLSelectElement>(v, '.ol-settings__day-start'),
       evening: req<HTMLSelectElement>(v, '.ol-settings__evening'),
       areaList: req<HTMLElement>(v, '.ol-settings__areas'),
+      reorderBtn: req<OlButton>(v, '.ol-settings__reorder-btn'),
+      reorderStatus: req<HTMLElement>(v, '.ol-settings__reorder-status'),
       flowers: req<HTMLElement>(v, '.ol-settings__flowers'),
       newName: req<OlInput>(v, '.ol-settings__new-name'),
       createBtn: req<OlButton>(v, '.ol-settings__create-btn'),
@@ -451,6 +467,7 @@ class SettingsScreen {
     els.leftText.addEventListener('click', () => els.left.click());
 
     els.areaList.addEventListener('click', this.onAreaClick);
+    els.reorderBtn.addEventListener('click', () => this.toggleReorder());
     els.areaList.addEventListener('keydown', this.onAreaKeyDown);
     els.areaList.addEventListener('input', (event) => {
       const input = event.target instanceof Element ? event.target.closest('.ol-settings__area-input') : null;
@@ -696,10 +713,47 @@ class SettingsScreen {
       }
       const at = list.children[i] ?? null;
       if (at !== row) list.insertBefore(row, at);
-      this.updateAreaRow(row, area);
+      this.updateAreaRow(row, area, i, this.areas.length);
     });
-    if (active instanceof HTMLElement && active.isConnected && document.activeElement !== active && list.contains(active)) {
+    const current = document.activeElement;
+    const focusInList = current === null || current === document.body || list.contains(current);
+    const focus = this.reordering && focusInList ? this.moveFocus : null;
+    const moved = focus ? list.querySelector<HTMLElement>(`.ol-settings__area[data-id="${CSS.escape(focus.id)}"]`) : null;
+    if (focus && moved) {
+      // The used button, or the other direction once the row reached an end (disabled buttons drop focus).
+      const own = moved.querySelector<HTMLElement>(`.ol-settings__area-${focus.dir}`);
+      const other = moved.querySelector<HTMLElement>(`.ol-settings__area-${focus.dir === 'up' ? 'down' : 'up'}`);
+      const target = own && !own.hasAttribute('disabled') ? own : other;
+      if (target && !target.contains(document.activeElement)) {
+        target.focus({ preventScroll: true });
+        target.scrollIntoView({ block: 'nearest' });
+      }
+    } else if (active instanceof HTMLElement && active.isConnected && document.activeElement !== active && list.contains(active)) {
       active.focus({ preventScroll: true });
+    }
+  }
+
+  private toggleReorder(): void {
+    if (this.editing) {
+      const row = [...this.els.areaList.children].find((r) => r instanceof HTMLElement && r.dataset['id'] === this.editing);
+      if (row instanceof HTMLElement) this.endRename(row, false);
+    }
+    this.reordering = !this.reordering;
+    this.moveFocus = null;
+    this.els.areaList.toggleAttribute('data-reorder', this.reordering);
+    setAttr(this.els.reorderBtn, 'label', this.reordering ? t.areaReorderDone : t.areaReorder);
+    setText(this.els.reorderStatus, '');
+    this.renderAreas();
+  }
+
+  private async moveArea(area: Area, dir: 'up' | 'down'): Promise<void> {
+    this.moveFocus = { id: area.id, dir };
+    try {
+      const { index, total } = await moveAreaBy(area.id, dir === 'up' ? -1 : 1);
+      if (!this.destroyed) setText(this.els.reorderStatus, fmt(t.areaMovedAnnounce, { name: area.name, pos: index + 1, total }));
+    } catch (err) {
+      console.error(err);
+      showToast(t.toastError);
     }
   }
 
@@ -723,14 +777,30 @@ class SettingsScreen {
         </div>
       </div>
       <div class="ol-settings__area-actions">
+        <ol-icon-button class="ol-settings__area-up" icon="chevron-up" label="" hidden></ol-icon-button>
+        <ol-icon-button class="ol-settings__area-down" icon="chevron-down" label="" hidden></ol-icon-button>
         <ol-icon-button class="ol-settings__area-rename" icon="pencil" label=""></ol-icon-button>
         <ol-icon-button class="ol-settings__area-archive" icon="archive" label=""></ol-icon-button>
       </div>`);
     return li;
   }
 
-  private updateAreaRow(row: HTMLElement, area: Area): void {
+  private updateAreaRow(row: HTMLElement, area: Area, index: number, total: number): void {
     setVar(row, '--tint', area.tint);
+    const up = row.querySelector<HTMLElement>('.ol-settings__area-up');
+    const down = row.querySelector<HTMLElement>('.ol-settings__area-down');
+    const rename = row.querySelector<HTMLElement>('.ol-settings__area-rename');
+    const archive = row.querySelector<HTMLElement>('.ol-settings__area-archive');
+    for (const el of [up, down]) if (el) el.hidden = !this.reordering;
+    for (const el of [rename, archive]) if (el) el.hidden = this.reordering;
+    if (up) {
+      setAttr(up, 'label', fmt(t.areaMoveUpAria, { name: area.name }));
+      up.toggleAttribute('disabled', index === 0);
+    }
+    if (down) {
+      setAttr(down, 'label', fmt(t.areaMoveDownAria, { name: area.name }));
+      down.toggleAttribute('disabled', index === total - 1);
+    }
     row.toggleAttribute('data-archived', area.archived === 1);
     const flower = row.querySelector('.ol-settings__area-flower');
     if (flower) setAttr(flower, 'flower', area.flower);
@@ -738,9 +808,7 @@ class SettingsScreen {
     if (name) setText(name, area.name);
     const state = row.querySelector<HTMLElement>('.ol-settings__area-state');
     if (state) state.hidden = area.archived === 0;
-    const rename = row.querySelector('.ol-settings__area-rename');
     if (rename) setAttr(rename, 'label', fmt(t.areaRenameAria, { name: area.name }));
-    const archive = row.querySelector('.ol-settings__area-archive');
     if (archive) {
       setAttr(archive, 'icon', area.archived === 1 ? 'undo-2' : 'archive');
       setAttr(archive, 'label', fmt(area.archived === 1 ? t.areaUnarchiveAria : t.areaArchiveAria, { name: area.name }));
@@ -757,7 +825,9 @@ class SettingsScreen {
     const target = event.target instanceof Element ? event.target : null;
     const hit = this.rowOf(target);
     if (!target || !hit) return;
-    if (target.closest('.ol-settings__area-rename')) this.startRename(hit.row, hit.area);
+    if (target.closest('.ol-settings__area-up')) void this.moveArea(hit.area, 'up');
+    else if (target.closest('.ol-settings__area-down')) void this.moveArea(hit.area, 'down');
+    else if (target.closest('.ol-settings__area-rename')) this.startRename(hit.row, hit.area);
     else if (target.closest('.ol-settings__area-archive')) void this.toggleArchived(hit.area);
     else if (target.closest('.ol-settings__area-save')) void this.saveRename(hit.row, hit.area);
     else if (target.closest('.ol-settings__area-cancel')) this.endRename(hit.row, true);

@@ -64,6 +64,7 @@ import {
   addDays, currentHour, formatDayFull, formatDayLong, formatDayShort, formatTime, formatWeekdayLong, now, nowIso, today,
 } from '../util/date.js';
 import { emit, h, HAPTIC, icon, motionReduced, raw, render, setVar, vibrate, type SafeHtml } from '../util/dom.js';
+import { attachSwipe } from '../util/swipe.js';
 import { exportWithNotice } from './export-flow.js';
 import {
   applySky, dayPhase, greetingLine, greetingMarkup, hillsMarkup, liftButterfly, meadowPlant, skyMarkup, sunPosition, syncMeadow,
@@ -1020,6 +1021,13 @@ class HeuteScreen {
       if (row) this.openTask(row);
     });
     this.detach.push(attachLongPress(els.focusList, (row) => this.openTask(row)));
+    // Swipe left takes a task out of today's focus (A.3 Fokus); the ⋯ sheet offers the same.
+    this.detach.push(attachSwipe(els.focusList, {
+      rowSelector: 'li[data-id]',
+      actionFor: (_row, direction) => (direction === 'left' ? { label: t.swipeUnfocus, icon: 'x', tone: 'neutral' } : null),
+      onSwipe: (row) => void this.unfocus(row),
+      renderLayer: (layer, action) => render(layer, h`<span class="ol-swipe-layer__icon">${icon(action.icon, 20)}</span><span class="ol-swipe-layer__label">${action.label}</span>`),
+    }));
 
     // Routinen
     els.routines.addEventListener('ol-change', (event) => {
@@ -1235,6 +1243,18 @@ class HeuteScreen {
   }
 
   // --- Fokus (H1, H2, D.1, decision 2) ---
+
+  private async unfocus(row: HTMLElement): Promise<void> {
+    const id = row.dataset['id'];
+    if (!id) return;
+    const day = this.day;
+    try {
+      await removeFromFocus(day, id);
+      showToast(t.toastFocusRemoved, { action: { label: t.actionUndo, onAction: () => void addToFocus(day, id).catch(() => showToast(t.toastError)) } });
+    } catch {
+      showToast(t.toastError);
+    }
+  }
 
   private createTaskRow(): HTMLElement {
     const li = document.createElement('li');

@@ -22,6 +22,7 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 - **Schnell notieren.** Beim Anlegen genügt eine Zeile: „Steuer machen @finanzen morgen ! #geld 14:00“ wird zu einer wichtigen Aufgabe im Bereich Finanzen, morgen um 14 Uhr.
 - **Den Abend nutzen.** Am Abend erscheint eine Karte „Morgen vorbereiten“. Dort wählst du die Aufgaben für morgen, und am Morgen stehen sie schon im Fokus.
 - **Planen in Projekten.** Unter „Planung“ wählst du oben einen Bereich und siehst seine Projekte. Bei jedem wächst eine kleine Pflanze mit dem Fortschritt. Die Liste ordnet alle offenen Aufgaben nach überfällig, heute, diese Woche und später; in der Inbox sammelt sich, was noch kein Projekt und kein Datum hat.
+- **Aufgaben verschieben.** Auf einer Tafel mit den Spalten Offen, In Arbeit und Erledigt oder in einer Matrix nach wichtig und dringend ziehst du Aufgaben mit dem Finger an ihren Platz. In Listen genügt ein Wischen: nach rechts ist erledigt, nach links verschiebst du auf morgen oder das Wochenende. Eine Suche mit Filtern findet jede Aufgabe, und ein Projekt lässt sich als Kalenderdatei mitnehmen.
 - **Stimmung und Journal.** Mit einem Tipp hältst du fest, wie es dir heute geht, und kannst einen kurzen Gedanken dazuschreiben.
 
 <p>
@@ -31,7 +32,6 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 
 ## Was noch kommt
 
-- **Mehr Planung:** eine Tafel mit Spalten (Offen, In Arbeit, Erledigt) und eine Matrix nach wichtig und dringend, in denen du Aufgaben verschiebst, dazu Suche und Kalenderexport.
 - **Wissen:** Notizen mit Schlagworten und einer Suche, damit Gedanken nicht verloren gehen.
 - **Rückblick und Kalender:** ein Blick zurück auf die vergangenen Wochen und ein dunkles Erscheinungsbild für den Abend.
 
