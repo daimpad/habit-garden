@@ -835,9 +835,10 @@ const FIG_BODY = 'M16 14.5C23.5 14.5 27.5 21 27.5 27.5C27.5 34 22.5 37 16 37C9.5
  * A person as a small sprout figure (Keimi's family): round body in the person's colour, two leaves, a
  * simple face. In rhythm the leaves stand up and it smiles; overdue the leaves droop and the mouth is
  * level (shape, not only colour). Sleeping eyes at night (.i-night / .i-day like the island). viewBox
- * 0 0 32 40, feet at (16, 38); aria-hidden (the button carries the name).
+ * 0 0 32 40, feet at (16, 38); aria-hidden (the button carries the name). Lists ("Melde dich bei", the
+ * people sheet) pass their own class (CSS keeps the eyes open there) and a width.
  */
-export function sproutFigure(color: string, state: 'fresh' | 'due'): string {
+export function sproutFigure(color: string, state: 'fresh' | 'due', opts: { className?: string; width?: number } = {}): string {
   const tint = safeTint(color);
   const body = lighten(tint, 0.3);
   const line = darken(tint, 0.45);
@@ -845,7 +846,9 @@ export function sproutFigure(color: string, state: 'fresh' | 'due'): string {
     ? '<path class="f-leaf" d="M16 11.5C13 6.5 8.5 5 5 7C7.5 10.5 11.5 12 16 11.5Z"/><path class="f-leaf" d="M16 11C18 5 23 3 27.5 5C25.5 9.5 21 11.5 16 11Z"/>'
     : '<path class="f-leaf" d="M16 12C12 11 8 13 6.5 17C10.5 17 14 15 16 12Z"/><path class="f-leaf" d="M16 12C20 11 24 13 25.5 17C21.5 17 18 15 16 12Z"/>';
   const mouth = state === 'fresh' ? 'M14 28.6q2 2 4 0' : 'M14.3 29.3h3.4';
-  return '<svg class="ol-isl__fig-svg" viewBox="0 0 32 40" width="32" height="40" aria-hidden="true" focusable="false">'
+  const cls = opts.className && /^[a-z_ -]+$/iu.test(opts.className) ? opts.className : 'ol-isl__fig-svg';
+  const w = opts.width !== undefined && opts.width > 0 ? opts.width : 32;
+  return `<svg class="${cls}" viewBox="0 0 32 40" width="${f(w)}" height="${f((w * 40) / 32)}" aria-hidden="true" focusable="false">`
     + '<ellipse class="f-sh" cx="16" cy="38.2" rx="10" ry="2"/>'
     + `<g class="f-art"><g class="f-leaves"><path class="f-stem" d="M16 15.5V11.5" stroke-width="1.5" stroke-linecap="round"/>${leaves}</g>`
     + `<ellipse cx="11.5" cy="36.6" rx="3.3" ry="2" fill="${line}"/><ellipse cx="20.5" cy="36.6" rx="3.3" ry="2" fill="${line}"/>`

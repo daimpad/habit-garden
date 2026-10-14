@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { Contact, ContactKind, ContactLog, Day } from '../model.js';
 import {
-  BUTTERFLY_COLORS, butterflyColor, contactKindLabel, contactStatus, contactStatuses, lastContactText, rhythmLabel,
+  PERSON_COLORS, personColor, contactKindLabel, contactStatus, contactStatuses, lastContactText, rhythmLabel,
   suggestions,
 } from '../services/contacts.js';
 import { ImportError, validateExport } from '../services/transfer.js';
@@ -172,15 +172,15 @@ describe('texts', () => {
   });
 });
 
-describe('butterflyColor', () => {
+describe('personColor', () => {
   test('stable per id and from the palette', () => {
     const p = person('5f0c0a7e-1111-4222-8333-944455556666', 7);
-    assert.equal(butterflyColor(p), butterflyColor({ ...p, name: 'Other' }));
-    assert.ok(BUTTERFLY_COLORS.includes(butterflyColor(p)));
+    assert.equal(personColor(p), personColor({ ...p, name: 'Other' }));
+    assert.ok(PERSON_COLORS.includes(personColor(p)));
   });
 
   test('spreads over the palette', () => {
-    const colors = new Set(Array.from({ length: 60 }, (_, i) => butterflyColor(person(`id-${i}`, 7))));
+    const colors = new Set(Array.from({ length: 60 }, (_, i) => personColor(person(`id-${i}`, 7))));
     assert.ok(colors.size >= 4);
   });
 });

@@ -15,7 +15,9 @@
 //   "Alle Personen"); in rhythm close together in the grove, overdue a little apart, paler and with
 //   drooping leaves. Each figure is one button (opens the person) whose pill "Lena · 80 %" is part of it.
 //   Pills show in the balance view, and in the garden view when there is room (stage ≥ 560 px) or at most
-//   three people; and only when all of them find a spot near their figures (all or none). A figure hops
+//   three people; and only when all of them find a spot near their figures (all or none). When the full
+//   pills ("Lena · 80 %") do not all fit, every pill shrinks to its number ("80 %", data-short; decision of
+//   14.10.2026), so each person keeps a number; the name stays in the figure's label and sheet. A figure hops
 //   when the person is contacted (CSS; not under reduced motion, where the move to the group and the new
 //   percent show the change).
 // - Labels are laid out after every change and on resize (services/island layoutLabels, measured in
@@ -301,8 +303,10 @@ function pillMarkup(name: string, pct: string): SafeHtml {
 
 /** "Lena · 80 %": the name may be cut with an ellipsis, the percent never. */
 function personPillMarkup(name: string, pct: string): SafeHtml {
-  const [before = '', after = ''] = t.islandPersonPill.split('{name}');
-  return h`<span class="ol-isl__dot" aria-hidden="true"></span>${before}<span class="ol-isl__pill-name">${name}</span><span class="ol-isl__pill-pct">${fmt(after, { pct })}</span>`;
+  // "{name} · {pct}": name, separator and number in their own spans, so the short form can hide the first two.
+  const [before = '', rest = ''] = t.islandPersonPill.split('{name}');
+  const [sep = '', after = ''] = rest.split('{pct}');
+  return h`<span class="ol-isl__dot" aria-hidden="true"></span><span class="ol-isl__pill-name">${before}${name}</span><span class="ol-isl__pill-sep">${sep}</span><span class="ol-isl__pill-pct">${pct}${after}</span>`;
 }
 
 /** Box of `el` relative to `origin` (both measured on screen). */
@@ -653,21 +657,34 @@ export class Island {
     const peoplePills = showPeoplePills(this.mode, figures.length, W >= ROOMY_PX);
     // In slot order (from the bench outwards), the order the slots were laid out for.
     const bySlot = [...figures].sort((a, b) => Number(a.li.dataset['slot'] ?? 0) - Number(b.li.dataset['slot'] ?? 0));
-    for (const f of bySlot) {
-      if (!f.pill || !f.box) continue;
-      f.pill.toggleAttribute('data-off', !peoplePills);
-      if (!peoplePills) continue;
+    const personRequests = (): LabelRequest[] => bySlot.flatMap((f) => {
+      if (!f.pill || !f.box) return [];
       const w = f.pill.offsetWidth;
       const hh = f.pill.offsetHeight;
       const { x, y, w: fw, h: fh } = f.box;
-      requests.push({
+      return [{
         id: `f:${f.li.dataset['id'] ?? ''}`, cx: x + fw / 2, cy: y - hh / 2 - 2, w, h: hh, reach: REACH_PERSON, required: false,
         // Below, right and left of the figure when the space above is taken.
         alternatives: [[x + fw / 2, y + fh + hh / 2 + 2], [x + fw + w / 2 + 2, y + fh / 2], [x - w / 2 - 2, y + fh / 2]],
-      });
+      }];
+    });
+    for (const f of figures) {
+      // Measure in the full form and invisible; the result decides below.
+      f.pill?.toggleAttribute('data-off', true);
+      f.pill?.toggleAttribute('data-short', false);
     }
-    const result = layoutLabels(requests, obstacles, { x: 4, y: 2, w: W - 8, h: H - 4 });
-
+    const bounds = { x: 4, y: 2, w: W - 8, h: H - 4 };
+    const fits = (r: Map<string, Box | null>): boolean => figures.every((f) => !f.pill || !f.box || r.get(`f:${f.li.dataset['id'] ?? ''}`));
+    let result = layoutLabels(peoplePills ? [...requests, ...personRequests()] : requests, obstacles, bounds);
+    // All or none: a person without a number next to the others would read as missing data. If the full
+    // pills do not all fit, try the short ones ("80 %") before hiding them.
+    let short = false;
+    if (peoplePills && !fits(result)) {
+      short = true;
+      for (const f of figures) f.pill?.toggleAttribute('data-short', true);
+      result = layoutLabels([...requests, ...personRequests()], obstacles, bounds);
+    }
+    const showPeople = peoplePills && fits(result);
     for (const el of pillEls) {
       const box = result.get(`p:${el.dataset['place'] ?? ''}`);
       if (box) {
@@ -680,13 +697,12 @@ export class Island {
       setVar(this.total, '--x', ((totalBox.x + totalBox.w / 2) / W).toFixed(4));
       setVar(this.total, '--y', ((totalBox.y + totalBox.h / 2) / H).toFixed(4));
     }
-    // All or none: a person without a number next to the others would read as missing data.
-    const allFit = figures.every((f) => !f.pill || !f.box || result.get(`f:${f.li.dataset['id'] ?? ''}`));
     for (const f of figures) {
-      if (!f.pill || !f.box || !f.button || !peoplePills) continue;
+      if (!f.pill || !f.box || !f.button) continue;
       const box = result.get(`f:${f.li.dataset['id'] ?? ''}`);
-      f.pill.toggleAttribute('data-off', !box || !allFit);
-      if (!box || !allFit) continue;
+      f.pill.toggleAttribute('data-off', !box || !showPeople);
+      f.pill.toggleAttribute('data-short', short && showPeople);
+      if (!box || !showPeople) continue;
       // The pill sits inside the figure button: offsets from the button's top-left corner.
       setVar(f.pill, '--dx', `${(box.x + box.w / 2 - f.box.x).toFixed(1)}px`);
       setVar(f.pill, '--dy', `${(box.y + box.h / 2 - f.box.y).toFixed(1)}px`);

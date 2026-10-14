@@ -133,8 +133,8 @@ export function contactKindLabel(kind: ContactKind): string {
   return KIND_LABELS[kind];
 }
 
-/** Butterfly wing colours: a warm palette next to the app tokens (sun, clay, area tints). */
-export const BUTTERFLY_COLORS: readonly string[] = ['#E8963E', '#C96A5A', '#8C6FB0', '#5B7FB5', '#D8B24A', '#E9A8B8'];
+/** Colours of the people's sprout figures: a warm palette next to the app tokens (sun, clay, area tints). */
+export const PERSON_COLORS: readonly string[] = ['#E8963E', '#C96A5A', '#8C6FB0', '#5B7FB5', '#D8B24A', '#E9A8B8'];
 
 /** FNV-1a (32 bit) over the UTF-16 code units: stable across sessions and devices. */
 function hash(text: string): number {
@@ -146,7 +146,7 @@ function hash(text: string): number {
   return h >>> 0;
 }
 
-/** One of BUTTERFLY_COLORS, chosen by a stable hash of contact.id. */
-export function butterflyColor(contact: Contact): string {
-  return BUTTERFLY_COLORS[hash(contact.id) % BUTTERFLY_COLORS.length] ?? '#E8963E';
+/** One of PERSON_COLORS, chosen by a stable hash of contact.id. */
+export function personColor(contact: Contact): string {
+  return PERSON_COLORS[hash(contact.id) % PERSON_COLORS.length] ?? '#E8963E';
 }

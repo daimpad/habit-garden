@@ -1,6 +1,6 @@
 // People sheets ("Personen"): the list of all people and the person editor.
 // List (full detent, history push): header action "Person hinzufügen"; one row per active person,
-// due people first, then by name: butterfly glyph (pale while due, like on the island), name,
+// due people first, then by name: sprout figure (drooping and paler while due, like on the island), name,
 // "last contact · rhythm" and a compact "Kontaktiert" button that logs today (toast with
 // "Rückgängig"). The name button opens the editor. Empty state with the same action.
 // Editor (fit up to the full detent, history push): name, rhythm (radio chips), note; for an existing
@@ -25,7 +25,7 @@ import '../../components/ol-chip.js';
 import '../../components/ol-empty-state.js';
 import '../../components/ol-icon-button.js';
 import '../../components/ol-input.js';
-import { butterfly } from '../../components/flora.js';
+import { sproutFigure } from '../../components/island.js';
 import type { OlButton } from '../../components/ol-button.js';
 import type { ChipChange, OlChip } from '../../components/ol-chip.js';
 import { confirmDialog } from '../../components/ol-dialog.js';
@@ -42,7 +42,7 @@ import {
   removeContactLog, restoreContact, restoreContactLog, undoLogContact, updateContact,
 } from '../../repo/contacts.js';
 import {
-  butterflyColor, CONTACT_KINDS, contactKindLabel, contactStatus, contactStatuses, isContactKind, lastContactText,
+  personColor, CONTACT_KINDS, contactKindLabel, contactStatus, contactStatuses, isContactKind, lastContactText,
   rhythmLabel, type ContactStatus,
 } from '../../services/contacts.js';
 import { formatDayLong, onDayChange, today } from '../../util/date.js';
@@ -164,7 +164,7 @@ class PeopleSheet {
       id: s.contact.id,
       name: s.contact.name,
       meta: metaLine(s),
-      color: butterflyColor(s.contact),
+      color: personColor(s.contact),
       due: s.due,
       today: s.contactedToday,
       busy: this.busy.has(s.contact.id),
@@ -188,7 +188,7 @@ class PeopleSheet {
         const metaId = `${listId}-m${index}`;
         return h`<li class="ol-people__row" ${row.due ? 'data-due' : ''}>
   <button type="button" class="ol-people__open" data-open="${row.id}" aria-label="${fmt(t.peopleOpenAria, { name: row.name })}" aria-describedby="${metaId}">
-    <span class="ol-people__glyph" aria-hidden="true">${raw(butterfly(row.color, GLYPH_SIZE))}</span>
+    <span class="ol-people__glyph" aria-hidden="true">${raw(sproutFigure(row.color, row.due ? 'due' : 'fresh', { className: 'ol-sprout', width: GLYPH_SIZE }))}</span>
     <span class="ol-people__text">
       <span class="ol-people__name">${row.name}</span>
       <span class="ol-people__meta ol-body-s" id="${metaId}">${row.meta}</span>

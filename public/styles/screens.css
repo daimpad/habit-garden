@@ -295,7 +295,7 @@
   --cloud: rgba(255, 255, 255, .4);
 }
 /* Nachtgarten (dark theme): night palette in every phase with a faint phase tint, the moon travels the
-   sun's arc; plants, flowers and butterflies keep their colours. */
+   sun's arc; plants, flowers and the people keep their colours. */
 :root[data-theme="dark"] .ol-hero {
   --sky-top: #141B2A; --sky-bottom: #1C2430; --sky-flat: #192029;
   --cloud: rgba(200, 210, 225, .1);
@@ -727,7 +727,7 @@
 .ol-isl__total-icon .ol-icon { width: 1.25em; height: 1.25em; }
 
 /* People as sprout figures (Keimi's family) by the big tree: the li is a point at the figure's feet, the
-   button stands on it; the pill "Lena · 80 %" is part of the button (offset --dx/--dy from the layout).
+   button stands on it; the pill "Lena · 80 %" (short: "80 %") is part of the button (offset --dx/--dy from the layout).
    Overdue: paler, drooping leaves (the shape is in the SVG). In rhythm the leaves sway gently. */
 .ol-isl__people { position: absolute; inset: 0; z-index: 2; margin: 0; padding: 0; list-style: none; pointer-events: none; }
 .ol-isl__person { width: 0; height: 0; }
@@ -742,11 +742,16 @@
 .ol-isl__fig .ol-isl__pill--person { position: absolute; left: var(--dx, 50%); top: var(--dy, -14px); translate: -50% -50%; }
 .ol-isl__pill--person[data-off] { visibility: hidden; }
 .ol-isl__pill--person .ol-isl__pill-name { max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
+/* Short form on narrow stages with many people: only the number ("80 %"); the name is in the figure's label. */
+.ol-isl__pill--person[data-short] { gap: .3em; padding: 0 .6em 0 .45em; }
+.ol-isl__pill--person[data-short] .ol-isl__pill-name, .ol-isl__pill--person[data-short] .ol-isl__pill-sep { display: none; }
 .ol-isl__person[data-state="due"] .ol-isl__fig-art { opacity: .8; filter: saturate(.6); }
-.ol-isl__fig-svg .f-leaf { fill: var(--isl-leaf); stroke: color-mix(in oklab, var(--isl-leaf) 75%, var(--isl-shadow)); stroke-width: .6; }
-.ol-isl__fig-svg .f-stem { fill: none; stroke: color-mix(in oklab, var(--isl-leaf) 75%, var(--isl-shadow)); }
-.ol-isl__fig-svg .f-sh { fill: var(--isl-shadow); opacity: .22; }
-.ol-isl__fig-svg .i-night { display: none; }
+:is(.ol-isl__fig-svg, .ol-sprout) .f-leaf { fill: var(--isl-leaf); stroke: color-mix(in oklab, var(--isl-leaf) 75%, var(--isl-shadow)); stroke-width: .6; }
+:is(.ol-isl__fig-svg, .ol-sprout) .f-stem { fill: none; stroke: color-mix(in oklab, var(--isl-leaf) 75%, var(--isl-shadow)); }
+:is(.ol-isl__fig-svg, .ol-sprout) .f-sh { fill: var(--isl-shadow); opacity: .22; }
+/* Outside the island (lists) the figures stay awake and still. */
+.ol-sprout { display: block; overflow: visible; }
+:is(.ol-isl__fig-svg, .ol-sprout) .i-night { display: none; }
 :root[data-theme="dark"] .ol-isl__fig-svg .i-night, .ol-hero[data-phase="night"] .ol-isl__fig-svg .i-night { display: inline; }
 :root[data-theme="dark"] .ol-isl__fig-svg .i-day, .ol-hero[data-phase="night"] .ol-isl__fig-svg .i-day { display: none; }
 .ol-isl__fig-svg .f-leaves { transform-box: view-box; transform-origin: 16px 15px; }
@@ -1378,9 +1383,9 @@
 /* === /einstellungen === */
 
 /* === people === */
-/* People list ("Personen"): per person one button with the butterfly, the name and "last contact ·
-   rhythm" (≥ 56 px), and a compact "Kontaktiert" on the right. Due people show a pale butterfly, as
-   on the island. The bottom padding keeps the last row clear of a toast. */
+/* People list ("Personen"): per person one button with the sprout figure, the name and "last contact ·
+   rhythm" (≥ 56 px), and a compact "Kontaktiert" on the right. Due people show a paler figure with
+   drooping leaves, as on the island. The bottom padding keeps the last row clear of a toast. */
 .ol-people { display: flex; flex-direction: column; padding: var(--space-1) 0 calc(var(--touch) + var(--space-4)); }
 .ol-people__list { display: grid; }
 .ol-people__list[hidden] { display: none; }
@@ -1399,7 +1404,7 @@
 }
 .ol-people__open:active { background-color: var(--color-overlay-pressed); }
 .ol-people__glyph { flex: none; display: inline-flex; transition: opacity var(--duration-base) linear; }
-.ol-people__row[data-due] .ol-people__glyph { opacity: .45; filter: saturate(.6); }
+.ol-people__row[data-due] .ol-people__glyph { opacity: .8; filter: saturate(.6); }
 .ol-people__text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .ol-people__name { font-weight: 500; overflow-wrap: anywhere; }
 .ol-people__meta { color: var(--color-text-2); overflow-wrap: anywhere; }
