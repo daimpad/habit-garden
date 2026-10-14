@@ -4,7 +4,7 @@ Habit Garden ist ein Garten für deinen Alltag. Jede Gewohnheit, die du pflegen 
 
 **Ausprobieren:** [daimpad.github.io/habit-garden](https://daimpad.github.io/habit-garden/). Unter Einstellungen › Info kannst du Beispieldaten laden und den Garten gleich gefüllt sehen.
 
-![Die Garten-Insel am Abend: Haus, Teich, Werkstatt, Brunnen und ein großer Baum mit Bank, dazwischen Pflanzen in verschiedenen Stufen, Schmetterlinge und der kleine Begleiter Keimi mit einer Sprechblase](docs/bilder/garten.png)
+![Die Garten-Insel am Abend: Haus, Teich, Werkstatt, Brunnen und ein großer Baum mit Bank, dazwischen Pflanzen in verschiedenen Stufen, kleine Spross-Figuren für Personen und der kleine Begleiter Keimi mit einer Sprechblase](docs/bilder/garten.png)
 
 ## Die Idee
 
@@ -31,7 +31,7 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 
 <p>
   <img src="docs/bilder/routine.png" width="360" alt="Karte der Gewohnheit „Lesen“: Pflanze in der Stufe Knospe, drei Wochen in Folge, Überblick über zwölf Wochen">
-  <img src="docs/bilder/personen.png" width="360" alt="Liste der Personen mit Schmetterlingen, letztem Kontakt und Rhythmus">
+  <img src="docs/bilder/personen.png" width="360" alt="Liste der Personen mit kleinen Spross-Figuren, letztem Kontakt und Rhythmus">
 </p>
 
 ## Was noch kommt

@@ -43,8 +43,8 @@
 //   are celebrated quietly (Keimi's sentence for CELEBRATE_MS, the object fades in, aria-live). The mount also
 //   runs the silent backfill. Each place shows its highest streak tier and up to three shrubs.
 import { liveQuery, type Observable, type Subscription } from 'dexie';
-import { butterfly, flower, petalColor } from '../components/flora.js';
-import type { IslandArea } from '../components/island.js';
+import { flower, petalColor } from '../components/flora.js';
+import { sproutFigure, type IslandArea } from '../components/island.js';
 import type { CheckboxChange } from '../components/ol-checkbox.js';
 import type { HabitToggleChange } from '../components/ol-habit-toggle.js';
 import type { OlHeatmap, ToggleDayDetail } from '../components/ol-heatmap.js';
@@ -70,7 +70,7 @@ import { profile$, updateProfile } from '../repo/profile.js';
 import { compareDue, completeTask, dueOn, getTask, reopenTask, subtaskProgress$, type CompleteResult } from '../repo/tasks.js';
 import type { Route } from '../router.js';
 import {
-  butterflyColor, closeness, contactStatuses, lastContactText, rhythmLabel, suggestions, type ContactStatus,
+  personColor, closeness, contactStatuses, lastContactText, rhythmLabel, suggestions, type ContactStatus,
 } from '../services/contacts.js';
 import { bestStreak, isScheduledOn, nextStage, stageFor, streak, weekProgress } from '../services/growth.js';
 import {
@@ -1609,7 +1609,7 @@ class HeuteScreen {
       const person: IslandPerson & { urgency: number } = {
         id: status.contact.id,
         name: status.contact.name,
-        color: butterflyColor(status.contact),
+        color: personColor(status.contact),
         state,
         pct,
         label: fmt(t.islandPersonAria, {
@@ -2165,11 +2165,11 @@ class HeuteScreen {
 
   private updatePersonRow(row: HTMLElement, status: ContactStatus): void {
     const { contact } = status;
-    const color = butterflyColor(contact);
+    const look = `${personColor(contact)}|${status.due ? 'due' : 'fresh'}`;
     const glyph = row.querySelector<HTMLElement>('.ol-heute__person-glyph');
-    if (glyph && glyph.dataset['color'] !== color) {
-      glyph.dataset['color'] = color;
-      render(glyph, raw(butterfly(color, 28)));
+    if (glyph && glyph.dataset['look'] !== look) {
+      glyph.dataset['look'] = look;
+      render(glyph, raw(sproutFigure(personColor(contact), status.due ? 'due' : 'fresh', { className: 'ol-sprout', width: 30 })));
     }
     const title = row.querySelector('.ol-heute__title');
     if (title) {
@@ -2182,7 +2182,7 @@ class HeuteScreen {
     if (button) setAttr(button, 'aria-label', fmt(t.heuteContactedAria, { name: contact.name }));
   }
 
-  /** "Kontaktiert": logs today, the row leaves, the butterfly takes off; the toast offers Rückgängig. */
+  /** "Kontaktiert": logs today, the row leaves, the figure on the island hops; the toast offers Rückgängig. */
   private async onContacted(row: HTMLElement, id: Id): Promise<void> {
     const contact = this.contacts?.find((c) => c.id === id);
     if (!contact || this.contactedNow.has(id)) return;
