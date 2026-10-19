@@ -18,6 +18,12 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] Nach dem Schließen der Tastatur rutscht die Leiste wieder an den unteren Rand.
 - [ ] Erfassen über + in HEUTE: das Feld bleibt über der Tastatur sichtbar.
 
+## Tour
+- [ ] Nach dem Einrichten (Einstellungen › Daten › Alle Daten löschen, dann neu starten) bietet Keimi die Tour an; „Tour starten“ führt durch zehn Schritte.
+- [ ] Der Lichtkreis gleitet weich zum nächsten Element; die Sprechblase bleibt ganz sichtbar und verdeckt das hervorgehobene Element nicht.
+- [ ] „Ausprobieren“ bei „Eine Routine pflanzen“ öffnet das Erfassen; nach dem Speichern geht die Tour mit „Heute gießen“ weiter.
+- [ ] Das „?“ oben in Heute, Planung und Wissen startet das passende Kapitel; die Zurück-Geste des Systems beendet die Tour.
+
 ## Darstellung
 - [ ] Gerät auf dunkel stellen: die App zeigt den Nachtgarten, auch direkt nach dem Neuladen (kein heller Blitz).
 - [ ] Die Adressleiste des Browsers hat die Farbe des Hintergrunds.

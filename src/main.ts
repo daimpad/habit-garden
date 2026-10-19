@@ -58,6 +58,7 @@ import { openCapture } from './screens/sheets/capture.js';
 import { openHabitSheet } from './screens/sheets/habit.js';
 import { openTaskSheet } from './screens/sheets/task.js';
 import * as startScreen from './screens/start.js';
+import { maybeOfferTour } from './screens/tour.js';
 import * as noteEditorScreen from './screens/note-editor.js';
 import * as wissenScreen from './screens/wissen.js';
 import { wissenContext } from './screens/wissen.js';
@@ -522,6 +523,8 @@ function onRouteChange(route: Route, change: RouteChange): void {
     mountBase(base, change, route.overlay);
   }
   syncOverlay(route);
+  // Tour (19.10.2026): after the onboarding HEUTE offers the main tour once.
+  if (base.name === 'heute') maybeOfferTour();
 }
 
 // ---------------------------------------------------------------------------

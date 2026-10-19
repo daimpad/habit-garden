@@ -40,6 +40,8 @@
   --isl-cloud-a: 1; --isl-lit-a: .45; --isl-smoke-a: .9;
   /* Teil 3: campfire (flame, its core and the warm light it throws) and the spark rising from it. */
   --isl-fire: #F08A3C; --isl-fire-core: #FFE08A; --isl-fire-light: #FFB25C; --isl-spark: #FFD27A;
+  /* Tour: the dimmed page around the light. */
+  --tour-scrim: rgba(28, 38, 30, .58);
 }
 /* Dunkel (B.1), "Nachtgarten". main.ts (and app/theme-boot.js before the first paint) resolves the
    setting light / dark / system (prefers-color-scheme, live) to data-theme="light" | "dark" on <html>.
@@ -72,6 +74,7 @@
   --isl-bubble-bg: #232A25; --isl-label-bg: rgba(26,31,27,.9); --isl-pill-hover: #232A25;
   --isl-cloud-a: .2; --isl-lit-a: 1; --isl-smoke-a: .16;
   --isl-fire: #FF9A4D; --isl-fire-core: #FFE6A0; --isl-fire-light: #FFB861; --isl-spark: #FFD98A;
+  --tour-scrim: rgba(4, 8, 6, .7);
 }
 @media (prefers-reduced-motion: reduce) { :root { --duration-fast: 0ms; --duration-base: 0ms; --duration-slow: 0ms; } }
 /* In-app setting "Animationen: reduziert" (html[data-motion="reduced"]) behaves like the media query. */

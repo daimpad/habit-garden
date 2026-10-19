@@ -62,11 +62,13 @@ import { buildHash, h, icon, render, setVar, type SafeHtml } from '../util/dom.j
 import { importNotes, listNotes } from '../repo/notes.js';
 import { exportAllIcs } from '../services/ics.js';
 import { exportNotesMarkdown, parseNotesMarkdown } from '../services/notes-export.js';
+import { isTourId } from '../services/tour.js';
 import { exportWithNotice } from './export-flow.js';
+import { startTour } from './tour.js';
 
 export const APP_VERSION = '0.1.0';
 
-const SECTIONS = ['daten', 'benachrichtigungen', 'darstellung', 'bereiche', 'info'] as const;
+const SECTIONS = ['daten', 'benachrichtigungen', 'darstellung', 'bereiche', 'hilfe', 'info'] as const;
 type SectionId = typeof SECTIONS[number];
 
 const LEAD_MINUTES: readonly number[] = [0, 5, 10, 15, 30, 60];
@@ -81,6 +83,7 @@ const SECTION_TITLES: Readonly<Record<SectionId, string>> = {
   benachrichtigungen: t.settingsNotifications,
   darstellung: t.settingsAppearance,
   bereiche: t.settingsAreas,
+  hilfe: t.settingsHelp,
   info: t.settingsInfo,
 };
 
@@ -387,6 +390,20 @@ class SettingsScreen {
         <ol-input class="ol-settings__new-name" label="${t.fieldName}" maxlength="${NAME_MAX}" autocomplete="off"></ol-input>
         <ol-button class="ol-settings__create-btn" variant="tonal" icon="plus" label="${t.areaAdd}"></ol-button>
       </div>`;
+    // Tour (decision of 19.10.2026): the main tour and one chapter per area.
+    const hilfe = h`
+      <div class="ol-settings__item">
+        <ol-button class="ol-settings__tour" variant="tonal" icon="circle-help" label="${t.helpTourMain}" data-tour="main"></ol-button>
+        <p class="ol-settings__hint">${t.helpTourMainHint}</p>
+      </div>
+      <div class="ol-settings__item">
+        <h3 class="ol-settings__subhead">${t.helpChapters}</h3>
+        <div class="ol-settings__chapters">
+          <ol-button variant="ghost" size="sm" icon="sun" label="${t.helpChapterHeute}" data-tour="heute"></ol-button>
+          <ol-button variant="ghost" size="sm" icon="clipboard-list" label="${t.helpChapterPlanung}" data-tour="planung"></ol-button>
+          <ol-button variant="ghost" size="sm" icon="brain" label="${t.helpChapterWissen}" data-tour="wissen"></ol-button>
+        </div>
+      </div>`;
     const info = h`
       <dl class="ol-settings__facts ol-settings__item">
         <div class="ol-settings__fact"><dt>${t.infoVersion}</dt><dd class="ol-num">${APP_VERSION}</dd></div>
@@ -413,6 +430,7 @@ class SettingsScreen {
         ${this.section('benachrichtigungen', benachrichtigungen)}
         ${this.section('darstellung', darstellung)}
         ${this.section('bereiche', bereiche)}
+        ${this.section('hilfe', hilfe)}
         ${this.section('info', info)}
       </div>`;
   }
@@ -475,6 +493,11 @@ class SettingsScreen {
     });
     els.persistBtn.addEventListener('click', () => void this.onPersist());
     els.seedBtn.addEventListener('click', () => void this.onSeed());
+    this.view.querySelector('#settings-hilfe')?.addEventListener('click', (event) => {
+      const button = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-tour]') : null;
+      const id = button?.dataset['tour'];
+      if (isTourId(id)) startTour(id);
+    });
     els.notifBtn.addEventListener('click', () => {
       void requestNotificationPermission().then(() => {
         if (!this.destroyed) this.renderNotif();

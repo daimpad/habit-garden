@@ -2,7 +2,7 @@
 //   <ol-icon-button slot="actions" icon="settings" label="Einstellungen"></ol-icon-button>
 // </ol-app-bar>
 // <header> 56 px (not sticky): optional back icon button (arrow-left, aria-label t.actionBack) that emits
-// `ol-back`; title as <h1> (class ol-title, or ol-display with `display`); up to two children with
+// `ol-back`; title as <h1> (class ol-title, or ol-display with `display`); up to three children with
 // slot="actions" are moved into the right-hand action area on first connect.
 //
 // Details of this implementation:
@@ -15,6 +15,9 @@
 import { t } from '../i18n/de.js';
 import { emit, h, render } from '../util/dom.js';
 import './ol-icon-button.js';
+
+/** Three icons (e.g. help, search, more) still leave room for the title at 320 px. */
+const MAX_ACTIONS = 3;
 
 export class OlAppBar extends HTMLElement {
   static observedAttributes = ['heading', 'back', 'display'];
@@ -48,7 +51,7 @@ export class OlAppBar extends HTMLElement {
         h`<header class="ol-app-bar__bar"><ol-icon-button class="ol-app-bar__back" icon="arrow-left" label="${t.actionBack}" hidden></ol-icon-button><h1 class="ol-app-bar__title ol-title"></h1><div class="ol-app-bar__actions"></div></header>`,
       );
       header = this.querySelector<HTMLElement>(':scope > header.ol-app-bar__bar');
-      header?.querySelector('.ol-app-bar__actions')?.append(...actions.slice(0, 2));
+      header?.querySelector('.ol-app-bar__actions')?.append(...actions.slice(0, MAX_ACTIONS));
     }
     this.header = header;
     this.backEl = header?.querySelector<HTMLElement>(':scope > .ol-app-bar__back') ?? null;
@@ -70,7 +73,7 @@ export class OlAppBar extends HTMLElement {
     // Late slot="actions" children (appended directly to the host).
     if (this.actionsEl) {
       const late = [...this.children].filter((el) => el.getAttribute('slot') === 'actions');
-      const room = Math.max(0, 2 - this.actionsEl.children.length);
+      const room = Math.max(0, MAX_ACTIONS - this.actionsEl.children.length);
       if (late.length && room) this.actionsEl.append(...late.slice(0, room));
       this.actionsEl.hidden = this.actionsEl.children.length === 0;
     }

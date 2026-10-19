@@ -28,6 +28,7 @@ import { completeOnboarding } from '../repo/profile.js';
 import type { Route } from '../router.js';
 import { isSafari, requestPersist, type PersistResult } from '../services/storage-hints.js';
 import { emit, h, icon, motionReduced, render, setVar, type SafeHtml } from '../util/dom.js';
+import { queueTourOffer } from './tour.js';
 
 type Step = 1 | 2 | 3;
 type Choice = FlowerId | 'custom';
@@ -355,6 +356,8 @@ class StartScreen {
     this.nextBtn.setAttribute('loading', '');
     this.skipBtn.setAttribute('disabled', '');
     try {
+      // Queued first: main.ts may switch to /heute on the profile change, where the offer is shown once.
+      queueTourOffer();
       await completeOnboarding(this.selection());
     } catch (err) {
       console.error(err);

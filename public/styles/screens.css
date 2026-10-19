@@ -2079,3 +2079,84 @@
 .ol-day__empty { margin-top: var(--space-5); padding: var(--space-4); }
 .ol-day--invalid { padding-top: var(--space-4); }
 /* === /day-calendar === */
+
+/* === tour === */
+/* Guided tour (screens/tour.ts): a full-screen dialog without backdrop; the light is a rounded box whose
+   huge shadow dims the rest and that glides between targets; a warm ring breathes around it. Keimi's bubble
+   follows with a small pointer towards the light. Positions come from --sx/--sy/--sw/--sh and --bx/--by/--px. */
+.ol-tour {
+  position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none;
+  margin: 0; padding: 0; border: 0; background: transparent; color: var(--color-text); overflow: hidden;
+}
+.ol-tour::backdrop { background: transparent; }
+.ol-tour__spot {
+  position: absolute; left: 0; top: 0; width: var(--sw, 0px); height: var(--sh, 0px);
+  translate: var(--sx, 50vw) var(--sy, 50vh); border-radius: 18px; pointer-events: none;
+  box-shadow: 0 0 0 200vmax var(--tour-scrim);
+  transition: translate 480ms var(--ease-standard), width 480ms var(--ease-standard), height 480ms var(--ease-standard);
+}
+.ol-tour__spot::after {
+  content: ""; position: absolute; inset: -3px; border-radius: inherit;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--isl-glow) 85%, transparent), 0 0 22px 6px color-mix(in srgb, var(--isl-glow) 45%, transparent);
+  animation: ol-tour-breathe 2.6s ease-in-out infinite alternate;
+}
+.ol-tour__spot[data-empty]::after { opacity: 0; animation: none; }
+@keyframes ol-tour-breathe { from { opacity: .55; scale: 1; } to { opacity: 1; scale: 1.015; } }
+
+.ol-tour__bubble {
+  position: absolute; left: 0; top: 0; width: min(380px, calc(100vw - 32px));
+  translate: var(--bx, 16px) var(--by, 30vh);
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); align-items: start;
+  padding: var(--space-4) var(--space-4) var(--space-3) var(--space-3);
+  border-radius: 22px; background: var(--color-surface); color: var(--color-text);
+  box-shadow: 0 18px 48px -12px rgba(0, 0, 0, .45), 0 0 0 1px color-mix(in srgb, var(--isl-glow) 30%, transparent);
+  transition: translate 480ms var(--ease-standard);
+}
+.ol-tour__bubble::before {
+  content: ""; position: absolute; left: calc(var(--px, 50%) - 8px); width: 16px; height: 16px;
+  background: inherit; rotate: 45deg; border-radius: 3px;
+}
+.ol-tour__bubble[data-side="below"]::before { top: -7px; }
+.ol-tour__bubble[data-side="above"]::before { bottom: -7px; }
+.ol-tour__bubble[data-side="over"]::before, .ol-tour__bubble[data-side="center"]::before { display: none; }
+.ol-tour__keimi { position: relative; padding-top: 2px; }
+.ol-tour__keimi::before {
+  content: ""; position: absolute; left: 50%; top: 58%; width: 66px; height: 66px; translate: -50% -50%; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--isl-glow) 38%, transparent), transparent 70%);
+}
+.ol-tour__keimi .ol-keimi { position: relative; display: block; }
+.ol-tour__content { display: grid; gap: var(--space-1); min-width: 0; padding-right: var(--space-5); }
+.ol-tour__progress { display: flex; align-items: center; gap: var(--space-2); margin: 0; min-height: 1rem; }
+.ol-tour__count { color: var(--color-text-2); }
+.ol-tour__dots { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.ol-tour__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-border); transition: width var(--duration-base) var(--ease-standard), background-color var(--duration-base) linear; }
+.ol-tour__dot[data-on] { width: 16px; border-radius: 3px; background: var(--color-primary); }
+.ol-tour__title { margin: 0; font-size: 1.125rem; line-height: 1.3; font-weight: 700; }
+.ol-tour__text { margin: 0; color: var(--color-text-2); font-size: .9375rem; line-height: 1.45; }
+.ol-tour__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+.ol-tour__actions .ol-tour__back { margin-right: auto; }
+.ol-tour__close { position: absolute; top: 4px; right: 4px; }
+.ol-tour[data-mode="offer"] .ol-tour__progress { display: none; }
+
+/* Keimi on its own (tour bubble): flat colours of the island figure; the leaf arm waves. */
+.ol-keimi .kg-sh { fill: var(--isl-shadow); opacity: .18; }
+.ol-keimi .kg-body { fill: var(--isl-keimi); }
+.ol-keimi .kg-hi { fill: color-mix(in oklab, var(--isl-keimi) 45%, var(--isl-keimi-light)); }
+.ol-keimi .kg-lo { fill: color-mix(in oklab, var(--isl-keimi) 70%, var(--isl-leaf)); }
+.ol-keimi .kg-line { stroke: color-mix(in oklab, var(--isl-leaf) 85%, var(--isl-shadow)); }
+.ol-keimi .kg-leaf { fill: var(--isl-leaf); }
+.ol-keimi .kg-stem { stroke: color-mix(in oklab, var(--isl-leaf) 85%, var(--isl-shadow)); }
+.ol-keimi .kg-wave { transform-box: view-box; transform-origin: 17px -24px; animation: ol-keimi-wave 2.8s ease-in-out infinite; }
+@keyframes ol-keimi-wave { 0%, 60%, 100% { rotate: 0deg; } 70% { rotate: -14deg; } 80% { rotate: 6deg; } 90% { rotate: -10deg; } }
+
+.ol-settings__chapters { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+/* The "?" in the headers (HEUTE hero, PLANUNG and WISSEN app bars). */
+.ol-hero__top-actions { display: inline-flex; align-items: center; gap: var(--space-1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ol-tour__spot, .ol-tour__bubble, .ol-tour__dot { transition: none; }
+  .ol-tour__spot::after, .ol-keimi .kg-wave { animation: none; }
+}
+:root[data-motion="reduced"] :is(.ol-tour__spot, .ol-tour__bubble, .ol-tour__dot) { transition: none; }
+:root[data-motion="reduced"] .ol-tour__spot::after, :root[data-motion="reduced"] .ol-keimi .kg-wave { animation: none; }
+/* === /tour === */
