@@ -1032,7 +1032,7 @@ export const t = {
   tourSettingsTitle: 'Einstellungen',
   tourSettingsText: 'Deine Daten bleiben in diesem Browser. Sichere sie hier ab und zu als Datei. Unter „Hilfe“ startest du diese Tour erneut.',
   tourEndTitle: 'Bereit zum Gärtnern',
-  tourEndText: 'Das Fragezeichen oben in jedem Bereich erklärt ihn Schritt für Schritt. Viel Freude im Garten.',
+  tourEndText: 'Das Fragezeichen oben in jedem Bereich erklärt ihn Schritt für Schritt. Unter Einstellungen › App legst du Habit Garden auf den Startbildschirm. Viel Freude im Garten.',
   // Chapter Heute.
   tourDateTitle: 'Datum und Kalender',
   tourDateText: 'Ein Tipp auf das Datum öffnet den Kalender. Dort siehst du vergangene Tage und planst kommende.',
@@ -1077,6 +1077,24 @@ export const t = {
   tourNoteText: 'Ein Tipp öffnet sie. Nach rechts wischen heftet sie an, nach links archiviert sie; langes Drücken zeigt weitere Aktionen.',
   tourNewNoteTitle: 'Neue Notiz',
   tourNewNoteText: 'Das Plus öffnet eine leere Notiz. Die erste Zeile wird zum Titel; Markdown, #Schlagworte und Verknüpfungen zu anderen Notizen sind möglich.',
+  // --- additions: pwa ---
+  // Installable app and offline use (decision of 19.10.2026): update offer, settings section "App".
+  pwaUpdateReady: 'Eine neue Version von Habit Garden ist bereit.',
+  pwaReload: 'Neu laden',
+  settingsApp: 'App',
+  appInstallLabel: 'Auf dem Startbildschirm',
+  appInstalled: 'Habit Garden läuft als App.',
+  appInstalledShort: 'installiert',
+  appNotInstalled: 'noch nicht installiert',
+  appInstallAction: 'Als App installieren',
+  appInstallHint: 'Dann startet Habit Garden mit eigenem Symbol und ohne Browserleiste.',
+  appInstallIos: 'Auf iPhone und iPad: In Safari auf das Teilen-Symbol tippen, dann „Zum Home-Bildschirm“.',
+  appInstallManual: 'Im Menü des Browsers „App installieren“ oder „Zum Startbildschirm hinzufügen“ wählen. Nicht jeder Browser bietet das an.',
+  appOfflineLabel: 'Ohne Internet nutzbar',
+  appOfflineYes: 'ja',
+  appOfflinePending: 'wird vorbereitet',
+  appOfflineNo: 'in diesem Browser nicht möglich',
+  appOfflineHint: 'Deine Daten liegen ohnehin auf diesem Gerät. Neue Versionen lädt die App im Hintergrund und bietet dann „Neu laden“ an.',
 } as const;
 
 export type TextKey = keyof typeof t;

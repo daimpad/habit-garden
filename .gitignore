@@ -5,6 +5,7 @@ public/vendor/
 public/assets/icons.svg
 public/assets/fonts/
 public/licenses.txt
+public/sw.js
 build/
 dist/
 test-results/

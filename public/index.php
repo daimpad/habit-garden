@@ -39,7 +39,12 @@ header('Content-Type: text/html; charset=utf-8');
 <meta name="olife-build" content="<?= $build ?>">
 <meta name="olife-base" content="/">
 <title>Habit Garden</title>
-<link rel="icon" href="data:,">
+<link rel="icon" href="/assets/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="Habit Garden">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="/styles/tokens.css<?= $v ?>">
 <link rel="stylesheet" href="/styles/base.css<?= $v ?>">
 <link rel="stylesheet" href="/styles/components.css<?= $v ?>">

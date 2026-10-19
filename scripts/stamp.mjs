@@ -1,5 +1,6 @@
 // Writes public/app/build.txt: an 8-character hash over every deployable file
-// (app, vendor, styles, assets). index.php appends it as ?v= to asset URLs.
+// (app, vendor, styles, assets, the shell index.php and the web app manifest). index.php appends it as
+// ?v= to asset URLs; scripts/sw.mjs writes it into the service worker, so any change ships a new worker.
 import { createHash } from 'node:crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
@@ -21,6 +22,7 @@ async function walk(dir) {
 
 const files = [];
 for (const d of ['app', 'vendor', 'styles', 'assets']) files.push(...(await walk(join(pub, d))));
+for (const f of ['index.php', 'manifest.webmanifest']) files.push(join(pub, f));
 files.sort();
 
 const hash = createHash('sha256');
