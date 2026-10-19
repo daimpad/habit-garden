@@ -31,6 +31,7 @@ import { emit, h, icon, raw, render, setVar, type SafeHtml } from '../util/dom.j
 import { attachLongPress } from '../util/long-press.js';
 import { attachSwipe } from '../util/swipe.js';
 import { archiveNote, openNoteMenu, togglePin } from './note-actions.js';
+import { startTour } from './tour.js';
 
 /** Search text of the list; kept across remounts caused by filter changes. */
 let lastQuery = '';
@@ -117,6 +118,7 @@ class WissenScreen {
   private render(): void {
     render(this.view, h`
       <ol-app-bar display heading="${t.titleWissen}">
+        <ol-icon-button slot="actions" class="ol-help ol-wissen__help" icon="circle-help" label="${t.helpWissen}"></ol-icon-button>
         <ol-icon-button slot="actions" class="ol-wissen__tag-open" icon="hash" label="${t.wissenTagsOpen}"></ol-icon-button>
         <ol-icon-button slot="actions" class="ol-wissen__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
       </ol-app-bar>
@@ -151,6 +153,7 @@ class WissenScreen {
     view.querySelector('.ol-wissen__settings')?.addEventListener('click', (event) => {
       if (event.currentTarget instanceof Element) emit(event.currentTarget, 'ol-navigate', { path: '/einstellungen' });
     });
+    view.querySelector('.ol-wissen__help')?.addEventListener('click', () => startTour('wissen'));
     view.querySelector('.ol-wissen__tag-open')?.addEventListener('click', () => this.openTagSheet());
     view.querySelector('.ol-wissen__archive')?.addEventListener('click', () => {
       this.archiveSheet = new ArchivedNotesSheet(this.archived, () => { this.archiveSheet = null; });

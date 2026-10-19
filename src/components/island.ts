@@ -631,6 +631,27 @@ function keimi(x: number, y: number): Drawable {
   return { y, svg: `${s}</g>` };
 }
 
+/**
+ * Keimi on its own (tour bubble): the island figure without gradients, coloured by CSS (.ol-keimi …), with
+ * the waving leaf arm (.kg-wave). viewBox -26 -64 52 66, `size` = height in px; aria-hidden.
+ */
+export function keimiGlyph(size = 56): string {
+  const h = size > 0 ? size : 56;
+  return `<svg class="ol-keimi" viewBox="-26 -64 52 66" width="${f((h * 52) / 66)}" height="${f(h)}" aria-hidden="true" focusable="false">`
+    + '<ellipse class="kg-sh" rx="16" ry="3.6"/>'
+    + '<ellipse class="kg-lo" cx="-6.5" cy="-2.5" rx="5.4" ry="3.4"/><ellipse class="kg-lo" cx="6.5" cy="-2.5" rx="5.4" ry="3.4"/>'
+    + '<ellipse class="kg-body kg-line" cx="-19" cy="-13" rx="3.6" ry="6.5" transform="rotate(24 -19 -13)" stroke-width="1.2"/>'
+    + '<g class="kg-wave"><ellipse class="kg-body kg-line" cx="22" cy="-31" rx="3.6" ry="7.5" transform="rotate(34 22 -31)" stroke-width="1.2"/></g>'
+    + `<path class="kg-body kg-line" stroke-width="1.3" d="${KEIMI_BODY}"/>`
+    + '<ellipse class="kg-hi" cy="-12" rx="10" ry="6.5" opacity=".7"/>'
+    + '<path class="kg-stem" d="M0 -40C0 -44 1 -46 0 -49" stroke-width="2" stroke-linecap="round" fill="none"/>'
+    + '<path class="kg-leaf kg-line" stroke-width="1" d="M0 -47C-4 -55 -12 -58 -18 -53.5C-13 -48 -6 -46 0 -47Z"/><path class="kg-leaf kg-line" stroke-width="1" d="M0 -48C3 -58 12 -62 19 -58C15 -50.5 7 -47.5 0 -48Z"/>'
+    + '<circle cx="-6.5" cy="-24" r="2.5" fill="#2B3A2E"/><circle cx="6.5" cy="-24" r="2.5" fill="#2B3A2E"/><circle cx="-5.7" cy="-24.9" r=".9" fill="#fff"/><circle cx="7.3" cy="-24.9" r=".9" fill="#fff"/>'
+    + '<ellipse cx="-11.5" cy="-18.5" rx="3.2" ry="1.9" fill="#F2A39A" opacity=".75"/><ellipse cx="11.5" cy="-18.5" rx="3.2" ry="1.9" fill="#F2A39A" opacity=".75"/>'
+    + '<path d="M-3.2 -19.2q3.2 3.2 6.4 0" stroke="#2B3A2E" stroke-width="1.4" fill="none" stroke-linecap="round"/>'
+    + '</svg>';
+}
+
 // ---------------------------------------------------------------------------
 // Teil 3: campfire and the "Spuren im Garten" (milestone objects).
 

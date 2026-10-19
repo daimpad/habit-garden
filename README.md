@@ -28,6 +28,7 @@ Du ordnest dein Leben in Bereiche wie Gesundheit, Beziehungen oder Beruf. Jeder 
 - **Zurückblicken und vorausplanen.** Ein Tipp auf das Datum öffnet einen Kalender: Vergangene Tage zeigen, was erledigt und gegossen wurde, künftige Tage kannst du schon planen. Der Rückblick zeigt, wie deine Routinen in den letzten Wochen gewachsen sind; sonntags erinnert eine Karte an deine Woche.
 - **Tag und Nacht.** Sonne und Mond wandern über den Garten. Im dunklen Erscheinungsbild wird er zum Nachtgarten, in dem sich die Blüten sanft abheben.
 - **Stimmung und Journal.** Mit einem Tipp hältst du fest, wie es dir heute geht, und kannst einen kurzen Gedanken dazuschreiben.
+- **Eine Tour mit Keimi.** Nach dem Einrichten bietet Keimi eine kurze Tour an: Ein weicher Lichtkreis wandert von Element zu Element, und Keimi erklärt, was du wo einträgst. An zwei Stellen kannst du es gleich ausprobieren. Das Fragezeichen oben in Heute, Planung und Wissen erklärt den jeweiligen Bereich; unter Einstellungen › Hilfe startest du alles erneut.
 
 <p>
   <img src="docs/bilder/routine.png" width="360" alt="Karte der Gewohnheit „Lesen“: Pflanze in der Stufe Knospe, drei Wochen in Folge, Überblick über zwölf Wochen">

@@ -25,6 +25,8 @@ export const ICONS = [
   'chevron-left', 'circle',
   // Garten-Insel Teil 2 (overall chip of the balance view)
   'trending-up',
+  // Tour (help button in the headers)
+  'circle-help',
 ];
 
 const parts = [];

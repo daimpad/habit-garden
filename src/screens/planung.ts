@@ -51,6 +51,7 @@ import { openArchiveSheet } from './sheets/archive.js';
 import { openMoveSheet } from './sheets/move.js';
 import { doneMessage, failed, openActionMenu } from './sheets/task.js';
 import { openTaskSearch } from './sheets/task-search.js';
+import { startTour } from './tour.js';
 
 const GROUP_LABELS: Readonly<Record<ListGroupKey, string>> = {
   overdue: t.focusGroupOverdue, today: t.planGroupToday, week: t.planGroupWeek, later: t.planGroupLater, noDate: t.focusGroupNoDate,
@@ -245,6 +246,7 @@ class PlanungScreen {
     if (this.kind === 'root') {
       render(view, h`
         <ol-app-bar display heading="${t.titlePlanung}">
+          <ol-icon-button slot="actions" class="ol-help ol-plan__help" icon="circle-help" label="${t.helpPlanung}"></ol-icon-button>
           <ol-icon-button slot="actions" class="ol-plan__search" icon="search" label="${t.planSearchAria}"></ol-icon-button>
           <ol-icon-button slot="actions" class="ol-plan__root-more" icon="ellipsis" label="${t.actionMore}"></ol-icon-button>
         </ol-app-bar>
@@ -313,6 +315,7 @@ class PlanungScreen {
 
   private bind(): void {
     const view = this.view;
+    view.querySelector('.ol-plan__help')?.addEventListener('click', () => startTour('planung'));
     view.querySelector('.ol-plan__search')?.addEventListener('click', () => {
       const areaId = this.selectedArea();
       openTaskSearch({ ...(areaId ? { areaId } : {}), areas: this.areas ?? [] });

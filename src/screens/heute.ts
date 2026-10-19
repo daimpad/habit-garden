@@ -101,6 +101,7 @@ import { openJoySheet } from './sheets/joy.js';
 import { openPeopleSheet, openPersonSheet } from './sheets/people.js';
 import { openPlaceSheet, type PlaceGroupData, type PlaceSheet } from './sheets/place.js';
 import { doneMessage } from './sheets/task.js';
+import { startTour } from './tour.js';
 
 type Period = Habit['period'];
 type MoodValue = 1 | 2 | 3 | 4 | 5;
@@ -775,7 +776,10 @@ class HeuteScreen {
           ${skyMarkup()}
           <div class="ol-hero__top">
             <span class="ol-hero__brand"><span class="ol-hero__brand-mark" aria-hidden="true">${icon('sprout', 20)}</span><span class="ol-hero__brand-name">${t.appName}</span></span>
-            <ol-icon-button class="ol-heute__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
+            <span class="ol-hero__top-actions">
+              <ol-icon-button class="ol-help ol-heute__help" icon="circle-help" label="${t.helpHeute}"></ol-icon-button>
+              <ol-icon-button class="ol-heute__settings" icon="settings" label="${t.actionSettings}"></ol-icon-button>
+            </span>
           </div>
           <div class="ol-hero__body">
           <div class="ol-hero__content">
@@ -979,6 +983,7 @@ class HeuteScreen {
       event.stopPropagation();
       event.preventDefault();
     }, { capture: true });
+    req<HTMLElement>(this.view, '.ol-heute__help').addEventListener('click', () => startTour('heute'));
     req<HTMLElement>(this.view, '.ol-heute__settings').addEventListener('click', (event) => {
       if (event.currentTarget instanceof Element) this.navigate(event.currentTarget, '/einstellungen');
     });
