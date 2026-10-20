@@ -24,6 +24,12 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] „Ausprobieren“ bei „Eine Routine pflanzen“ öffnet das Erfassen; nach dem Speichern geht die Tour mit „Heute gießen“ weiter.
 - [ ] Das „?“ oben in Heute, Planung und Wissen startet das passende Kapitel; die Zurück-Geste des Systems beendet die Tour.
 
+## App und offline
+- [ ] Android/Chrome: Einstellungen › App › „Als App installieren“ legt Habit Garden mit Keimi-Symbol auf den Startbildschirm; die App startet ohne Browserleiste.
+- [ ] iPhone/Safari: Einstellungen › App zeigt die Anleitung; nach „Teilen › Zum Home-Bildschirm“ erscheint Keimi als Symbol.
+- [ ] Flugmodus an, App öffnen: Heute, Planung und Wissen erscheinen mit allen Daten; eine Notiz lässt sich anlegen.
+- [ ] Nach einem neuen Deployment erscheint beim nächsten Öffnen „Eine neue Version von Habit Garden ist bereit.“; „Neu laden“ zeigt die neue Version.
+
 ## Darstellung
 - [ ] Gerät auf dunkel stellen: die App zeigt den Nachtgarten, auch direkt nach dem Neuladen (kein heller Blitz).
 - [ ] Die Adressleiste des Browsers hat die Farbe des Hintergrunds.

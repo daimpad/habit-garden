@@ -59,6 +59,7 @@ import { openHabitSheet } from './screens/sheets/habit.js';
 import { openTaskSheet } from './screens/sheets/task.js';
 import * as startScreen from './screens/start.js';
 import { maybeOfferTour } from './screens/tour.js';
+import { startPwa } from './services/pwa.js';
 import * as noteEditorScreen from './screens/note-editor.js';
 import * as wissenScreen from './screens/wissen.js';
 import { wissenContext } from './screens/wissen.js';
@@ -616,6 +617,8 @@ async function boot(): Promise<void> {
   await startRouter(guard, { settle: historySettled });
   if (profile.onboardingDone === 1) startRemindersOnce();
   onDayChange(() => refresh());
+  // Installable app and offline use (19.10.2026): service worker, install prompt, "Neu laden".
+  startPwa();
 }
 
 void boot();

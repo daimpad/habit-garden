@@ -1,5 +1,5 @@
 // Static build for GitHub Pages (npm run build:pages, runs after npm run build). Writes dist/pages/:
-// app/, vendor/, styles/, assets/ and licenses.txt from public/ (no index.php, no .htaccess),
+// app/, vendor/, styles/, assets/, licenses.txt, manifest.webmanifest and sw.js from public/ (no index.php, no .htaccess),
 // index.html, an identical 404.html (Pages answers unknown paths with it, so deep links and reloads
 // boot the app) and .nojekyll.
 //
@@ -105,7 +105,7 @@ await mkdir(out, { recursive: true });
 for (const dir of ['app', 'vendor', 'styles', 'assets']) {
   await cp(join(pub, dir), join(out, dir), { recursive: true });
 }
-await cp(join(pub, 'licenses.txt'), join(out, 'licenses.txt'));
+for (const file of ['licenses.txt', 'manifest.webmanifest', 'sw.js']) await cp(join(pub, file), join(out, file));
 await writeFile(join(out, 'index.html'), html);
 await writeFile(join(out, '404.html'), html);
 await writeFile(join(out, '.nojekyll'), '');

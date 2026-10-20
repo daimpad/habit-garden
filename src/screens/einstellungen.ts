@@ -62,13 +62,14 @@ import { buildHash, h, icon, render, setVar, type SafeHtml } from '../util/dom.j
 import { importNotes, listNotes } from '../repo/notes.js';
 import { exportAllIcs } from '../services/ics.js';
 import { exportNotesMarkdown, parseNotesMarkdown } from '../services/notes-export.js';
+import { currentInstallState, offlineReady, onInstallChange, promptInstall } from '../services/pwa.js';
 import { isTourId } from '../services/tour.js';
 import { exportWithNotice } from './export-flow.js';
 import { startTour } from './tour.js';
 
 export const APP_VERSION = '0.1.0';
 
-const SECTIONS = ['daten', 'benachrichtigungen', 'darstellung', 'bereiche', 'hilfe', 'info'] as const;
+const SECTIONS = ['daten', 'benachrichtigungen', 'darstellung', 'app', 'bereiche', 'hilfe', 'info'] as const;
 type SectionId = typeof SECTIONS[number];
 
 const LEAD_MINUTES: readonly number[] = [0, 5, 10, 15, 30, 60];
@@ -82,6 +83,7 @@ const SECTION_TITLES: Readonly<Record<SectionId, string>> = {
   daten: t.settingsData,
   benachrichtigungen: t.settingsNotifications,
   darstellung: t.settingsAppearance,
+  app: t.settingsApp,
   bereiche: t.settingsAreas,
   hilfe: t.settingsHelp,
   info: t.settingsInfo,
@@ -195,6 +197,7 @@ class SettingsScreen {
   private readonly route: Route;
   private readonly els: Els;
   private readonly subs: Subscription[] = [];
+  private stopInstall: (() => void) | null = null;
   private readonly timers = new Set<number>();
   private destroyed = false;
 
@@ -240,6 +243,8 @@ class SettingsScreen {
     this.destroyed = true;
     for (const sub of this.subs) sub.unsubscribe();
     this.subs.length = 0;
+    this.stopInstall?.();
+    this.stopInstall = null;
     for (const id of this.timers) window.clearTimeout(id);
     this.timers.clear();
     window.removeEventListener('focus', this.onWake);
@@ -262,6 +267,25 @@ class SettingsScreen {
     } catch (err) {
       console.error(err);
     }
+  }
+
+  /** Section "App": installed or how to install, and whether this build is ready offline. */
+  private renderApp(): void {
+    if (this.destroyed) return;
+    const state = currentInstallState();
+    const stateEl = this.view.querySelector('.ol-settings__app-state');
+    const hint = this.view.querySelector('.ol-settings__app-hint');
+    const button = this.view.querySelector<HTMLElement>('.ol-settings__install');
+    if (stateEl) setText(stateEl, state === 'installed' ? t.appInstalledShort : t.appNotInstalled);
+    if (button) button.hidden = state !== 'prompt';
+    if (hint) {
+      setText(hint, state === 'installed' ? t.appInstalled : state === 'prompt' ? t.appInstallHint : state === 'ios' ? t.appInstallIos : t.appInstallManual);
+    }
+    void offlineReady().then((ready) => {
+      const el = this.view.querySelector('.ol-settings__offline');
+      if (!el || this.destroyed) return;
+      setText(el, ready === null ? t.appOfflineNo : ready ? t.appOfflineYes : t.appOfflinePending);
+    });
   }
 
   private later(fn: () => void, ms: number): void {
@@ -390,6 +414,21 @@ class SettingsScreen {
         <ol-input class="ol-settings__new-name" label="${t.fieldName}" maxlength="${NAME_MAX}" autocomplete="off"></ol-input>
         <ol-button class="ol-settings__create-btn" variant="tonal" icon="plus" label="${t.areaAdd}"></ol-button>
       </div>`;
+    // App (decision of 19.10.2026): install state and offline readiness (services/pwa.ts).
+    const app = h`
+      <div class="ol-settings__item">
+        <dl class="ol-settings__facts">
+          <div class="ol-settings__fact"><dt>${t.appInstallLabel}</dt><dd class="ol-settings__app-state"></dd></div>
+        </dl>
+        <ol-button class="ol-settings__install" variant="tonal" icon="download" label="${t.appInstallAction}" hidden></ol-button>
+        <p class="ol-settings__hint ol-settings__app-hint"></p>
+      </div>
+      <div class="ol-settings__item">
+        <dl class="ol-settings__facts">
+          <div class="ol-settings__fact"><dt>${t.appOfflineLabel}</dt><dd class="ol-settings__offline"></dd></div>
+        </dl>
+        <p class="ol-settings__hint">${t.appOfflineHint}</p>
+      </div>`;
     // Tour (decision of 19.10.2026): the main tour and one chapter per area.
     const hilfe = h`
       <div class="ol-settings__item">
@@ -429,6 +468,7 @@ class SettingsScreen {
         ${this.section('daten', daten)}
         ${this.section('benachrichtigungen', benachrichtigungen)}
         ${this.section('darstellung', darstellung)}
+        ${this.section('app', app)}
         ${this.section('bereiche', bereiche)}
         ${this.section('hilfe', hilfe)}
         ${this.section('info', info)}
@@ -493,6 +533,9 @@ class SettingsScreen {
     });
     els.persistBtn.addEventListener('click', () => void this.onPersist());
     els.seedBtn.addEventListener('click', () => void this.onSeed());
+    this.view.querySelector('.ol-settings__install')?.addEventListener('click', () => void promptInstall().then(() => this.renderApp()));
+    this.stopInstall = onInstallChange(() => this.renderApp());
+    this.renderApp();
     this.view.querySelector('#settings-hilfe')?.addEventListener('click', (event) => {
       const button = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-tour]') : null;
       const id = button?.dataset['tour'];

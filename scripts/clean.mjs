@@ -6,3 +6,4 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 await rm(join(root, 'public', 'app'), { recursive: true, force: true });
 await rm(join(root, 'build'), { recursive: true, force: true });
+await rm(join(root, 'public', 'sw.js'), { force: true });
