@@ -40,6 +40,7 @@ import {
   type ProjectStats,
 } from '../repo/projects.js';
 import { completeTask, reopenTask, subtaskProgress$, updateTask } from '../repo/tasks.js';
+import { playSound } from '../services/sound.js';
 import { back, type Route } from '../router.js';
 import { groupForList, inScope, isInbox, LIST_GROUPS, projectStage, type ListGroupKey } from '../services/planning.js';
 import { addDays, dayKey, formatDayShort, formatTime, now, today } from '../util/date.js';
@@ -649,6 +650,7 @@ class PlanungScreen {
 
   private async onCheck(id: Id, checked: boolean): Promise<void> {
     if (!checked) return;
+    playSound('tap');
     try {
       const result = await completeTask(id);
       showToast(doneMessage(result), { action: { label: t.actionUndo, onAction: () => void reopenTask(id).catch(failed) } });

@@ -42,6 +42,11 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] Kalender (Tipp auf das Datum) passt ohne seitliches Scrollen auf den Bildschirm.
 - [ ] Text bei großer Schrift (Systemeinstellung) bleibt lesbar und abgeschnitten wird nichts.
 
+## Klänge
+- [ ] Erster Tipp nach dem Öffnen: Gießen einer Routine tropft hörbar, leise genug, um niemanden zu stören.
+- [ ] iPhone: Lautlos-Schalter an, Musik im Hintergrund: die App bleibt still und unterbricht die Musik nicht.
+- [ ] Einstellungen › Darstellung › Klänge: „Aus“ macht die App still; „Normal“ spielt zur Probe einen Tropfen.
+
 ## Teilen und Dateien
 - [ ] Projekt › ⋯ › Exportieren (ICS): das Teilen-Menü erscheint; in den Kalender übernehmen; ein Termin um 9:00 steht dort um 9:00.
 - [ ] Einstellungen › Daten › „Notizen als Markdown“ teilt oder speichert eine Datei.

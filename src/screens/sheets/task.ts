@@ -67,6 +67,7 @@ import {
 } from '../../repo/tasks.js';
 import { presetOf, presetRecurrence, type RecurrencePreset } from '../../services/recurrence.js';
 import { ensureReminderPermission, fireTime } from '../../services/reminders.js';
+import { playSound } from '../../services/sound.js';
 import {
   dayOfIso, formatDayFull, formatDayShort, formatTime, isDay, isoAt, isoWeekday, onDayChange, timeOfIso, today,
 } from '../../util/date.js';
@@ -996,6 +997,7 @@ class TaskSheet {
     this.wantedStatus = next;
     this.statusPending += 1;
     this.syncStatus(next);
+    if (next === 'done') playSound('tap');
     this.statusQueue = this.statusQueue
       .then(async () => {
         const current = (await getTask(id))?.status;
@@ -1133,6 +1135,7 @@ class TaskSheet {
     if (!box || !id) return;
     const checked = detailOf<CheckboxChange>(event)?.checked ?? box.checked;
     box.closest('li')?.toggleAttribute('data-done', checked);
+    if (checked) playSound('tap');
     this.subtaskBusy.add(id);
     this.subtaskQueue = this.subtaskQueue
       .then(async () => {
