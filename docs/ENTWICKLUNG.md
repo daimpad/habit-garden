@@ -108,7 +108,7 @@ Habit Garden steht unter der Apache License 2.0 (siehe [`LICENSE`](../LICENSE)).
 
 ### Herkunft der Pflanzengeometrie
 
-Die SVG-Geometrie der Pflanze (Topf, Stängel, Blätter, Knospe, Seitenzweig; Koordinaten und Formelkoeffizienten aus F §4.11) stammt aus der Vorlage „Tend – A Habit Garden“: https://miaai-lab.github.io/Claude-Opus-5.5-100-HTML-Files/046-habit-garden.html, abgerufen am 11. Oktober 2026, SHA-256 `7798e072a66a1af82ce4032f47b6322d97945b69ebf7c63402944973123de58c`. Die Seite und ihr Repository nennen keine Lizenz. Übernommen wurden ausschließlich Geometriedaten; Code, Markup-Aufbau, CSS und Texte sind eigenständig geschrieben. Die Lizenzfrage ist offen und vor einer Veröffentlichung zu klären.
+Bis zum 20.10.2026 folgte die Geometrie der Topfpflanze (Topf, Stängel, Blätter, Knospe, Seitenzweig) der Vorlage „Tend – A Habit Garden“, die keine Lizenz nennt. Seitdem sind Topf, Samen, Spross, Blätter, Knospe und Stängel eigenständig gezeichnet (`components/flora.ts`: `plantStem`, `plantBud`, `plantTop`, im Stil der Garten-Insel); die Pflanzen der Insel nutzen dieselben Teile verkleinert und über Klassen eingefärbt, ohne Blattrippen und -stiele. Aus der Vorlage ist nichts mehr übernommen, die Lizenzfrage ist damit erledigt.
 
 ## Projektstruktur
 
