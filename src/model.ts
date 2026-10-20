@@ -64,6 +64,41 @@ export const DEFAULT_CONTACT_RHYTHM = 14;
 export type MilestoneKind = 'streak7'|'streak30'|'streak100'|'bloom';
 export interface Milestone { id: `${Id}:${MilestoneKind}`; kind: MilestoneKind; habitId: Id; areaId?: Id; earnedOn: Day; }
 
+/**
+ * Calendar sync over files (decision of 20.10.2026): an imported calendar (.ics) and its events. Events are
+ * read-only copies; a new import of the same calendar replaces them. Times are kept as wall-clock values in
+ * the event's own zone (tz: IANA name, 'UTC', or absent = floating/local) so recurrences keep their hour
+ * across DST; services/ical expands them into local occurrences.
+ */
+export interface CalendarSource { id: Id; name: string; color: string; fileName?: string; importedAt: ISO; eventCount: number; hidden: 0|1; }
+export type IcalWeekday = 'MO'|'TU'|'WE'|'TH'|'FR'|'SA'|'SU';
+export interface IcalRule {
+  freq: 'DAILY'|'WEEKLY'|'MONTHLY'|'YEARLY'; interval: number; count?: number;
+  /** UNTIL as a day (DATE) or an ISO instant (DATE-TIME). */
+  until?: string;
+  byDay?: { n?: number; wd: IcalWeekday }[]; byMonthDay?: number[]; byMonth?: number[]; bySetPos?: number[];
+}
+export interface CalendarEvent {
+  /** `${sourceId}:${uid}` for a master or single event, `${sourceId}:${uid}:${recurrence day}` for an override. */
+  id: string; sourceId: Id; uid: string;
+  title: string; location?: string; description?: string;
+  allDay: 0|1;
+  /** Wall-clock start date in the event's zone (all-day: the date). */
+  startDay: Day;
+  /** Wall-clock "HH:MM" in the event's zone (timed events only). */
+  startTime?: string;
+  tz?: string;
+  /** Length: minutes for timed events, days (≥ 1) for all-day events. */
+  duration: number;
+  rule?: IcalRule;
+  /** Excluded occurrences (wall-clock start dates). */
+  exDays?: Day[];
+  /** An override replaces the occurrence of its master on this wall-clock date. */
+  recurrenceDay?: Day;
+  /** Local-day range for queries: first possible day, last possible day ('9999-12-31' = open end). */
+  firstDay: Day; lastDay: Day;
+}
+
 export type Stage = 0|1|2|3|4;
 
 export const DEFAULT_AREAS: ReadonlyArray<Pick<Area,'flower'|'name'|'tint'>> = [

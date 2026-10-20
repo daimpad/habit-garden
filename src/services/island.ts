@@ -135,9 +135,11 @@ export interface KeimiInput {
   focusOpen: number;
   /** Name of the person most overdue (null when nobody is due). */
   dueContact: string | null;
+  /** Calendar sync (20.10.2026): a timed event running now or starting within the next two hours. */
+  nextEvent?: { title: string; time: string; running: boolean } | null;
 }
 
-export type KeimiReason = 'night' | 'pending' | 'focus' | 'contact' | 'watered' | 'first' | 'evening' | 'rest';
+export type KeimiReason = 'night' | 'event' | 'pending' | 'focus' | 'contact' | 'watered' | 'first' | 'evening' | 'rest';
 
 /** "zwei" … "zwölf" for 2–12, digits otherwise; `capital` for the start of a sentence. */
 export function countWord(n: number, capital = false): string {
@@ -147,11 +149,15 @@ export function countWord(n: number, capital = false): string {
 }
 
 /**
- * Keimi's sentence, first match wins: night → plants waiting → focus tasks open → a person due →
+ * Keimi's sentence, first match wins: night → a calendar event now or soon → plants waiting → focus tasks open → a person due →
  * everything watered (evening variant) → no routine yet → evening → nothing scheduled today.
  */
 export function keimiLine(input: KeimiInput): { reason: KeimiReason; text: string } {
   if (input.night) return { reason: 'night', text: t.keimiNight };
+  if (input.nextEvent) {
+    const { title, time, running } = input.nextEvent;
+    return { reason: 'event', text: running ? fmt(t.keimiEventNow, { title }) : fmt(t.keimiEventSoon, { time, title }) };
+  }
   if (input.pending > 0) {
     return { reason: 'pending', text: input.pending === 1 ? t.keimiPendingOne : fmt(t.keimiPendingMany, { n: countWord(input.pending, true) }) };
   }

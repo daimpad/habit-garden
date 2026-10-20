@@ -30,6 +30,12 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] Flugmodus an, App öffnen: Heute, Planung und Wissen erscheinen mit allen Daten; eine Notiz lässt sich anlegen.
 - [ ] Nach einem neuen Deployment erscheint beim nächsten Öffnen „Eine neue Version von Habit Garden ist bereit.“; „Neu laden“ zeigt die neue Version.
 
+## Kalender
+- [ ] Google: Privatadresse im iCal-Format öffnen, die geladene Datei unter Einstellungen › Kalender importieren; die Termine erscheinen in Heute und im Kalender.
+- [ ] Apple/Outlook: eine exportierte .ics-Datei importieren; wiederkehrende Termine stehen an den richtigen Tagen und zur richtigen Uhrzeit.
+- [ ] Ein Termin öffnet sein Blatt; „Als Aufgabe übernehmen“ legt die Aufgabe mit Uhrzeit an.
+- [ ] Einstellungen › Kalender › „Aufgaben als Kalender (ICS)“ in einen eigenen Kalender „Habit Garden“ importieren; nach einer Änderung und erneutem Import ist die Aufgabe aktualisiert, nicht doppelt.
+
 ## Darstellung
 - [ ] Gerät auf dunkel stellen: die App zeigt den Nachtgarten, auch direkt nach dem Neuladen (kein heller Blitz).
 - [ ] Die Adressleiste des Browsers hat die Farbe des Hintergrunds.
