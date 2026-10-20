@@ -452,7 +452,6 @@ class SettingsScreen {
         <h3 class="ol-settings__subhead">${t.infoLicenses}</h3>
         <ul class="ol-settings__licenses">${LICENSES.map((line) => h`<li>${line}</li>`)}</ul>
         <a class="ol-settings__link" href="${appUrl('/licenses.txt')}">${t.infoLicensesLink}</a>
-        <p class="ol-settings__hint">${t.infoProvenance}</p>
       </div>
       <div class="ol-settings__item">
         <ol-button class="ol-settings__seed" variant="tonal" icon="sprout" label="${t.seedAction}"></ol-button>

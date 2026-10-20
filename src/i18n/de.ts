@@ -362,7 +362,6 @@ export const t = {
   toastAreaCreated: 'Bereich angelegt',
   toastAreaArchived: 'Bereich archiviert',
   toastAreaUnarchived: 'Bereich reaktiviert',
-  infoProvenance: 'Pflanzengeometrie nach der Vorlage „Tend – A Habit Garden“',
   wissenNoteSavedOne: '1 Notiz ist gespeichert und im JSON-Export enthalten; neue Notizen legst du mit + an.',
   wissenNotesSaved: '{n} Notizen sind gespeichert und im JSON-Export enthalten; neue Notizen legst du mit + an.',
   // --- additions: integration ---

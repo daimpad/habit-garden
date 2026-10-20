@@ -15,7 +15,7 @@
 //   flicker in CSS, still under reduced motion) and the "Spuren im Garten" per place: the highest streak
 //   tier (lantern, stone bench, pavilion) at TRACE_AT and up to three flowering shrubs at SHRUB_AT. The object
 //   that just appeared carries .i-arrive (fade and scale in from 0.9, CSS).
-import { flowerBody, safeTint } from './flora.js';
+import { flowerBody, plantBud, plantStem, plantTop, safeTint, type PlantPaint } from './flora.js';
 import { t, fmt } from '../i18n/de.js';
 import type { FlowerId, Stage } from '../model.js';
 import type { Decor, Flourish, PlaceKey } from '../services/island.js';
@@ -154,26 +154,26 @@ function cliffBottom(): Pt[] {
 const ref = (name: string): string => `url(#${ID_MARK}${name})`;
 const use = (name: string, attrs = ''): string => `<use href="#${ID_MARK}${name}"${attrs}/>`;
 
-function leaf(x: number, y: number, angle: number, len: number, cls = 'i-leaf'): string {
-  const w = len * 0.36;
-  return `<path class="${cls}" transform="translate(${f(x)} ${f(y)}) rotate(${angle})" d="M0 0C${f(len * 0.28)} ${f(-w)} ${f(len * 0.74)} ${f(-w * 0.95)} ${f(len)} 0C${f(len * 0.74)} ${f(w * 0.8)} ${f(len * 0.28)} ${f(w * 0.85)} 0 0Z"/>`;
-}
-const stem = (d: string): string => `<path class="k-stem" d="${d}" stroke-width="1.4" stroke-linecap="round"/>`;
+// Island plants: the plant of the cards (components/flora.ts) scaled down, painted through classes so the
+// night palette applies. ISLAND_K maps plant units to island units (a full plant is about 21 high).
+const ISLAND_K = 0.22;
+const ISLAND_PAINT: PlantPaint = { leaf: 'class="i-leaf"', leafOld: 'class="i-leaf-lo"', shade: 'class="i-leaf-lo"', stem: 'class="k-stem"', bud: '', fine: false };
+const toIsland = (svg: string): string => `<g transform="scale(${ISLAND_K}) translate(-80 -141)">${svg}</g>`;
+/** Flower head on the island: centred on the stem top of stage 4. */
+const HEAD_SCALE = 0.72;
+const HEAD_AT = ((): string => {
+  const [x, y] = plantTop(4);
+  return `translate(${f((x - 80) * ISLAND_K - 12 * HEAD_SCALE)} ${f((y - 141) * ISLAND_K - 12 * HEAD_SCALE)}) scale(${HEAD_SCALE})`;
+})();
 
 const PLANT_DEFS = [
   // 0 seed in a soil mound
   `<g id="${ID_MARK}p0"><ellipse cy="-1" rx="6.5" ry="2.9" class="i-soil-hi"/><ellipse cy="-2.4" rx="2.7" ry="1.7" fill="#A57B52" transform="rotate(-24 0 -2.4)"/><circle cx="4.5" cy="-7" r="1" fill="#F2C14E"/></g>`,
-  // 1 sprout
-  `<g id="${ID_MARK}p1">${stem('M0 0Q.8 -4 0 -7')}${leaf(0, -7, -150, 6.5)}${leaf(0, -7, -30, 6.5)}</g>`,
-  // 2 leaves
-  `<g id="${ID_MARK}p2">${stem('M0 0C1.2 -5 -1 -9 0 -14')}${leaf(0, -3.5, -160, 8, 'i-leaf-lo')}${leaf(0, -6.5, -18, 8.5)}${leaf(0, -10, -152, 7)}${leaf(0, -14, -40, 6)}${leaf(0, -14, -128, 5)}</g>`,
-  // 3 bud (the bud itself is "bud", filled with the area tint)
-  `<g id="${ID_MARK}p3">${stem('M0 0C1.4 -7 -1.2 -12 0 -18')}${leaf(0, -3.5, -162, 9, 'i-leaf-lo')}${leaf(0, -6.5, -16, 9.5)}${leaf(0, -10.5, -154, 8)}${leaf(0, -14, -26, 7.5)}</g>`,
-  // 4 bloom (the head is "f-<flower>")
-  `<g id="${ID_MARK}p4">${stem('M0 0C1.5 -7 -1.2 -14 0 -21')}${leaf(0, -3.5, -164, 10, 'i-leaf-lo')}${leaf(0, -6.5, -14, 10.5)}${leaf(0, -11, -152, 9)}${leaf(0, -14.5, -28, 8)}</g>`,
+  // 1 sprout, 2 leaves, 3 bud (the bud itself is "bud", filled with the area tint), 4 bloom (the head is "f-<flower>")
+  ...([1, 2, 3, 4] as const).map((n) => `<g id="${ID_MARK}p${n}">${toIsland(plantStem(n, ISLAND_PAINT))}</g>`),
   `<g id="${ID_MARK}bl"><circle r="2.2"/><circle r=".8" fill="#E9A23B"/></g>`,
   `<g id="${ID_MARK}wet"><ellipse rx="6.5" ry="2.4" class="i-wet"/><circle cx="-3" cy="-.4" r=".8" class="i-water-hi"/><circle cx="2.6" cy=".5" r=".6" class="i-water-hi"/></g>`,
-  `<g id="${ID_MARK}bud"><path d="M0 -27C3.4 -25 3.8 -20.5 0 -18C-3.8 -20.5 -3.4 -25 0 -27Z"/><path class="i-leaf-lo" d="M-3 -19.6Q0 -16.4 3 -19.6Q0 -18 -3 -19.6Z"/></g>`,
+  `<g id="${ID_MARK}bud">${toIsland(plantBud(plantTop(3), ISLAND_PAINT))}</g>`,
 ].join('');
 
 type Stop = readonly [offset: number, cls: string, opacity?: number];
@@ -883,7 +883,7 @@ export function sproutFigure(color: string, state: 'fresh' | 'due', opts: { clas
 }
 
 function plant(x: number, y: number, { stage, wet }: IslandPlant, flowerId: FlowerId, tint: string): Drawable {
-  const head = stage === 4 ? use(`f-${flowerId}`, ' transform="translate(-8.6 -30.6) scale(.72)"') : '';
+  const head = stage === 4 ? use(`f-${flowerId}`, ` transform="${HEAD_AT}"`) : '';
   const bud = stage === 3 ? use('bud', ` fill="${tint}"`) : '';
   // Watered today: darker, damp soil with a glint of water.
   const soil = wet ? use('wet') : stage > 0 ? '<ellipse rx="5.5" ry="2" class="i-soil"/>' : '';
