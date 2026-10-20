@@ -38,6 +38,8 @@ import { contactKindLabel } from '../services/contacts.js';
 import { appUrl } from '../util/base.js';
 import { addDays, diffDays, formatDayFull, formatTime, formatWeekdayLong, isDay, today } from '../util/date.js';
 import { emit, h, icon, render, type SafeHtml } from '../util/dom.js';
+import { events$, type DayEvents } from '../repo/calendars.js';
+import { eventItemsMarkup, openEventSheet, paintEventList } from './events-ui.js';
 import { openCalendar, moodMarker } from './sheets/calendar.js';
 import { openCapture } from './sheets/capture.js';
 import { openFocusPick } from './sheets/focus-pick.js';
@@ -96,6 +98,7 @@ class DayScreen {
   private areas = new Map<string, Area>();
   private past: PastDay | null = null;
   private future: FutureDay | null = null;
+  private events: DayEvents | null = null;
   private signature = '';
   private readonly subs: Subscription[] = [];
   private readonly detach: Array<() => void> = [];
@@ -141,6 +144,14 @@ class DayScreen {
       },
       error: fail,
     }));
+    // Calendar sync: the day's events of the imported calendars, first on the page.
+    this.subs.push(events$(this.day, this.day).subscribe({
+      next: (data: DayEvents) => {
+        this.events = data;
+        this.render();
+      },
+      error: fail,
+    }));
     if (this.kind === 'past') {
       this.subs.push(pastDay$(this.day).subscribe({
         next: (data: PastDay) => {
@@ -182,12 +193,14 @@ class DayScreen {
   private render(): void {
     if (this.destroyed) return;
     let markup: SafeHtml;
+    if (!this.events) return;
+    const events = this.eventsMarkup(this.events);
     if (this.kind === 'past') {
       if (!this.past) return;
-      markup = this.pastMarkup(this.past);
+      markup = this.events.occurrences.length > 0 && isPastDayEmpty(this.past) ? events : h`${events}${this.pastMarkup(this.past)}`;
     } else {
       if (!this.future) return;
-      markup = this.futureMarkup(this.future);
+      markup = h`${events}${this.futureMarkup(this.future)}`;
     }
     if (markup.html === this.signature) return;
     this.signature = markup.html;
@@ -197,8 +210,15 @@ class DayScreen {
       ? active.closest<HTMLElement>('[data-key]')?.dataset['key'] ?? null
       : null;
     render(this.content, markup);
+    const evList = this.content.querySelector<HTMLElement>('.ol-day__events');
+    if (evList && this.events) paintEventList(evList, this.events, null);
     this.root.removeAttribute('data-loading');
     if (focusKey) this.focusKey(focusKey);
+  }
+
+  private eventsMarkup(data: DayEvents): SafeHtml {
+    if (data.occurrences.length === 0) return h``;
+    return section('events', t.dayEvents, h`<ol-card class="ol-day__card"><ul class="ol-events ol-day__events">${eventItemsMarkup(data, this.day)}</ul></ol-card>`);
   }
 
   private pastMarkup(data: PastDay): SafeHtml {
@@ -284,6 +304,13 @@ class DayScreen {
   private readonly onClick = (event: Event): void => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
+    const evItem = target.closest<HTMLElement>('li[data-ev]');
+    const occurrence = evItem && this.events?.occurrences.find((o) => o.key === evItem.dataset['ev']);
+    if (evItem && occurrence && this.events) {
+      const data = this.events;
+      this.withOpener(`e:${occurrence.key}`, () => openEventSheet(occurrence, data, evItem.querySelector('button')));
+      return;
+    }
     const taskBtn = target.closest<HTMLElement>('[data-task]');
     const habitBtn = target.closest<HTMLElement>('[data-habit]');
     if (taskBtn?.dataset['task']) {

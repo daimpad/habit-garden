@@ -112,6 +112,8 @@ export interface DaySummary {
   habitsDone: number;
   habitsDue: number;
   mood?: MoodValue;
+  /** Calendar sync: events of the imported calendars on the day. */
+  events?: number;
 }
 
 export interface SummaryInput {

@@ -88,6 +88,9 @@ import { emit, h, HAPTIC, icon, motionReduced, raw, render, setVar, vibrate, typ
 import { attachLongPress } from '../util/long-press.js';
 import { attachSwipe } from '../util/swipe.js';
 import { exportWithNotice } from './export-flow.js';
+import { openEventSheet, renderEventList } from './events-ui.js';
+import { events$, type DayEvents } from '../repo/calendars.js';
+import { nextEvent } from '../services/ical.js';
 import {
   applyHabitToggle, applySky, dayPhase, greetingLine, greetingMarkup, Island, islandMarkup, nextText, skyMarkup, sunPosition,
   todayStatus, type BubbleKind, type DayPhase, type IslandPerson, type IslandPill, type IslandSpot, type IslandView,
@@ -186,6 +189,8 @@ interface Els {
   peopleEmptyText: HTMLElement;
   peopleAdd: HTMLElement;
   peopleList: HTMLElement;
+  events: HTMLElement;
+  eventsList: HTMLElement;
   first: HTMLElement;
   steps: HTMLElement;
   backup: HTMLElement;
@@ -426,6 +431,9 @@ class HeuteScreen {
   /** Teil 3: stored milestones (null until loaded), today's journal note, the evening answer of this mount. */
   private milestones: Milestone[] | null = null;
   private journal: Note | undefined;
+  /** Calendar sync: today's occurrences of the imported calendars (null until loaded). */
+  private events: DayEvents | null = null;
+  private eventTick = 0;
   private journalLoaded = false;
   private thanked = false;
   /** A milestone just earned: Keimi's sentence (cleared after CELEBRATE_MS) and the fade-in ids (after ARRIVE_MS). */
@@ -522,6 +530,11 @@ class HeuteScreen {
       this.milestones = list;
       this.renderIsland();
     });
+    this.watch(events$(day, day), (data) => {
+      this.events = data;
+      this.renderEvents();
+      this.renderIsland();
+    });
     this.watch(journalFor$(day), (note) => {
       this.journal = note;
       this.journalLoaded = true;
@@ -555,6 +568,8 @@ class HeuteScreen {
     this.progressSub = null;
     for (const timer of this.timers) window.clearTimeout(timer);
     this.timers.clear();
+    if (this.eventTick) window.clearInterval(this.eventTick);
+    this.eventTick = 0;
     for (const entry of this.leaving.values()) window.clearTimeout(entry.timer);
     for (const entry of this.expectLog.values()) window.clearTimeout(entry.timer);
     for (const off of this.detach) off();
@@ -850,6 +865,10 @@ class HeuteScreen {
             <ul class="ol-heute__list ol-heute__people-list"></ul>
           </ol-card>
         </section>
+        <section class="ol-section ol-heute__events" aria-labelledby="heute-events" hidden>
+          <div class="ol-section__head"><h2 class="ol-label" id="heute-events" tabindex="-1">${t.sectionEvents}</h2></div>
+          <ol-card class="ol-heute__card"><ul class="ol-events"></ul></ol-card>
+        </section>
         <section class="ol-section ol-heute__focus" aria-labelledby="heute-focus">
           <div class="ol-section__head">
             <h2 class="ol-label" id="heute-focus" tabindex="-1">${t.sectionFocus}</h2>
@@ -939,6 +958,8 @@ class HeuteScreen {
       peopleEmptyText: req<HTMLElement>(peopleEmpty, 'p'),
       peopleAdd: req<HTMLElement>(peopleEmpty, '.ol-heute__people-add'),
       peopleList: req<HTMLElement>(people, '.ol-heute__people-list'),
+      events: req<HTMLElement>(view, '.ol-heute__events'),
+      eventsList: req<HTMLElement>(view, '.ol-heute__events .ol-events'),
       first: req<HTMLElement>(view, '.ol-heute__first'),
       steps: req<HTMLElement>(view, '.ol-heute__steps'),
       backup,
@@ -1096,6 +1117,15 @@ class HeuteScreen {
       if (target.closest('.ol-isl__bubble')) this.onBubble();
     });
 
+    // Termine (calendar sync): a row opens the event sheet.
+    els.eventsList.addEventListener('click', (event) => {
+      const item = event.target instanceof Element ? event.target.closest<HTMLElement>('li[data-ev]') : null;
+      const data = this.events;
+      const o = data?.occurrences.find((x) => x.key === item?.dataset['ev']);
+      if (!item || !data || !o) return;
+      this.rememberOpener();
+      openEventSheet(o, data, item.querySelector('button'));
+    });
     // Melde dich bei
     req<HTMLElement>(this.view, '.ol-heute__people-all').addEventListener('click', () => this.openPeople());
     els.peopleAdd.addEventListener('click', () => this.openPerson());
@@ -1740,9 +1770,10 @@ class HeuteScreen {
     const focusOpen = this.focus.tasks.filter((task) => !this.focusDone(task)).length;
     const due = suggestions(this.contacts.filter((c) => c.archived === 0), this.contactLogs, day, PEOPLE_MAX)
       .find((st) => !this.contactedNow.has(st.contact.id));
+    const soon = phase === 'night' ? null : nextEvent(this.events?.occurrences ?? [], now().getTime());
     let bubble = keimiLine({
       night: phase === 'night', evening: phase === 'evening', habits: active.length, scheduled: shown.length, pending,
-      focusOpen, dueContact: due?.contact.name ?? null,
+      focusOpen, dueContact: due?.contact.name ?? null, nextEvent: soon,
     }).text;
     // Abendfeuer (Teil 3): the question while today's "Freude" entry is missing, the thank-you after an answer
     // here; a milestone just earned speaks first.
@@ -2131,6 +2162,31 @@ class HeuteScreen {
       }, () => showToast(t.toastError));
     };
     run();
+  }
+
+  // --- Termine (calendar sync, 20.10.2026) ---
+
+  /** Today's events of the imported calendars; hidden without any. A minute tick marks past ones and keeps Keimi current. */
+  private renderEvents(): void {
+    const data = this.events;
+    const list = data?.occurrences ?? [];
+    this.els.events.hidden = list.length === 0;
+    if (data && list.length > 0) {
+      const focused = this.els.eventsList.contains(document.activeElement)
+        ? document.activeElement?.closest<HTMLElement>('li[data-ev]')?.dataset['ev'] : undefined;
+      renderEventList(this.els.eventsList, data, this.day, now().getTime());
+      if (focused) this.els.eventsList.querySelector<HTMLElement>(`li[data-ev="${CSS.escape(focused)}"] button`)?.focus({ preventScroll: true });
+    }
+    if (list.length > 0 && !this.eventTick) {
+      this.eventTick = window.setInterval(() => {
+        if (this.destroyed) return;
+        this.renderEvents();
+        this.renderIsland();
+      }, 60_000);
+    } else if (list.length === 0 && this.eventTick) {
+      window.clearInterval(this.eventTick);
+      this.eventTick = 0;
+    }
   }
 
   // --- Melde dich bei (people whose contact rhythm is due) ---

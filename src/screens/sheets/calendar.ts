@@ -79,7 +79,8 @@ function markers(summary: DaySummary | undefined): SafeHtml {
     : '';
   const habits = summary.habitsDue > 0 ? ringMarker(summary.habitsDone / summary.habitsDue) : '';
   const mood = summary.mood !== undefined ? moodMarker(summary.mood) : '';
-  return h`${due}${habits}${mood}`;
+  const events = summary.events ? h`<span class="ol-cal__event" data-many="${summary.events > 1 ? 'true' : 'false'}"></span>` : '';
+  return h`${due}${events}${habits}${mood}`;
 }
 
 /** "Dienstag, 13. Oktober 2026, heute, 2 Aufgaben fällig, 3 von 5 Routinen gegossen, Stimmung 4 von 5" */
@@ -90,6 +91,7 @@ export function dayAriaLabel(day: Day, summary: DaySummary | undefined, current:
     if (summary.due > 0) parts.push(summary.due === 1 ? t.calendarDueOne : fmt(t.calendarDueMany, { n: summary.due }));
     if (summary.habitsDue > 0) parts.push(fmt(t.calendarHabits, { done: summary.habitsDone, total: summary.habitsDue }));
     if (summary.mood !== undefined) parts.push(fmt(t.calendarMood, { n: summary.mood }));
+    if (summary.events) parts.push(summary.events === 1 ? t.calendarMarkerEvent : fmt(t.calendarMarkerEvents, { n: summary.events }));
   }
   return parts.join(', ');
 }
@@ -131,6 +133,7 @@ class CalendarSheet {
     <li><span class="ol-cal__due" data-many="false"></span>${t.calendarLegendDue}</li>
     <li>${ringMarker(0.66)}${t.calendarLegendHabits}</li>
     <li>${moodMarker(4)}${t.calendarLegendMood}</li>
+    <li class="ol-cal__legend-events" hidden><span class="ol-cal__event" data-many="false"></span>${t.calendarLegendEvents}</li>
   </ul>
 </div>`);
     render(sheet.footerEl, h`<ol-button class="ol-cal__today" variant="tonal" icon="calendar" label="${t.calendarToday}"></ol-button>`);
@@ -199,6 +202,9 @@ class CalendarSheet {
   }
 
   private patchMarkers(): void {
+    // Calendar sync: the "Termine" key only shows while the month has events of imported calendars.
+    const legend = this.sheet.bodyEl.querySelector<HTMLElement>('.ol-cal__legend-events');
+    if (legend) legend.hidden = ![...this.summaries.values()].some((s) => (s.events ?? 0) > 0);
     for (const button of this.body.querySelectorAll<HTMLButtonElement>('.ol-cal__day')) {
       const day = button.dataset['day'];
       if (!day || !isDay(day)) continue;

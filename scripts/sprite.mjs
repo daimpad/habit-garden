@@ -27,6 +27,8 @@ export const ICONS = [
   'trending-up',
   // Tour (help button in the headers)
   'circle-help',
+  // Calendar sync (hide/show an imported calendar)
+  'eye-off',
 ];
 
 const parts = [];

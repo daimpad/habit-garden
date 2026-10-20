@@ -46,7 +46,7 @@ import type { OlSegmented, SegmentedChange } from '../components/ol-segmented.js
 import { historySettled } from '../components/ol-sheet.js';
 import { showToast } from '../components/ol-toast.js';
 import { flowerName, fmt, t } from '../i18n/de.js';
-import { DEFAULT_AREAS, GENERIC_TINT, type Area, type FlowerId, type Id, type Profile } from '../model.js';
+import { DEFAULT_AREAS, GENERIC_TINT, type Area, type CalendarSource, type FlowerId, type Id, type Profile } from '../model.js';
 import { areas$, createArea, LastAreaError, moveAreaBy, setAreaArchived, updateArea } from '../repo/areas.js';
 import { profile$, updateSettings } from '../repo/profile.js';
 import { refresh, type Route } from '../router.js';
@@ -57,7 +57,7 @@ import {
   deleteAllData, ImportError, importMerge, importRestore, parseImport, type ExportFile,
 } from '../services/transfer.js';
 import { appUrl } from '../util/base.js';
-import { dayOfIso, formatDayFull, formatTime } from '../util/date.js';
+import { dayOfIso, formatDayFull, formatDayLong, formatTime } from '../util/date.js';
 import { buildHash, h, icon, render, setVar, type SafeHtml } from '../util/dom.js';
 import { importNotes, listNotes } from '../repo/notes.js';
 import { exportAllIcs } from '../services/ics.js';
@@ -65,11 +65,14 @@ import { exportNotesMarkdown, parseNotesMarkdown } from '../services/notes-expor
 import { currentInstallState, offlineReady, onInstallChange, promptInstall } from '../services/pwa.js';
 import { isTourId } from '../services/tour.js';
 import { exportWithNotice } from './export-flow.js';
+import {
+  CalendarImportError, calendars$, importCalendarFile, removeCalendar, setCalendarHidden, type CalendarImportResult,
+} from '../repo/calendars.js';
 import { startTour } from './tour.js';
 
 export const APP_VERSION = '0.1.0';
 
-const SECTIONS = ['daten', 'benachrichtigungen', 'darstellung', 'app', 'bereiche', 'hilfe', 'info'] as const;
+const SECTIONS = ['daten', 'kalender', 'benachrichtigungen', 'darstellung', 'app', 'bereiche', 'hilfe', 'info'] as const;
 type SectionId = typeof SECTIONS[number];
 
 const LEAD_MINUTES: readonly number[] = [0, 5, 10, 15, 30, 60];
@@ -81,6 +84,7 @@ const SCROLL_FALLBACK_MS = 600;
 
 const SECTION_TITLES: Readonly<Record<SectionId, string>> = {
   daten: t.settingsData,
+  kalender: t.settingsCalendar,
   benachrichtigungen: t.settingsNotifications,
   darstellung: t.settingsAppearance,
   app: t.settingsApp,
@@ -269,6 +273,82 @@ class SettingsScreen {
     }
   }
 
+  /** Section "Kalender": the imported calendars (live), import of .ics/.zip files, hide/show and remove. */
+  private bindCalendars(): void {
+    const list = this.view.querySelector<HTMLElement>('.ol-settings__calendars');
+    const none = this.view.querySelector<HTMLElement>('.ol-settings__cal-none');
+    const file = this.view.querySelector<HTMLInputElement>('.ol-settings__file-cal');
+    const button = this.view.querySelector<HTMLElement>('.ol-settings__cal-import');
+    if (!list || !none || !file || !button) return;
+    this.subs.push(calendars$().subscribe({
+      next: (sources: CalendarSource[]) => {
+        if (this.destroyed) return;
+        none.hidden = sources.length > 0;
+        render(list, h`${sources.map((c) => h`<li class="ol-settings__calendar" data-id="${c.id}" ${c.hidden ? 'data-hidden' : ''}>
+          <span class="ol-settings__cal-dot" aria-hidden="true"></span>
+          <span class="ol-settings__cal-text"><span class="ol-settings__cal-name">${c.name}</span>
+            <span class="ol-settings__hint">${fmt(c.eventCount === 1 ? t.calMetaOne : t.calMeta, { n: c.eventCount, date: formatDayLong(dayOfIso(c.importedAt)) })}${c.hidden ? ` · ${t.calHidden}` : ''}</span></span>
+          <ol-icon-button class="ol-settings__cal-toggle" icon="${c.hidden ? 'eye' : 'eye-off'}" label="${fmt(c.hidden ? t.calShow : t.calHide, { name: c.name })}"></ol-icon-button>
+          <ol-icon-button class="ol-settings__cal-remove" icon="trash-2" label="${fmt(t.calRemove, { name: c.name })}"></ol-icon-button>
+        </li>`)}`);
+        for (const li of list.querySelectorAll<HTMLElement>('li[data-id]')) {
+          const c = sources.find((x) => x.id === li.dataset['id']);
+          if (c) setVar(li, '--tint', c.color);
+        }
+      },
+      error: (err: unknown) => console.error(err),
+    }));
+    list.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const li = target?.closest<HTMLElement>('li[data-id]');
+      const id = li?.dataset['id'];
+      if (!target || !li || !id) return;
+      const name = li.querySelector('.ol-settings__cal-name')?.textContent ?? '';
+      if (target.closest('.ol-settings__cal-toggle')) {
+        void setCalendarHidden(id, !li.hasAttribute('data-hidden')).catch(() => showToast(t.toastError));
+      } else if (target.closest('.ol-settings__cal-remove')) {
+        void confirmDialog({ title: t.calRemoveTitle, body: fmt(t.calRemoveBody, { name }), confirmLabel: t.calRemoveConfirm, destructive: true })
+          .then(async (ok) => {
+            if (!ok) return;
+            await removeCalendar(id);
+            showToast(fmt(t.calRemoved, { name }));
+          })
+          .catch(() => showToast(t.toastError));
+      }
+    });
+    // The file picker opens from the click itself (user activation).
+    button.addEventListener('click', () => file.click());
+    file.addEventListener('change', () => {
+      const files = [...(file.files ?? [])];
+      file.value = '';
+      if (files.length) void this.onImportCalendars(files);
+    });
+  }
+
+  private async onImportCalendars(files: readonly File[]): Promise<void> {
+    const results: CalendarImportResult[] = [];
+    for (const f of files) {
+      try {
+        results.push(...await importCalendarFile(f));
+      } catch (err) {
+        // A file without a calendar is an expected outcome (the toast says so); anything else is logged.
+        if (!(err instanceof CalendarImportError)) console.error(err);
+      }
+    }
+    if (this.destroyed) return;
+    if (results.length === 0) {
+      showToast(t.calImportFailed);
+      return;
+    }
+    const [only] = results;
+    if (results.length === 1 && only) {
+      const one = only.count === 1;
+      showToast(fmt(only.replaced ? (one ? t.calImportUpdatedOne : t.calImportUpdated) : (one ? t.calImportDoneOne : t.calImportDone), { n: only.count, name: only.source.name }));
+    } else {
+      showToast(fmt(t.calImportMany, { n: results.length, events: results.reduce((sum, r) => sum + r.count, 0) }));
+    }
+  }
+
   /** Section "App": installed or how to install, and whether this build is ready offline. */
   private renderApp(): void {
     if (this.destroyed) return;
@@ -323,10 +403,6 @@ class SettingsScreen {
         <ol-button class="ol-settings__import-md" variant="tonal" icon="upload" label="${t.importMarkdown}"></ol-button>
         <input class="ol-settings__file-md ol-visually-hidden" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" tabindex="-1" aria-hidden="true">
         <p class="ol-settings__hint">${t.importMarkdownHint}</p>
-      </div>
-      <div class="ol-settings__item">
-        <ol-button class="ol-settings__export-ics" variant="tonal" icon="calendar" label="${t.exportIcsAll}"></ol-button>
-        <p class="ol-settings__hint">${t.exportIcsAllHint}</p>
       </div>
       <div class="ol-settings__item">
         <ol-button class="ol-settings__import" variant="tonal" icon="upload" label="${t.importJson}"></ol-button>
@@ -414,6 +490,28 @@ class SettingsScreen {
         <ol-input class="ol-settings__new-name" label="${t.fieldName}" maxlength="${NAME_MAX}" autocomplete="off"></ol-input>
         <ol-button class="ol-settings__create-btn" variant="tonal" icon="plus" label="${t.areaAdd}"></ol-button>
       </div>`;
+    // Calendar sync over files (decision of 20.10.2026): imported calendars, import, how-to, task export.
+    const kalender = h`
+      <div class="ol-settings__item">
+        <ul class="ol-settings__calendars"></ul>
+        <p class="ol-settings__hint ol-settings__cal-none">${t.calNone}</p>
+      </div>
+      <div class="ol-settings__item">
+        <ol-button class="ol-settings__cal-import" variant="tonal" icon="upload" label="${t.calImport}"></ol-button>
+        <input class="ol-settings__file-cal ol-visually-hidden" type="file" accept=".ics,.zip,text/calendar,application/zip" multiple tabindex="-1" aria-hidden="true">
+        <p class="ol-settings__hint">${t.calImportHint}</p>
+        <details class="ol-settings__how">
+          <summary>${t.calHowTitle}</summary>
+          <ul class="ol-settings__how-list">
+            <li>${t.calHowGoogle}</li><li>${t.calHowApple}</li><li>${t.calHowOutlook}</li><li>${t.calHowOther}</li>
+          </ul>
+        </details>
+      </div>
+      <div class="ol-settings__item">
+        <h3 class="ol-settings__subhead">${t.calExportTitle}</h3>
+        <ol-button class="ol-settings__export-ics" variant="tonal" icon="calendar" label="${t.exportIcsAll}"></ol-button>
+        <p class="ol-settings__hint">${t.calExportHint}</p>
+      </div>`;
     // App (decision of 19.10.2026): install state and offline readiness (services/pwa.ts).
     const app = h`
       <div class="ol-settings__item">
@@ -465,6 +563,7 @@ class SettingsScreen {
       <ol-app-bar back heading="${t.settingsTitle}"></ol-app-bar>
       <div class="ol-settings">
         ${this.section('daten', daten)}
+        ${this.section('kalender', kalender)}
         ${this.section('benachrichtigungen', benachrichtigungen)}
         ${this.section('darstellung', darstellung)}
         ${this.section('app', app)}
@@ -521,6 +620,7 @@ class SettingsScreen {
       if (file) void this.onImportMarkdown(file);
     });
     this.view.querySelector('.ol-settings__export-ics')?.addEventListener('click', () => void exportAllIcs());
+    this.bindCalendars();
     // The file picker opens from the click itself (user activation).
     els.importBtn.addEventListener('click', () => {
       if (!this.importing) els.file.click();

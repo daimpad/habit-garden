@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
-  Area, Contact, ContactLog, DayPlan, Habit, HabitLog, Milestone, MoodLog, Note, Profile, Project, Tag, Task,
+  Area, CalendarEvent, CalendarSource, Contact, ContactLog, DayPlan, Habit, HabitLog, Milestone, MoodLog, Note, Profile, Project, Tag, Task,
 } from './model.js';
 
 export const db = new Dexie('olife') as Dexie & {
@@ -9,6 +9,7 @@ export const db = new Dexie('olife') as Dexie & {
   notes: EntityTable<Note,'id'>; tags: EntityTable<Tag,'path'>; moodLogs: EntityTable<MoodLog,'id'>; dayPlans: EntityTable<DayPlan,'id'>;
   contacts: EntityTable<Contact,'id'>; contactLogs: EntityTable<ContactLog,'id'>;
   milestones: EntityTable<Milestone,'id'>;
+  calendars: EntityTable<CalendarSource,'id'>; calendarEvents: EntityTable<CalendarEvent,'id'>;
 };
 db.version(1).stores({
   profile:   'key',
@@ -32,6 +33,13 @@ db.version(2).stores({
 // No upgrade function: the table starts empty and main.ts fills it from the history (repo/milestones backfill).
 db.version(3).stores({
   milestones: 'id, habitId, earnedOn',
+});
+// Version 4 (calendar sync over files, 20.10.2026): imported calendars and their events. They are copies of
+// outside calendars (a new import replaces them), so they are not part of TABLES: the JSON backup leaves them
+// out and "Wiederherstellen" keeps them; "Alle Daten löschen" removes the whole database including them.
+db.version(4).stores({
+  calendars:      'id, name',
+  calendarEvents: 'id, sourceId, firstDay, recurrenceDay',
 });
 
 /** All table names in a stable order (export, import, delete-all). */

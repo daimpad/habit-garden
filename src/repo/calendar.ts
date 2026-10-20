@@ -8,6 +8,8 @@ import {
   type DaySummary, type FutureDay, type Month, type PastDay,
 } from '../services/calendar.js';
 import { dayOfIso } from '../util/date.js';
+import { eventCounts } from '../services/ical.js';
+import { eventsBetween } from './calendars.js';
 
 /** liveQuery: marker data of every day of the month (see services/calendar summarizeDays). */
 export function monthSummary$(month: Month, today: Day): Observable<Map<Day, DaySummary>> {
@@ -20,7 +22,16 @@ export function monthSummary$(month: Month, today: Day): Observable<Map<Day, Day
       db.habitLogs.where('day').between(from, to, true, true).toArray(),
       db.moodLogs.where('day').between(from, to, true, true).toArray(),
     ]);
-    return summarizeDays(monthDays(month), { tasks, habits, logs, moods }, today);
+    const days = monthDays(month);
+    const summaries = summarizeDays(days, { tasks, habits, logs, moods }, today);
+    // Calendar sync: events of the imported calendars as a fourth marker.
+    const counts = eventCounts((await eventsBetween(from, to)).occurrences, days);
+    for (const [day, n] of counts) {
+      const s = summaries.get(day);
+      if (s) s.events = n;
+      else summaries.set(day, { due: 0, dueOpen: 0, habitsDone: 0, habitsDue: 0, events: n });
+    }
+    return summaries;
   });
 }
 
