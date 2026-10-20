@@ -2125,7 +2125,8 @@
 .ol-settings__cal-name { font-weight: 600; overflow-wrap: anywhere; }
 .ol-settings__how { width: 100%; }
 .ol-settings__how > summary { min-height: 44px; display: flex; align-items: center; color: var(--color-primary); font-weight: 600; cursor: pointer; }
-.ol-settings__how-list { display: grid; gap: var(--space-2); margin: 0 0 var(--space-2); padding-left: 1.2em; color: var(--color-text-2); font-size: .875rem; }
+.ol-settings__how-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); margin: 0 0 var(--space-2); padding-left: 1.2em; color: var(--color-text-2); font-size: .875rem; overflow-wrap: anywhere; }
+.ol-settings__how { min-width: 0; max-width: 100%; }
 /* === /events === */
 
 /* === tour === */
