@@ -44,6 +44,7 @@ import type { Profile } from './model.js';
 import { backfillMilestones } from './repo/milestones.js';
 import { createEmptyNote } from './repo/notes.js';
 import { getProfile, profile$ } from './repo/profile.js';
+import { initSound, setSoundLevel } from './services/sound.js';
 import {
   TABS, back, baseRoute, current, lastPathOf, navigate, onRoute, parseRoute, refresh, routeHref, startRouter,
   type Route, type RouteChange, type RouteName,
@@ -198,6 +199,7 @@ function applySettings(settings: Profile['settings']): void {
   }
   const side = settings.leftHanded ? 'left' : 'right';
   if (shell && shell.fab.getAttribute('side') !== side) shell.fab.setAttribute('side', side);
+  setSoundLevel(settings.sound);
 }
 
 let remindersStarted = false;
@@ -604,6 +606,8 @@ async function boot(): Promise<void> {
   ensureSingleton('ol-toast');
   ensureSingleton('ol-particles');
   applySettings(profile.settings);
+  // Klänge (20.10.2026): audio starts with the first tap or key press.
+  initSound();
 
   document.addEventListener('ol-navigate', onNavigateEvent);
   document.addEventListener('ol-back', onBackEvent);

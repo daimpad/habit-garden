@@ -42,6 +42,9 @@
 //   change made here (card, place sheet, heatmap) repo/milestones syncMilestones stores newly earned ones; they
 //   are celebrated quietly (Keimi's sentence for CELEBRATE_MS, the object fades in, aria-live). The mount also
 //   runs the silent backfill. Each place shows its highest streak tier and up to three shrubs.
+// - Klänge (20.10.2026, services/sound): a watered routine drips, a new stage rustles, full bloom rings once, a
+//   milestone plays the wind chime, a checked task taps, "Ins Feuer erzählen" crackles, and Keimi chirps once
+//   a day when the evening question appears.
 import { liveQuery, type Observable, type Subscription } from 'dexie';
 import { flower, petalColor } from '../components/flora.js';
 import { sproutFigure, type IslandArea } from '../components/island.js';
@@ -49,6 +52,7 @@ import type { CheckboxChange } from '../components/ol-checkbox.js';
 import type { HabitToggleChange } from '../components/ol-habit-toggle.js';
 import type { OlHeatmap, ToggleDayDetail } from '../components/ol-heatmap.js';
 import { particles } from '../components/ol-particles.js';
+import { playSound } from '../services/sound.js';
 import type { OlPlant } from '../components/ol-plant.js';
 import { onModalChange, topModal, type OlSheet } from '../components/ol-sheet.js';
 import { showToast } from '../components/ol-toast.js';
@@ -127,6 +131,9 @@ const PEOPLE_MAX = 3;
 const NO_AREA_GROUP = 'none';
 /** Island ids are unique per mount (two islands never share gradients). */
 let islandSeq = 0;
+/** Day on which Keimi's evening question last chirped (Klänge; once a day per session, across mounts). */
+let keimiAskedOn: Day | null = null;
+
 /** Keimi's milestone sentence stays this long; the new object's fade-in class this long (Teil 3). */
 const CELEBRATE_MS = 12_000;
 const ARRIVE_MS = 1_200;
@@ -1409,6 +1416,7 @@ class HeuteScreen {
       }
       return;
     }
+    playSound('tap');
     let result: CompleteResult;
     try {
       result = await completeTask(id);
@@ -1782,6 +1790,11 @@ class HeuteScreen {
     if (fire === 'ask') {
       bubble = t.joyQuestion;
       bubbleKind = 'ask';
+      // Klänge: Keimi chirps once a day when the evening question first appears (in this session).
+      if (keimiAskedOn !== day) {
+        keimiAskedOn = day;
+        playSound('keimi');
+      }
     } else if (this.thanked && fire !== 'off') {
       bubble = t.joyThanks;
       bubbleKind = 'event';
@@ -1841,6 +1854,7 @@ class HeuteScreen {
       this.celebration = celebration;
       this.arriving = arriving;
       this.island.announce(lines.join(' '));
+      playSound('milestone');
       this.later(() => {
         if (this.arriving !== arriving) return;
         this.arriving = null;
@@ -1882,6 +1896,7 @@ class HeuteScreen {
         this.celebration = null;
         this.renderIsland();
         this.island.spark();
+        playSound('fire');
         showToast(t.joyToast, {
           action: { label: t.joyOpen, onAction: () => emit(document.body, 'ol-navigate', { path: `/wissen/n/${encodeURIComponent(note.id)}` }) },
         });
@@ -2121,6 +2136,7 @@ class HeuteScreen {
     }
     if (plant.stage !== after) plant.setAttribute('stage', String(after));
     const grown = after > before;
+    playSound(grown ? (after === 4 ? 'bloom' : 'grow') : 'water');
     const reduced = motionReduced();
     const points = plant.anchorPoints();
     let confirm = false;
@@ -2556,6 +2572,7 @@ class HeuteScreen {
     this.leaving.set(id, entry);
     row.setAttribute('data-done', '');
     this.renderDue();
+    playSound('tap');
     let result: CompleteResult;
     try {
       result = await completeTask(id);

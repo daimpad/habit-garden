@@ -14,11 +14,13 @@
 //   picker); once no modal is open any more the dialog opens again on the next step.
 // - A route change the tour did not start (Back) ends the tour quietly.
 // - Under reduced motion the light jumps instead of gliding and nothing pulses or waves (CSS).
+// - Klänge: Keimi chirps when a tour starts and when it is finished with Fertig (services/sound).
 // - The offer after the onboarding (queueTourOffer in start.ts, maybeOfferTour from main.ts once HEUTE
 //   shows) uses the same bubble in the middle: "Später" / "Tour starten", asked once per onboarding.
 import '../components/ol-button.js';
 import '../components/ol-icon-button.js';
 import { keimiGlyph } from '../components/island.js';
+import { playSound } from '../services/sound.js';
 import { lockScroll, onModalChange, popModal, pushModal, topModal } from '../components/ol-sheet.js';
 import { showToast } from '../components/ol-toast.js';
 import { fmt, t } from '../i18n/de.js';
@@ -240,6 +242,7 @@ class Tour {
     this.q('.ol-tour__back').setAttribute('label', t.tourBack);
     this.open();
     this.index = 0;
+    playSound('keimi');
     await this.show(1);
   }
 
@@ -247,6 +250,7 @@ class Tour {
     if (this.showing) return;
     const next = this.index + dir;
     if (next >= this.steps.length) {
+      playSound('keimi');
       this.end(false);
       return;
     }

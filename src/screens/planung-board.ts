@@ -25,6 +25,7 @@ import { showToast } from '../components/ol-toast.js';
 import { fmt, t } from '../i18n/de.js';
 import { GENERIC_TINT, type Area, type Id, type Project, type Task } from '../model.js';
 import { compareDue, completeTask, reopenTask, updateTask } from '../repo/tasks.js';
+import { playSound } from '../services/sound.js';
 import { addDays, compareIso, dayOfIso, formatDayShort, formatTime, today } from '../util/date.js';
 import { emit, h, icon, render } from '../util/dom.js';
 import { attachLongPressDrag } from '../util/drag.js';
@@ -504,6 +505,7 @@ export class PlanungBoard {
   /** Writes a status change; resolves with the toast text. */
   private async writeStatus(id: Id, from: Status, to: Status): Promise<string> {
     if (to === 'done') {
+      playSound('tap');
       const result = await completeTask(id);
       return doneMessage(result);
     }

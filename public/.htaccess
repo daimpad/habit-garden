@@ -2,6 +2,7 @@ Options -Indexes
 AddType text/javascript .js .mjs
 AddType font/woff2 .woff2
 AddType application/manifest+json .webmanifest
+AddType audio/mpeg .mp3
 
 RewriteEngine On
 RewriteRule (^|/)\.git(/|$) - [F]

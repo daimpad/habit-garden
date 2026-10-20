@@ -283,6 +283,11 @@ export const t = {
   animations: 'Animationen',
   animationsSystem: 'System',
   animationsReduced: 'Reduziert',
+  sound: 'Klänge',
+  soundOff: 'Aus',
+  soundSoft: 'Leise',
+  soundNormal: 'Normal',
+  soundHint: 'Kurze Naturklänge beim Gießen, Wachsen, Abhaken und am Abendfeuer. Auf dem iPhone folgen sie dem Lautlos-Schalter.',
   dayStartHour: 'Morgen beginnt um',
   eveningHour: 'Abend beginnt um',
   hourValue: '{h} Uhr',
@@ -307,6 +312,7 @@ export const t = {
   licenseDompurify: 'DOMPurify – Mozilla Public License 2.0 oder Apache License 2.0',
   licenseInter: 'Inter – SIL Open Font License 1.1',
   licenseLucide: 'Lucide – ISC License',
+  licenseSounds: 'Klänge – erzeugt mit ElevenLabs Sound Effects',
   licenseOlife: 'Habit Garden – Apache License 2.0',
 
   // Errors

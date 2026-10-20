@@ -46,6 +46,7 @@ import { areas$, listAreas } from '../../repo/areas.js';
 import { deleteHabit, getHabit, habit$, restoreHabit, setHabitArchived, updateHabit } from '../../repo/habits.js';
 import { habitLogId, habitLogs$, logsFor, toggleLog, type ToggleResult } from '../../repo/habitLogs.js';
 import { syncMilestones } from '../../repo/milestones.js';
+import { playSound } from '../../services/sound.js';
 import { bestStreak, stageFor, streak } from '../../services/growth.js';
 import { formatDayLong, isoWeekday, nowIso, onDayChange, today } from '../../util/date.js';
 import { emit, h, HAPTIC, render, setVar, vibrate } from '../../util/dom.js';
@@ -327,6 +328,7 @@ class HabitSheet {
       const layer = particles();
       layer.drops(soil.x, soil.y);
       layer.burst(head.x, head.y, petalColor(flower, tint), after === 4);
+      playSound(after === 4 ? 'bloom' : 'grow');
       vibrate(HAPTIC.confirm);
     } else if (after < before) {
       void plant.crossfadeTo(after);
@@ -334,6 +336,7 @@ class HabitSheet {
       void plant.wobble();
       const { soil } = plant.anchorPoints();
       particles().drops(soil.x, soil.y);
+      playSound('water');
     }
   }
 

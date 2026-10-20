@@ -16,7 +16,8 @@
 // - Darstellung (S38): Profile.settings is the source of truth; 'theme' also goes to localStorage as the
 //   pre-paint cache (app/theme-boot.js). Thema Hell / Dunkel / System (System follows prefers-color-scheme
 //   live); Landschaft switches the sky of the HEUTE garden (H11). main.ts applies data-theme, data-motion,
-//   data-landscape and the FAB side from the profile.
+//   data-landscape and the FAB side from the profile. Klänge Aus · Leise · Normal (services/sound): a choice
+//   applies at once and plays the water drop as a preview.
 // - Bereiche: rename inline, archive/reactivate (the last active area stays active), create with a flower
 //   choice; the tint comes from DEFAULT_AREAS for that flower, GENERIC_TINT for 'generic'.
 //   Reorder (A.3): "Reihenfolge ändern" switches the rows from rename/archive to up/down buttons (48 px,
@@ -63,6 +64,7 @@ import { importNotes, listNotes } from '../repo/notes.js';
 import { exportAllIcs } from '../services/ics.js';
 import { exportNotesMarkdown, parseNotesMarkdown } from '../services/notes-export.js';
 import { currentInstallState, offlineReady, onInstallChange, promptInstall } from '../services/pwa.js';
+import { isSoundLevel, previewSound, setSoundLevel } from '../services/sound.js';
 import { isTourId } from '../services/tour.js';
 import { exportWithNotice } from './export-flow.js';
 import {
@@ -107,7 +109,7 @@ const NOTIF_TEXT: Readonly<Record<NotificationPermission | 'unsupported', string
 };
 
 const LICENSES: readonly string[] = [
-  t.licenseOlife, t.licenseDexie, t.licenseMarkdownIt, t.licenseDompurify, t.licenseInter, t.licenseLucide,
+  t.licenseOlife, t.licenseDexie, t.licenseMarkdownIt, t.licenseDompurify, t.licenseInter, t.licenseLucide, t.licenseSounds,
 ];
 
 function isSection(value: unknown): value is SectionId {
@@ -186,6 +188,7 @@ interface Els {
   left: OlCheckbox;
   leftText: HTMLElement;
   animations: OlSegmented;
+  sound: OlSegmented;
   dayStart: HTMLSelectElement;
   evening: HTMLSelectElement;
   areaList: HTMLElement;
@@ -471,6 +474,15 @@ class SettingsScreen {
           <button type="button" data-value="reduced">${t.animationsReduced}</button>
         </ol-segmented>
       </div>
+      <div class="ol-settings__item">
+        <span class="ol-settings__label" id="settings-sound-label">${t.sound}</span>
+        <ol-segmented class="ol-settings__sound" aria-labelledby="settings-sound-label" aria-describedby="settings-sound-hint">
+          <button type="button" data-value="off">${t.soundOff}</button>
+          <button type="button" data-value="soft">${t.soundSoft}</button>
+          <button type="button" data-value="normal">${t.soundNormal}</button>
+        </ol-segmented>
+        <p class="ol-settings__hint" id="settings-sound-hint">${t.soundHint}</p>
+      </div>
       <div class="ol-settings__item ol-settings__pair">
         ${selectField('ol-settings__day-start', 'settings-day-start', t.dayStartHour, options(MORNING_HOURS, hour))}
         ${selectField('ol-settings__evening', 'settings-evening', t.eveningHour, options(EVENING_HOURS, hour))}
@@ -595,6 +607,7 @@ class SettingsScreen {
       left: req<OlCheckbox>(v, '.ol-settings__left'),
       leftText: req<HTMLElement>(v, '.ol-settings__switch-text:not(.ol-settings__landscape-text)'),
       animations: req<OlSegmented>(v, '.ol-settings__motion'),
+      sound: req<OlSegmented>(v, '.ol-settings__sound'),
       dayStart: req<HTMLSelectElement>(v, '.ol-settings__day-start'),
       evening: req<HTMLSelectElement>(v, '.ol-settings__evening'),
       areaList: req<HTMLElement>(v, '.ol-settings__areas'),
@@ -664,6 +677,14 @@ class SettingsScreen {
       const value = (event as CustomEvent<SegmentedChange>).detail.value;
       if (value === 'system' || value === 'reduced') this.save({ animations: value });
     });
+    // Klänge: the level applies at once (inside this tap, so audio may start) and a drop plays as a preview.
+    els.sound.addEventListener('ol-change', (event) => {
+      const value = (event as CustomEvent<SegmentedChange>).detail.value;
+      if (!isSoundLevel(value)) return;
+      setSoundLevel(value);
+      if (value !== 'off') previewSound();
+      this.save({ sound: value });
+    });
     els.left.addEventListener('ol-change', (event) => {
       this.save({ leftHanded: (event as CustomEvent<CheckboxChange>).detail.checked });
     });
@@ -729,6 +750,7 @@ class SettingsScreen {
     setAttr(els.theme, 'value', s.theme);
     if (els.landscape.checked !== (s.landscape === 1)) els.landscape.checked = s.landscape === 1;
     setAttr(els.animations, 'value', s.animations);
+    setAttr(els.sound, 'value', s.sound);
     if (els.left.checked !== s.leftHanded) els.left.checked = s.leftHanded;
     setSelect(els.lead, s.reminderLeadMinutes, (n) => fmt(t.minutesValue, { n }));
     setSelect(els.dayStart, s.dayStartHour, (n) => fmt(t.hourValue, { h: n }));

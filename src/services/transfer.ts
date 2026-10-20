@@ -266,6 +266,7 @@ function validateProfile(value: unknown, path: string): Profile {
   if (present(s.reminderLeadMinutes)) settings.reminderLeadMinutes = int(s, 'reminderLeadMinutes', sp, 0, 10_080);
   if (present(s.animations)) settings.animations = oneOf(s, 'animations', ['system', 'reduced'] as const, sp);
   if (present(s.landscape)) settings.landscape = bit(s, 'landscape', sp);
+  if (present(s.sound)) settings.sound = oneOf(s, 'sound', ['off', 'soft', 'normal'] as const, sp);
   const profile: Profile = {
     key: 'profile',
     schemaVersion: present(r.schemaVersion) ? int(r, 'schemaVersion', path, 1, SCHEMA_VERSION) : SCHEMA_VERSION,

@@ -1,6 +1,7 @@
 import { liveQuery, type Observable } from 'dexie';
 import { db } from '../db.js';
 import { DEFAULT_AREAS, DEFAULT_SETTINGS, SCHEMA_VERSION, type Area, type Profile } from '../model.js';
+import { isSoundLevel } from '../services/sound.js';
 import { nowIso } from '../util/date.js';
 import { newId, sortKeyBetween } from '../util/ids.js';
 
@@ -20,6 +21,7 @@ export function defaultProfile(): Profile {
  * Schema 1 → 2: no UI could set settings.landscape before Phase 5, so its stored 0 is the old
  * default and becomes 1 (on); a missing or invalid value is on as well. Reads upgrade on the fly
  * (liveQuery cannot write); the next profile write stores the upgraded record.
+ * Klänge (no schema step): a missing or invalid settings.sound is 'soft', the default.
  */
 export function upgradeProfile(profile: Profile): Profile {
   if (!(profile.schemaVersion >= 2)) {
@@ -28,6 +30,7 @@ export function upgradeProfile(profile: Profile): Profile {
   } else if (profile.settings.landscape !== 0 && profile.settings.landscape !== 1) {
     profile.settings.landscape = 1;
   }
+  if (!isSoundLevel(profile.settings.sound)) profile.settings.sound = DEFAULT_SETTINGS.sound;
   return profile;
 }
 

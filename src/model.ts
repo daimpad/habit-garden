@@ -4,7 +4,9 @@ export type FlowerId = 'bellis'|'calendula'|'helianthus'|'centaurea'|'passiflora
 export interface Profile {
   key: 'profile'; schemaVersion: number;
   settings: { theme: 'light'|'dark'|'system'; dayStartHour: number; eveningHour: number; leftHanded: boolean;
-              reminderLeadMinutes: number; animations: 'system'|'reduced'; landscape: 0|1; };
+              reminderLeadMinutes: number; animations: 'system'|'reduced'; landscape: 0|1;
+              /** Klänge (20.10.2026); missing in older profiles, read as 'soft' (repo/profile upgradeProfile). */
+              sound: 'off'|'soft'|'normal'; };
   onboardingDone: 0|1; createdAt: ISO; lastExportAt?: ISO; backupCardDismissedAt?: ISO;
   /** Approved addition (Rückfrage 2): ids of dismissed "Erste Schritte" cards. */
   firstStepsDismissed?: FirstStepId[];
@@ -122,7 +124,7 @@ export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_SETTINGS: Profile['settings'] = {
   theme: 'system', dayStartHour: 5, eveningHour: 17, leftHanded: false,
-  reminderLeadMinutes: 10, animations: 'system', landscape: 1,
+  reminderLeadMinutes: 10, animations: 'system', landscape: 1, sound: 'soft',
 };
 
 export const MAX_FOCUS = 3;
