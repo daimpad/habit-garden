@@ -31,9 +31,11 @@
 //   answer sheet; shown even when hidden for the day) and 'event' (a milestone or the thank-you, shown even when
 //   hidden). spark() lets a spark rise from the fire (not under reduced motion); announce() speaks through a
 //   polite live region.
+// - Lebendige Insel (Gamification Teil 1): the root carries data-season (CSS recolours the island); rain() lets
+//   a small cloud rain over a place after watering (1.8 s; under reduced motion the cloud only fades).
 import '../components/ol-segmented.js';
 import {
-  ANCHORS, FIRE_BOX, HIT_BOXES, islandSvg, KEIMI_BOX, PEOPLE_SPOTS, sproutFigure, VIEW_H, VIEW_W, type IslandInput,
+  ANCHORS, FIRE_BOX, HIT_BOXES, islandSvg, KEIMI_BOX, PEOPLE_SPOTS, SLOTS, sproutFigure, VIEW_H, VIEW_W, type IslandInput,
 } from '../components/island.js';
 import { fmt, stageName, t } from '../i18n/de.js';
 import type { Day, Habit, HabitLog, Id, Profile } from '../model.js';
@@ -219,6 +221,15 @@ const REACH_PLACE = 72;
 const REACH_PERSON = 24;
 const HOP_MS = 900;
 const SPARK_MS = 1400;
+const RAIN_MS = 1900;
+
+/** A small rain cloud with drops (overlay after watering; colours from CSS, aria-hidden). */
+const RAIN_SVG = '<svg class="ol-isl__rain-svg" viewBox="-26 -20 52 62" focusable="false">'
+  + '<g class="r-shade"><circle cx="-13" cy="3.6" r="9"/><circle cx="-3" cy="-3.4" r="11"/><circle cx="9" cy="-1.4" r="9.5"/><circle cx="16" cy="4.6" r="7"/><rect x="-22" y="1.6" width="42" height="10" rx="5"/></g>'
+  + '<g class="r-cloud"><circle cx="-13" cy="2" r="9"/><circle cx="-3" cy="-5" r="11"/><circle cx="9" cy="-3" r="9.5"/><circle cx="16" cy="3" r="7"/><rect x="-22" y="0" width="42" height="9.5" rx="4.75"/></g>'
+  + '<g class="r-drops">'
+  + [[-14, 16], [-6, 24], [2, 14], [10, 22], [-10, 32], [6, 33], [15, 13]].map(([x, y], i) => `<g transform="translate(${x} ${y})"><path class="r-drop r-drop--${i % 3}" d="M0 -3.2C1 -1.6 2 -.4 2 .9A2 2 0 0 1 -2 .9C-2 -.4 -1 -1.6 0 -3.2Z"/></g>`).join('')
+  + '</g></svg>';
 
 /** Island skeleton inside the hero (filled by Island.update). */
 export function islandMarkup(): SafeHtml {
@@ -392,6 +403,7 @@ export class Island {
       this.signature = signature;
       render(this.art, raw(islandSvg({ ...view.art, prefix: this.prefix })));
     }
+    setAttr(this.root, 'data-season', view.art.season ?? 'summer');
     this.syncPlaces(view.places);
     this.syncSummary(view.summary);
     this.syncPills(view.pills, view.total);
@@ -444,6 +456,20 @@ export class Island {
       this.stage.append(el);
       window.setTimeout(() => el.remove(), SPARK_MS);
     }
+  }
+
+  /** After watering: a small cloud rains over the place's plants for a moment. */
+  rain(spot: IslandSpot): void {
+    const [x, y] = SLOTS[spot][0] ?? ANCHORS.keimi;
+    this.stage.querySelector(`.ol-isl__rain[data-spot="${spot}"]`)?.remove();
+    const el = document.createElement('span');
+    el.className = 'ol-isl__rain';
+    el.dataset['spot'] = spot;
+    el.setAttribute('aria-hidden', 'true');
+    place(el, x, y);
+    render(el, raw(RAIN_SVG));
+    this.stage.append(el);
+    window.setTimeout(() => el.remove(), RAIN_MS);
   }
 
   /** Switches between the garden and the balance view (remembered per browser). */

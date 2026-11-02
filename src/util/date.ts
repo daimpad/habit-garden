@@ -149,6 +149,13 @@ export function formatDayLong(day: Day): string {
   return fmtLong.format(parseDay(day));
 }
 
+const fmtDayMonth = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long' });
+
+/** "11. Oktober" */
+export function formatDayMonth(day: Day): string {
+  return fmtDayMonth.format(parseDay(day));
+}
+
 /** "11.10." */
 export function formatDayShort(day: Day): string {
   return `${fmtShort.format(parseDay(day))}`;

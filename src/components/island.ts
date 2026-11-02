@@ -15,11 +15,24 @@
 //   flicker in CSS, still under reduced motion) and the "Spuren im Garten" per place: the highest streak
 //   tier (lantern, stone bench, pavilion) at TRACE_AT and up to three flowering shrubs at SHRUB_AT. The object
 //   that just appeared carries .i-arrive (fade and scale in from 0.9, CSS).
+// - Lebendige Insel (Gamification Teil 1, 02.11.2026): `season` adds the details of components/island-season.ts
+//   (spring blossoms, summer fireflies, autumn leaves, winter snow and ice, Keimi's scarf); the colours change
+//   through data-season on .ol-isl (CSS). `rainbow` draws a soft rainbow behind the island (day only). An
+//   arriving object also gets the reward moment (spotlight and petals, .i-fx).
+// - Besucher (Gamification Teil 2): `visitors` places the animals of components/island-visitors.ts at their spots
+//   (flyers above everything); one that just came carries .i-visit-new.
 import { flowerBody, plantBud, plantStem, plantTop, safeTint, type PlantPaint } from './flora.js';
 import { t, fmt } from '../i18n/de.js';
 import type { FlowerId, Stage } from '../model.js';
 import type { Decor, Flourish, PlaceKey } from '../services/island.js';
 import type { TraceTier } from '../services/milestones.js';
+import type { Season } from '../services/season.js';
+import type { VisitorId } from '../services/visitors.js';
+import { visitorOnIsland } from './island-visitors.js';
+import {
+  arriveFx, BIG_TREE_CROWN, bushCrown, crownBlossoms, crownSnow, crownTint, fallingLeaves, frozenPond, leafPile, rainbow,
+  SCARF, SEASON_DEFS, SNOW, snowDrifts, snowfall, SUMMER_FLIES, type Blob,
+} from './island-season.js';
 
 export const VIEW_W = 600;
 export const VIEW_H = 560;
@@ -53,6 +66,12 @@ export interface IslandInput {
   decor: Decor;
   /** Unique id prefix, e.g. "hgi1-". */
   prefix: string;
+  /** Lebendige Insel: the season's details (default summer, which adds only evening fireflies). */
+  season?: Season;
+  /** Lebendige Insel: every routine of today watered (day only, CSS hides it at night). */
+  rainbow?: boolean;
+  /** Besucher (Teil 2): who is on the island today; `arrive` for one that just came (comes in, CSS). */
+  visitors?: ReadonlyArray<{ id: VisitorId; arrive?: boolean }>;
 }
 
 type Pt = readonly [number, number];
@@ -183,7 +202,7 @@ function gradient(type: 'radialGradient' | 'linearGradient', name: string, attrs
   return `<${type} id="${ID_MARK}${name}"${attrs ? ` ${attrs}` : ''}>${stops}</${type}>`;
 }
 
-function defs(flowers: ReadonlySet<FlowerId>, parts: ReadonlySet<TracePart> = new Set()): string {
+function defs(flowers: ReadonlySet<FlowerId>, parts: ReadonlySet<TracePart> = new Set(), season: Season = 'summer'): string {
   const rad = (name: string, attrs: string, list: readonly Stop[]): string => gradient('radialGradient', name, attrs, list);
   const lin = (name: string, attrs: string, list: readonly Stop[]): string => gradient('linearGradient', name, attrs, list);
   return '<defs>'
@@ -203,6 +222,7 @@ function defs(flowers: ReadonlySet<FlowerId>, parts: ReadonlySet<TracePart> = ne
     + PLANT_DEFS
     + [...flowers].map((id) => `<g id="${ID_MARK}f-${id}">${flowerBody(id, 1.6, `${ID_MARK}r-${id}-`)}</g>`).join('')
     + [...parts].map((part) => TRACE_DEFS[part]).join('')
+    + (season === 'summer' ? '' : SEASON_DEFS)
     + '</defs>';
 }
 
@@ -342,17 +362,23 @@ function bloomRing(cx: number, cy: number, rx: number, ry: number, tint: string,
 
 const POND = { cx: 106, cy: 282, rx: 54, ry: 25 } as const;
 
-function pond(area: IslandArea | undefined): string {
+function pond(area: IslandArea | undefined, season: Season): string {
   const lvl = area?.lvl ?? 0;
   const { cx, cy, rx, ry } = POND;
   const on = (deg: number, k = 1): Pt => [cx + rx * k * Math.cos((deg * Math.PI) / 180), cy + ry * k * Math.sin((deg * Math.PI) / 180)];
+  const frozen = season === 'winter';
   let s = `<ellipse class="i-bank" cx="${cx}" cy="${cy + 3}" rx="${rx + 7}" ry="${ry + 5}"/>`;
   s += `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${ref('g-water')}"/>`;
-  s += `<path class="k-water-hi" d="M${cx - 36} ${cy - 5}q14-7 30-7M${cx + 8} ${cy + 11}q12 3 24-2" stroke-width="2" stroke-linecap="round" opacity=".8"/>`;
-  s += `<ellipse class="i-night i-moonlight" cx="${cx + 14}" cy="${cy + 4}" rx="16" ry="3"/>`;
-  const pads: ReadonlyArray<readonly [number, number, number]> = [[-16, 6, 7], [22, -6, 6], [2, 13, 5.5], [-34, -1, 5]];
-  s += pads.slice(0, area ? 2 + Math.min(2, lvl) : 1).map(([x, y, r]) => lilyPad(cx + x, cy + y, r)).join('');
-  if (lvl >= 2) s += `<circle cx="${cx - 14}" cy="${cy + 4}" r="2.6" fill="#F4C6CF"/><circle cx="${cx - 14}" cy="${cy + 4}" r="1" fill="#F2C14E"/><circle cx="${cx + 23}" cy="${cy - 7.5}" r="2.2" fill="#FFFFFF"/><circle cx="${cx + 23}" cy="${cy - 7.5}" r=".9" fill="#F2C14E"/>`;
+  if (frozen) {
+    // Winter: ice with a snowy far bank; no lily pads.
+    s += frozenPond(cx, cy, rx, ry);
+  } else {
+    s += `<path class="k-water-hi" d="M${cx - 36} ${cy - 5}q14-7 30-7M${cx + 8} ${cy + 11}q12 3 24-2" stroke-width="2" stroke-linecap="round" opacity=".8"/>`;
+    s += `<ellipse class="i-night i-moonlight" cx="${cx + 14}" cy="${cy + 4}" rx="16" ry="3"/>`;
+    const pads: ReadonlyArray<readonly [number, number, number]> = [[-16, 6, 7], [22, -6, 6], [2, 13, 5.5], [-34, -1, 5]];
+    s += pads.slice(0, area ? 2 + Math.min(2, lvl) : 1).map(([x, y, r]) => lilyPad(cx + x, cy + y, r)).join('');
+  }
+  if (lvl >= 2 && !frozen) s += `<circle cx="${cx - 14}" cy="${cy + 4}" r="2.6" fill="#F4C6CF"/><circle cx="${cx - 14}" cy="${cy + 4}" r="1" fill="#F2C14E"/><circle cx="${cx + 23}" cy="${cy - 7.5}" r="2.2" fill="#FFFFFF"/><circle cx="${cx + 23}" cy="${cy - 7.5}" r=".9" fill="#F2C14E"/>`;
   // Bank stones (gap at the outlet, bottom right).
   const stones = [70, 95, 120, 150, 180, 205, 235, 265, 295, 325, 352, 15].map((d) => on(d, 1.08));
   s += stones.map(([x, y], i) => `<ellipse class="${i % 3 ? 'i-stone' : 'i-stone-lo'}" cx="${f(x)}" cy="${f(y)}" rx="${4 + (i % 3)}" ry="${f(2.6 + (i % 2))}"/>`).join('');
@@ -410,7 +436,7 @@ function emptySpot(x: number, y: number, k = 1): Drawable {
   return { y: y - 20, svg };
 }
 
-function cottage(area: IslandArea | undefined): Drawable[] {
+function cottage(area: IslandArea | undefined, season: Season): Drawable[] {
   if (!area) return [emptySpot(300, 200, 1.5)];
   const { lvl, tint } = area;
   let s = sh(316, 214, 78, 14);
@@ -450,13 +476,15 @@ function cottage(area: IslandArea | undefined): Drawable[] {
     // Climbing rose on the left corner and chimney smoke.
     s += blob(250, 204, 8) + blob(247, 191, 7) + blob(251, 179, 6) + blob(258, 172, 4.5);
     s += [[247, 200], [252, 188], [246, 184], [254, 176], [250, 207]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2" fill="#E98C8C"/>`).join('');
-    s += '<g class="i-smoke i-day"><circle cx="334" cy="86" r="5"/><circle cx="341" cy="72" r="7" opacity=".7"/><circle cx="352" cy="56" r="9" opacity=".45"/></g>';
   }
+  if (season === 'winter') s += SNOW.cottage();
+  // Chimney smoke from flourish 2 on, and always in winter.
+  if (lvl >= 2 || season === 'winter') s += '<g class="i-smoke i-day"><circle cx="334" cy="86" r="5"/><circle cx="341" cy="72" r="7" opacity=".7"/><circle cx="352" cy="56" r="9" opacity=".45"/></g>';
   if (lvl >= 3) s += bloomRing(300, 222, 70, 6, tint, 11);
   return [{ y: 214, svg: s }];
 }
 
-function shed(area: IslandArea | undefined): Drawable[] {
+function shed(area: IslandArea | undefined, season: Season): Drawable[] {
   if (!area) return [{ y: 200, svg: emptySpot(136, 214).svg }];
   const { lvl, tint } = area;
   let s = sh(142, 220, 42, 9);
@@ -480,11 +508,12 @@ function shed(area: IslandArea | undefined): Drawable[] {
     s += '<path class="k-wood-lo" d="M190 236l-6 -12M190 236l6 -12M214 236l-6 -12M214 236l6 -12" stroke-width="2" stroke-linecap="round"/>';
     s += '<rect class="i-wood" x="180" y="220" width="40" height="5" rx="1.5" transform="rotate(-4 200 222)"/>';
   }
+  if (season === 'winter') s += SNOW.shed();
   if (lvl >= 3) s += bloomRing(146, 226, 46, 6, tint, 17);
   return [{ y: 218, svg: s }];
 }
 
-function bigTree(area: IslandArea | undefined): Drawable[] {
+function bigTree(area: IslandArea | undefined, season: Season): Drawable[] {
   const lvl = area?.lvl ?? 0;
   const tint = area?.tint ?? '#C96A5A';
   let tree = sh(472, 232, 50, 11);
@@ -496,6 +525,7 @@ function bigTree(area: IslandArea | undefined): Drawable[] {
     const c = lighten(tint, 0.45);
     tree += pts.slice(0, lvl >= 2 ? 12 : 5).map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.6" fill="${c}"/><circle cx="${x}" cy="${y}" r="1" fill="#F2C14E"/>`).join('');
   }
+  tree += crownSeason(BIG_TREE_CROWN, season, 'cs-tree', 3, 22, 40);
   const out: Drawable[] = [{ y: 228, svg: `<g transform="translate(10 0)">${tree}</g>` }];
   if (!area) return out;
   // Bench in front of the trunk.
@@ -504,12 +534,13 @@ function bigTree(area: IslandArea | undefined): Drawable[] {
   bench += '<path class="k-wood-lo" d="M444 241V248M488 241V248" stroke-width="2.6" stroke-linecap="round"/>';
   if (lvl >= 1) bench += `<rect fill="${tint}" x="449" y="230" width="14" height="7" rx="3"/>`;
   if (lvl >= 2) bench += `<rect fill="${lighten(tint, 0.35)}" x="468" y="230" width="14" height="7" rx="3"/><rect x="484" y="231" width="4" height="4" rx="1" fill="#fff"/>`;
+  if (season === 'winter') bench += SNOW.bench();
   if (lvl >= 3) bench += bloomRing(466, 250, 56, 6, tint, 23);
   out.push({ y: 247, svg: `<g transform="translate(10 0)">${sh(468, 247, 30, 4) + bench}</g>` });
   return out;
 }
 
-function well(area: IslandArea | undefined): Drawable[] {
+function well(area: IslandArea | undefined, season: Season): Drawable[] {
   if (!area) return [emptySpot(506, 292)];
   const { lvl, tint } = area;
   let s = sh(494, 300, 30, 7);
@@ -522,6 +553,7 @@ function well(area: IslandArea | undefined): Drawable[] {
   // Gabled roof: front gable (wood) and the two slopes seen from above (area tint).
   s += `<path fill="${tint}" d="M464 258L488 240L496 230L472 248Z"/><path fill="${lighten(tint, 0.35)}" d="M488 240L512 258L520 248L496 230Z"/>`;
   s += '<path class="i-wood-lo" d="M464 258L488 240L512 258Z"/><path class="i-wood" d="M470 256L488 243L506 256Z"/>';
+  if (season === 'winter') s += SNOW.well();
   if (lvl >= 3) s += bloomRing(494, 304, 38, 5, tint, 29);
   // Fruit tree beside the well.
   const k = lvl >= 1 ? 1 : 0.78;
@@ -530,7 +562,10 @@ function well(area: IslandArea | undefined): Drawable[] {
   let tree = sh(tx + 4, ty + 1, f(24 * k), 6);
   tree += `<path class="i-wood-lo" d="M${tx - 3} ${ty}C${tx - 2} ${ty - 10} ${tx - 2} ${f(ty - 18 * k)} ${tx - 4} ${f(ty - 24 * k)}L${tx + 4} ${f(ty - 24 * k)}C${tx + 3} ${f(ty - 18 * k)} ${tx + 3} ${ty - 10} ${tx + 4} ${ty}Z"/>`;
   const cy = ty - 24 * k - 13 * k;
-  tree += blob(f(tx - 13 * k), f(cy + 4 * k), f(14 * k)) + blob(f(tx + 13 * k), f(cy + 3 * k), f(14 * k)) + blob(tx, f(cy - 9 * k), f(16 * k)) + blob(tx, f(cy + 6 * k), f(15 * k));
+  const crown: Blob[] = [[tx - 13 * k, cy + 4 * k, 14 * k], [tx + 13 * k, cy + 3 * k, 14 * k], [tx, cy - 9 * k, 16 * k], [tx, cy + 6 * k, 15 * k]];
+  tree += crown.map(([x, y, r]) => blob(f(x), f(y), f(r))).join('');
+  if (season !== 'spring') tree += crownSeason(crown, season, 'cs-fruit', 2, 10, 0, 0.55);
+  else tree += crownTint(crown, 2, ['#FFFFFF', '#F7D7DE'], 10);
   if (lvl >= 1) {
     const fruit: ReadonlyArray<readonly [number, number]> = [[-12, 2], [10, -8], [2, 8], [-4, -12], [14, 6], [-16, -6], [6, -2], [-6, 10], [16, -2]];
     tree += fruit.slice(0, lvl >= 2 ? 9 : 4).map(([dx, dy]) => `<circle cx="${tx + dx}" cy="${f(cy + dy)}" r="3.1" fill="#E9A23B"/><circle cx="${tx + dx - 1}" cy="${f(cy + dy - 1)}" r="1" fill="#FFE2A6"/>`).join('');
@@ -572,7 +607,7 @@ function picnic(area: IslandArea | undefined): Drawable[] {
   return [{ y: 362, svg: s }];
 }
 
-function nook(area: IslandArea | undefined): Drawable[] {
+function nook(area: IslandArea | undefined, season: Season): Drawable[] {
   if (!area) return [emptySpot(112, 348)];
   const { lvl, tint } = area;
   let s = sh(110, 356, 32, 7);
@@ -593,27 +628,41 @@ function nook(area: IslandArea | undefined): Drawable[] {
     // Open book on the stump.
     s += '<path fill="#fff" d="M125 345.5l-8 -2.4v-3l8 2.4zM125 345.5l8 -2.4v-3l-8 2.4z"/><path class="k-wood-lo" d="M125 342.5v3" stroke-width=".8"/>';
   }
+  if (season === 'winter') s += SNOW.nook();
   if (lvl >= 3) s += bloomRing(110, 360, 40, 6, tint, 37);
   return [{ y: 356, svg: s }];
 }
 
-function bridge(): Drawable {
+function bridge(season: Season): Drawable {
   let s = '<path class="i-wood-lo" d="M163 357Q189 341 216 347L216 352Q190 347 163 362Z"/>';
   s += '<path class="i-wood" d="M163 355Q189 339 216 345L216 349Q190 344 163 359Z"/>';
   s += '<path class="k-wood-lo" d="M172 350.5l1 3.6M181 346.6l.8 3.6M190 344.5l.6 3.5M199 343.8l.4 3.5M208 344.3v3.4" stroke-width="1" opacity=".7"/>';
   s += '<path class="k-wood-lo" d="M165 349Q189 333 214 339M166 349v6M214 339v6M190 337v6" stroke-width="1.8" stroke-linecap="round"/>';
+  if (season === 'winter') s += SNOW.bridge();
   return { y: 352, svg: s };
 }
 
-function bush(x: number, y: number, r: number, flowers: boolean): Drawable {
+/**
+ * The season on a round crown: autumn speckles, spring blossoms (`blossoms` > 0), winter snow; nothing in
+ * summer. `seed` keeps every crown different, `id` names the snow clip path.
+ */
+function crownSeason(crown: readonly Blob[], season: Season, id: string, seed: number, speckles: number, blossoms: number, snowK = 0.62): string {
+  if (season === 'autumn') return crownTint(crown, seed, ['#B9533A', '#E8B65A', '#C8643A'], speckles);
+  if (season === 'winter') return crownSnow(crown, id, snowK);
+  if (season === 'spring' && blossoms > 0) return crownBlossoms(crown, seed + 4, blossoms);
+  return '';
+}
+
+function bush(x: number, y: number, r: number, flowers: boolean, season: Season): Drawable {
   let s = sh(x + 3, y + 1, f(r * 1.3), f(r * 0.35)) + blob(f(x - r * 0.55), f(y - r * 0.55), f(r * 0.75)) + blob(f(x + r * 0.55), f(y - r * 0.5), f(r * 0.72)) + blob(x, f(y - r * 0.85), f(r * 0.8));
+  s += crownSeason(bushCrown(x, y, r), season, `cs-b${x}`, x, 6, 0, 0.55);
   if (flowers) s += `<circle cx="${f(x - r * 0.5)}" cy="${f(y - r * 0.9)}" r="1.8" fill="#fff"/><circle cx="${f(x + r * 0.4)}" cy="${f(y - r * 1.2)}" r="1.8" fill="#F4C6CF"/><circle cx="${f(x + r * 0.7)}" cy="${f(y - r * 0.5)}" r="1.6" fill="#fff"/>`;
   return { y, svg: s };
 }
 
 const KEIMI_BODY = 'M0 -41C13.5 -41 19.5 -29 19.5 -18.5C19.5 -7 11 -3 0 -3C-11 -3 -19.5 -7 -19.5 -18.5C-19.5 -29 -13.5 -41 0 -41Z';
 
-function keimi(x: number, y: number): Drawable {
+function keimi(x: number, y: number, season: Season): Drawable {
   let s = `<g class="i-keimi-root" transform="translate(${x} ${y}) scale(1.3)">`;
   s += `<ellipse rx="16" ry="4.4" fill="${ref('g-sh')}"/>`;
   s += '<ellipse class="i-keimi-lo" cx="-6.5" cy="-2.5" rx="5.4" ry="3.4"/><ellipse class="i-keimi-lo" cx="6.5" cy="-2.5" rx="5.4" ry="3.4"/>';
@@ -628,6 +677,7 @@ function keimi(x: number, y: number): Drawable {
   s += '<path class="i-night" d="M-9.2 -24q2.7 2.4 5.4 0M3.8 -24q2.7 2.4 5.4 0" stroke="#2B3A2E" stroke-width="1.4" fill="none" stroke-linecap="round"/>';
   s += '<ellipse cx="-11.5" cy="-18.5" rx="3.2" ry="1.9" fill="#F2A39A" opacity=".75"/><ellipse cx="11.5" cy="-18.5" rx="3.2" ry="1.9" fill="#F2A39A" opacity=".75"/>';
   s += '<path d="M-3.2 -19.2q3.2 3.2 6.4 0" stroke="#2B3A2E" stroke-width="1.4" fill="none" stroke-linecap="round"/>';
+  if (season === 'winter') s += SCARF;
   return { y, svg: `${s}</g>` };
 }
 
@@ -759,12 +809,16 @@ function traces(key: PlaceKey | 'extra', area: IslandArea): Drawable[] {
   const tint = safeTint(area.tint);
   const [tx, ty] = TRACE_AT[key];
   const tier = area.trace ?? 0;
-  if (tier === 1 || tier === 2 || tier === 3) out.push(traceObject(TRACE_OF[tier], tx, ty, tint, area.arrive === 'trace'));
+  if (tier === 1 || tier === 2 || tier === 3) {
+    out.push(traceObject(TRACE_OF[tier], tx, ty, tint, area.arrive === 'trace'));
+    if (area.arrive === 'trace') out.push({ y: ty + 0.5, svg: arriveFx(tx, ty, tx + ty) });
+  }
   const spots = SHRUB_AT[key];
   const n = Math.min(spots.length, Math.max(0, Math.floor(area.shrubs ?? 0)));
   for (let i = 0; i < n; i++) {
     const [x, y] = at(spots, i);
     out.push(bloomShrub(x, y, tint, area.arrive === i));
+    if (area.arrive === i) out.push({ y: y + 0.5, svg: arriveFx(x, y, x + y) });
   }
   return out;
 }
@@ -916,6 +970,27 @@ function placePlants(key: PlaceKey | 'extra', area: IslandArea): Drawable[] {
 }
 
 // ---------------------------------------------------------------------------
+// Lebendige Insel: what lies on the grass and what moves in the air per season.
+
+/** On the grass, below every object: autumn leaf piles, winter drifts, extra spring flowers. */
+function seasonGround(season: Season): string {
+  if (season === 'autumn') return scatter(41, 4).map(([x, y], i) => leafPile(x, y, 12 + i * 2, 2 + i * 3)).join('');
+  if (season === 'winter') return snowDrifts();
+  if (season === 'spring') return scatter(53, 22).map(([x, y], i) => blossom(x, y, WILD_COLORS[i % WILD_COLORS.length] ?? '#FFFFFF')).join('');
+  return '';
+}
+
+/** Above everything: falling leaves, falling snow, the summer evening's extra fireflies. */
+function seasonAir(season: Season): string {
+  if (season === 'autumn') return fallingLeaves(12, 12, [60, 60, 560, 300]);
+  if (season === 'winter') return snowfall(4, 46, [0, -40, 600, 470]);
+  if (season === 'summer') {
+    return `<g class="i-night">${SUMMER_FLIES.map(([x, y, k]) => glow(x, y, Math.round(90 * k) / 10, '') + `<circle cx="${x}" cy="${y}" r="${f(1.7 * k)}" fill="#FFF1B8"/>`).join('')}</g>`;
+  }
+  return '';
+}
+
+// ---------------------------------------------------------------------------
 
 /** The island as an SVG string (aria-hidden; the screen adds the accessible parts). */
 export function islandSvg(input: IslandInput): string {
@@ -930,34 +1005,46 @@ export function islandSvg(input: IslandInput): string {
   let s = `<svg class="ol-isl__svg" viewBox="0 0 ${VIEW_W} ${VIEW_H}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">`;
   const parts = new Set<TracePart>();
   for (const a of [...Object.values(areas), extra]) tracePartsOf(a, parts);
-  s += defs(flowers, parts);
+  s += defs(flowers, parts, input.season ?? 'summer');
+  const season: Season = input.season ?? 'summer';
+  if (input.rainbow) s += rainbow();
   s += cloud(70, 452, 1.1) + cloud(548, 418, 0.9, true) + floatRock(64, 404, 9) + floatRock(548, 458, 7) + floatRock(522, 482, 4);
   s += body();
   if (input.decor === 'lush') s += vines();
   s += groundDecor(input.decor);
-  s += pond(areas.health) + stream() + waterfall() + paths(areas);
+  s += seasonGround(season);
+  s += pond(areas.health, season) + stream() + waterfall() + paths(areas);
   for (const [key, shape] of Object.entries(BEDS) as Array<[PlaceKey | 'extra', string]>) {
     if (key === 'extra' ? extra : areas[key]) s += `<g class="i-bed">${shape}</g>`;
   }
 
   const items: Drawable[] = [
-    ...cottage(areas.home), ...shed(areas.work), ...bigTree(areas.bonds), ...well(areas.wealth),
-    ...picnic(areas.leisure), ...nook(areas.growth), bridge(),
-    bush(64, 216, 16, input.decor === 'lush'), bush(216, 172, 11, input.decor === 'lush'), bush(246, 400, 10, input.decor !== 'low'),
-    bush(560, 304, 12, input.decor === 'lush'), bush(388, 398, 9, false),
+    ...cottage(areas.home, season), ...shed(areas.work, season), ...bigTree(areas.bonds, season), ...well(areas.wealth, season),
+    ...picnic(areas.leisure), ...nook(areas.growth, season), bridge(season),
+    bush(64, 216, 16, input.decor === 'lush', season), bush(216, 172, 11, input.decor === 'lush', season), bush(246, 400, 10, input.decor !== 'low', season),
+    bush(560, 304, 12, input.decor === 'lush', season), bush(388, 398, 9, false, season),
   ];
   for (const [key, area] of Object.entries(areas) as Array<[PlaceKey, IslandArea]>) items.push(...placePlants(key, area), ...traces(key, area));
   if (extra) {
     items.push(...placePlants('extra', extra), ...traces('extra', extra));
     if (extra.lvl >= 3) items.push({ y: 378, svg: bloomRing(241, 376, 40, 6, extra.tint, 41) });
   }
-  items.push(keimi(ANCHORS.keimi[0], ANCHORS.keimi[1]), campfire());
+  items.push(keimi(ANCHORS.keimi[0], ANCHORS.keimi[1], season), campfire());
+  // Besucher: walkers and swimmers in depth order, flyers above everything.
+  const flyers: string[] = [];
+  for (const v of input.visitors ?? []) {
+    const drawn = visitorOnIsland(v.id, v.arrive === true);
+    if (drawn.air) flyers.push(drawn.svg);
+    else items.push({ y: drawn.y, svg: drawn.svg });
+  }
   items.sort((a, b) => a.y - b.y);
   s += items.map((it) => it.svg).join('');
+  s += flyers.join('');
 
   // Fireflies (night only).
   const flies: ReadonlyArray<readonly [number, number]> = [[210, 290], [380, 330], [520, 210], [160, 220], [420, 280], [90, 250], [258, 160]];
   s += `<g class="i-night">${flies.map(([x, y]) => glow(x, y, 7, '') + `<circle cx="${x}" cy="${y}" r="1.5" fill="#FFF1B8"/>`).join('')}</g>`;
+  s += seasonAir(season);
   s += cloud(300, 528, 1.25) + cloud(470, 500, 0.85, true) + cloud(130, 506, 0.8);
   s += '</svg>';
   return s.split(ID_MARK).join(input.prefix);

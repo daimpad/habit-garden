@@ -42,6 +42,17 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] Kalender (Tipp auf das Datum) passt ohne seitliches Scrollen auf den Bildschirm.
 - [ ] Text bei großer Schrift (Systemeinstellung) bleibt lesbar und abgeschnitten wird nichts.
 
+## Lebendige Insel
+- [ ] Im November zeigt die Insel Herbstlaub; fallende Blätter bewegen sich ruhig und ruckeln nicht.
+- [ ] Gießen einer Routine: Über ihrem Ort regnet kurz eine kleine Wolke.
+- [ ] Alles gegossen (am Tag): Ein Regenbogen erscheint hinter der Insel.
+- [ ] Animationen auf „Reduziert“: Blätter und Schnee stehen still, der Belohnungsmoment zeigt nur den Lichtkegel.
+
+## Besucher und Herbarium
+- [ ] Erstes Abendfeuer: Ein Igel hüpft auf die Insel, kurz darauf sagt Keimi „Ein Igel ist zu Besuch.“
+- [ ] „Dein Garten“ öffnet das Album; gefundene Tiere farbig, offene als Silhouette mit Hinweis.
+- [ ] Reiter Herbarium: gepresste Blüten der voll erblühten Routinen, wachsende mit „noch n Tage“.
+
 ## Klänge
 - [ ] Erster Tipp nach dem Öffnen: Gießen einer Routine tropft hörbar, leise genug, um niemanden zu stören.
 - [ ] iPhone: Lautlos-Schalter an, Musik im Hintergrund: die App bleibt still und unterbricht die Musik nicht.
