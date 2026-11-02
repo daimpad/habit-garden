@@ -486,15 +486,16 @@
 }
 
 /* Melde dich bei */
-.ol-heute__person { gap: var(--space-2); padding: var(--space-1) 0; }
+/* With large text "Kontaktiert" moves to its own line instead of pushing the row past the edge. */
+.ol-heute__person { flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) 0; }
 .ol-heute__person-glyph {
   flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
   background: color-mix(in srgb, var(--color-sage) 18%, var(--color-surface));
 }
-.ol-heute__person-text { flex: 1 1 auto; min-width: 0; display: grid; }
+.ol-heute__person-text { flex: 1 1 8em; min-width: 0; display: grid; }
 .ol-heute__person .ol-heute__title { min-height: 0; padding: var(--space-1) var(--space-2) 0; font-weight: 600; }
 .ol-heute__person .ol-heute__meta { max-width: none; padding: 0 var(--space-2) var(--space-1); text-align: left; }
-.ol-heute__contacted { flex: none; }
+.ol-heute__contacted { flex: none; max-width: 100%; margin-left: auto; }
 .ol-heute__people-empty { display: grid; justify-items: start; gap: var(--space-3); padding: var(--space-3) var(--space-2); }
 
 /* Continuous garden motion stops with reduced motion (system or in-app); the island's own motion: section "island". */
@@ -525,7 +526,7 @@
 /* The island lies above the hero text (its sky overlaps the text's last row); only its controls take pointers. */
 .ol-isl { position: relative; z-index: 2; margin: -44px calc(var(--space-4) * -1) -6px; pointer-events: none; }
 .ol-isl__place, .ol-isl__fig, .ol-isl__bubble, .ol-isl__pill, .ol-isl__more-people, .ol-isl__mode, .ol-isl__fire, .ol-isl__slot { pointer-events: auto; }
-.ol-isl__stage { position: relative; aspect-ratio: 600 / 560; container-type: inline-size; }
+.ol-isl__stage { position: relative; aspect-ratio: 600 / 560; container-type: inline-size; overflow-x: clip; }
 .ol-isl__art { position: absolute; inset: 0; }
 .ol-isl__svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--font-sans); }
 @media (min-width: 600px) and (max-width: 899px) {

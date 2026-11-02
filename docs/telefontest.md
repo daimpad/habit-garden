@@ -37,6 +37,7 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] Einstellungen › Kalender › „Aufgaben als Kalender (ICS)“ in einen eigenen Kalender „Habit Garden“ importieren; nach einer Änderung und erneutem Import ist die Aufgabe aktualisiert, nicht doppelt.
 
 ## Darstellung
+- [ ] Größte Systemschrift: HEUTE scrollt nicht seitlich; „Kontaktiert“ steht bei Bedarf in einer eigenen Zeile.
 - [ ] Gerät auf dunkel stellen: die App zeigt den Nachtgarten, auch direkt nach dem Neuladen (kein heller Blitz).
 - [ ] Die Adressleiste des Browsers hat die Farbe des Hintergrunds.
 - [ ] Kalender (Tipp auf das Datum) passt ohne seitliches Scrollen auf den Bildschirm.
