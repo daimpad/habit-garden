@@ -2453,3 +2453,12 @@
 .ol-harvest__keimi { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: rgba(255, 255, 255, .08); }
 .ol-harvest__close { justify-self: stretch; }
 /* === /Keimi und Tagesernte === */
+
+/* Einsichten (02.11.2026): "Was dir guttut" and the Jahresgarten. */
+.ol-review__insights { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: var(--space-3); }
+.ol-review__insight { display: flex; align-items: baseline; gap: var(--space-2); }
+.ol-review__insight-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--color-sun); transform: translateY(1px); }
+.ol-review__insights-need { margin: 0 0 var(--space-2); }
+.ol-review__year-figure { margin: 0 auto var(--space-2); max-width: 420px; }
+.ol-review__year-figure .ol-year-svg { display: block; width: 100%; height: auto; }
+.ol-review__year-actions { display: flex; justify-content: flex-end; margin-top: var(--space-3); }

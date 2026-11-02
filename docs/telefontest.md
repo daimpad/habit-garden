@@ -63,6 +63,11 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] „Dein Garten › Keimi“: erreichte Stufen farbig, offene blass mit Fortschritt; „Keimi trägt“ ändert Keimi auf der Insel sofort.
 - [ ] Ab dem Abend steht oben in HEUTE die Tagesernte; „Schließen“ blendet sie für den Tag aus, auch nach dem Neuladen.
 
+## Schneller Zugriff und Einsichten
+- [ ] Installierte App: langer Druck auf das Symbol zeigt vier Kurzbefehle; „Neue Aufgabe“ öffnet das Erfassen-Blatt, „Heute gießen“ springt zu den Routinen.
+- [ ] Android: aus dem Browser „Teilen › Habit Garden“: das Erfassen-Blatt ist mit Titel und Link vorausgefüllt.
+- [ ] Rückblick: „Was dir guttut“ nennt bei wenigen Stimmungseinträgen, wie viele noch fehlen; der Jahresgarten zeigt zwölf Beete, „Als Bild speichern“ legt ein PNG ab.
+
 ## Klänge
 - [ ] Erster Tipp nach dem Öffnen: Gießen einer Routine tropft hörbar, leise genug, um niemanden zu stören.
 - [ ] iPhone: Lautlos-Schalter an, Musik im Hintergrund: die App bleibt still und unterbricht die Musik nicht.

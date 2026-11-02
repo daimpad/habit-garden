@@ -14,12 +14,18 @@
 // - "Spuren im Garten" (Garten-Insel Teil 3): every stored milestone, newest first, with its glyph, the routine
 //   (archived ones included), its area and the day it was earned; an empty state otherwise. Shown also without
 //   active routines (milestones are permanent).
+// - Einsichten (02.11.2026): "Was dir guttut" (services/insights.ts, last 90 days, carefully worded) and the
+//   Jahresgarten: twelve month beds (components/year-garden.ts) with a text list for screen readers and a
+//   button that saves the picture as PNG (drawn on a canvas at 2×).
 import '../components/ol-app-bar.js';
+import '../components/ol-button.js';
 import '../components/ol-card.js';
 import '../components/ol-empty-state.js';
 import type { Observable, Subscription } from 'dexie';
 import { plant, safeTint } from '../components/flora.js';
 import { traceGlyph } from '../components/island.js';
+import { showToast } from '../components/ol-toast.js';
+import { yearGardenPng, yearGardenSvg, type BedArt } from '../components/year-garden.js';
 import { fmt, moodLabel, stageName, t, weekdayShort } from '../i18n/de.js';
 import {
   GENERIC_TINT, type Area, type ContactLog, type Day, type FlowerId, type Habit, type HabitLog, type Id, type Milestone, type MoodLog,
@@ -30,12 +36,15 @@ import { logsByHabit$ } from '../repo/habitLogs.js';
 import { milestones$ } from '../repo/milestones.js';
 import { habits$ } from '../repo/habits.js';
 import { moodsBetween$ } from '../repo/moodLogs.js';
+import { gardenData$, type GardenData } from '../repo/visitors.js';
 import type { Route } from '../router.js';
 import { streakUnit } from '../services/growth.js';
+import { INSIGHT_DAYS, insights, yearGarden, type MonthBed } from '../services/insights.js';
 import { countFor, milestoneObject, newestFirst } from '../services/milestones.js';
 import { lastDays, percent, review, type BestStreak, type MoodTrend, type Review, type Rhythm } from '../services/review.js';
 import { addDays, formatDayFull, formatDayShort, formatWeekdayLong, isoWeekday, today } from '../util/date.js';
 import { h, motionReduced, raw, render, setVar, type SafeHtml } from '../util/dom.js';
+import { visitorInfos } from '../services/visitors.js';
 import { openCapture } from './sheets/capture.js';
 
 const RING_MAX = 8;
@@ -53,6 +62,9 @@ const MOOD_LEFT = 18;
 const MOOD_RIGHT = 8;
 const MOOD_TOP = 10;
 const MOOD_STEP = 24;
+
+const monthLong = new Intl.DateTimeFormat('de-DE', { month: 'long', timeZone: 'UTC' });
+const monthName = (m: number): string => monthLong.format(new Date(Date.UTC(2026, m - 1, 1)));
 
 const num1 = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fix = (v: number): string => (Math.round(v * 100) / 100).toString();
@@ -94,6 +106,10 @@ class ReviewScreen {
   /** Teil 3: all routines (archived ones too, for the names of their milestones) and the milestones. */
   private allHabits: Map<Id, Habit> | null = null;
   private milestones: Milestone[] | null = null;
+  /** Einsichten: moods of the last 90 days and the whole history (all logs, visitors) for the Jahresgarten. */
+  private moods90: MoodLog[] | null = null;
+  private garden: GardenData | null = null;
+  private yearSvg = '';
 
   constructor(view: HTMLElement, day: Day) {
     this.view = view;
@@ -107,6 +123,9 @@ class ReviewScreen {
     this.root = view.querySelector<HTMLElement>('.ol-review') ?? view;
     this.body = view.querySelector<HTMLElement>('.ol-review__body') ?? view;
     this.periodEl = view.querySelector<HTMLElement>('.ol-review__period') ?? view;
+    this.body.addEventListener('click', (event) => {
+      if ((event.target as Element | null)?.closest('.ol-review__year-save')) void this.saveYear();
+    });
     this.body.addEventListener('ol-action', () => {
       try {
         openCapture({ type: 'habit' });
@@ -137,6 +156,12 @@ class ReviewScreen {
     });
     this.watch(milestones$(), (list) => {
       this.milestones = list;
+    });
+    this.watch(moodsBetween$(addDays(this.day, -(INSIGHT_DAYS - 1)), this.day), (list) => {
+      this.moods90 = list;
+    });
+    this.watch(gardenData$(), (data) => {
+      this.garden = data;
     });
   }
 
@@ -192,8 +217,8 @@ class ReviewScreen {
   // --- Rendering ---
 
   private render(): void {
-    const { habits, areas, logs, moods, contactLogs, allHabits, milestones } = this;
-    if (!habits || !areas || !logs || !moods || !contactLogs || !allHabits || !milestones) return;
+    const { habits, areas, logs, moods, contactLogs, allHabits, milestones, moods90, garden } = this;
+    if (!habits || !areas || !logs || !moods || !contactLogs || !allHabits || !milestones || !moods90 || !garden) return;
     const data = review({ habits, logs, moods, contactLogs, today: this.day });
     const parts: SafeHtml[] = [this.kpis(data)];
     if (data.active === 0) {
@@ -203,6 +228,7 @@ class ReviewScreen {
     }
     parts.push(this.traces(milestones, allHabits, areas));
     parts.push(this.rhythm(data.rhythm), this.mood(data.mood));
+    parts.push(this.insights(habits, logs, moods90), this.year(garden, allHabits));
     render(this.body, h`${parts}`);
     this.applyVars();
     this.root.removeAttribute('data-loading');
@@ -406,6 +432,77 @@ class ReviewScreen {
     </section>`;
   }
 
+  private insights(habits: readonly Habit[], logs: ReadonlyMap<Id, readonly HabitLog[]>, moods: readonly MoodLog[]): SafeHtml {
+    const found = insights(habits, logs, moods, this.day);
+    const items = found.items.map((i) => h`<li class="ol-review__insight ol-body-s">${raw('<span class="ol-review__insight-dot" aria-hidden="true"></span>')}<span>${i.text}</span></li>`);
+    return h`<section class="ol-section ol-review__insights-section" aria-labelledby="review-insights">
+      <div class="ol-section__head"><h2 class="ol-label" id="review-insights">${t.insightsTitle}</h2></div>
+      <ol-card class="ol-review__card">
+        ${items.length ? h`<ul class="ol-review__insights">${items}</ul>` : ''}
+        ${found.hint ? h`<p class="ol-review__insights-need ol-body-s ol-text-2">${found.hint}</p>` : ''}
+        <p class="ol-review__hint ol-caption">${t.insightsHint}</p>
+      </ol-card>
+    </section>`;
+  }
+
+  private year(garden: GardenData, allHabits: ReadonlyMap<Id, Habit>): SafeHtml {
+    const year = Number(this.day.slice(0, 4));
+    const byHabit = new Map<Id, HabitLog[]>();
+    for (const l of garden.logs) {
+      const list = byHabit.get(l.habitId);
+      if (list) list.push(l);
+      else byHabit.set(l.habitId, [l]);
+    }
+    const visitorDays = visitorInfos(garden.history, this.day).map((v) => v.day).filter((d): d is Day => d !== null);
+    const beds = yearGarden(year, garden.habits, byHabit, garden.milestones, visitorDays, this.day);
+    const labels = t.monthsShort.split('|');
+    const art: BedArt[] = beds.map((b) => ({
+      label: b.future || b.rate === null ? labels[b.month - 1] ?? '' : `${labels[b.month - 1] ?? ''} ${percent(b.rate) ?? 0} %`,
+      rate: b.rate,
+      future: b.future,
+      blooms: b.blooms.map((x) => {
+        const habit = allHabits.get(x.habitId);
+        return habit ? this.flowerOf(habit) : { flower: 'generic' as FlowerId, tint: GENERIC_TINT };
+      }),
+      traces: b.traces,
+      visitors: b.visitors,
+    }));
+    const title = fmt(t.yearTitle, { year });
+    this.yearSvg = yearGardenSvg(title, art);
+    const list = beds.map((b) => h`<li>${yearAria(b)}</li>`);
+    return h`<section class="ol-section ol-review__year-section" aria-labelledby="review-year">
+      <div class="ol-section__head"><h2 class="ol-label" id="review-year">${title}</h2></div>
+      <ol-card class="ol-review__card">
+        <figure class="ol-review__year-figure" aria-hidden="true">${raw(this.yearSvg)}</figure>
+        <ul class="ol-visually-hidden">${list}</ul>
+        <p class="ol-review__hint ol-caption">${t.yearHint}</p>
+        <div class="ol-review__year-actions"><ol-button class="ol-review__year-save" variant="tonal" size="sm" icon="download" label="${t.yearSave}"></ol-button></div>
+      </ol-card>
+    </section>`;
+  }
+
+  private async saveYear(): Promise<void> {
+    if (!this.yearSvg) return;
+    try {
+      const blob = await yearGardenPng(this.yearSvg, 2);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `jahresgarten-${this.day.slice(0, 4)}.png`;
+      link.hidden = true;
+      document.body.append(link);
+      try {
+        link.click();
+      } finally {
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      }
+      showToast(t.yearSaved);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   // --- Final values and the opening animation ---
 
   private applyVars(): void {
@@ -427,6 +524,14 @@ class ReviewScreen {
       bar.animate([{ transform: 'scaleY(0)' }, { transform: `scaleY(${bar.dataset['fill'] ?? '0'})` }], { duration: BAR_MS, easing: EASE });
     }
   }
+}
+
+/** Text equivalent of one month bed. */
+export function yearAria(b: MonthBed): string {
+  const month = monthName(b.month);
+  if (b.future) return fmt(t.yearMonthFuture, { month });
+  const rate = b.rate === null ? t.yearMonthNone : fmt(t.reviewPercent, { n: percent(b.rate) ?? 0 });
+  return fmt(t.yearMonthAria, { month, rate, blooms: b.blooms.length, traces: b.traces, visitors: b.visitors });
 }
 
 /** Text equivalent of the mood chart: average, most frequent value and the trend of the halves. */
