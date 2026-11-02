@@ -19,12 +19,16 @@
 //   (spring blossoms, summer fireflies, autumn leaves, winter snow and ice, Keimi's scarf); the colours change
 //   through data-season on .ol-isl (CSS). `rainbow` draws a soft rainbow behind the island (day only). An
 //   arriving object also gets the reward moment (spotlight and petals, .i-fx).
+// - Besucher (Gamification Teil 2): `visitors` places the animals of components/island-visitors.ts at their spots
+//   (flyers above everything); one that just came carries .i-visit-new.
 import { flowerBody, plantBud, plantStem, plantTop, safeTint, type PlantPaint } from './flora.js';
 import { t, fmt } from '../i18n/de.js';
 import type { FlowerId, Stage } from '../model.js';
 import type { Decor, Flourish, PlaceKey } from '../services/island.js';
 import type { TraceTier } from '../services/milestones.js';
 import type { Season } from '../services/season.js';
+import type { VisitorId } from '../services/visitors.js';
+import { visitorOnIsland } from './island-visitors.js';
 import {
   arriveFx, BIG_TREE_CROWN, bushCrown, crownBlossoms, crownSnow, crownTint, fallingLeaves, frozenPond, leafPile, rainbow,
   SCARF, SEASON_DEFS, SNOW, snowDrifts, snowfall, SUMMER_FLIES, type Blob,
@@ -66,6 +70,8 @@ export interface IslandInput {
   season?: Season;
   /** Lebendige Insel: every routine of today watered (day only, CSS hides it at night). */
   rainbow?: boolean;
+  /** Besucher (Teil 2): who is on the island today; `arrive` for one that just came (comes in, CSS). */
+  visitors?: ReadonlyArray<{ id: VisitorId; arrive?: boolean }>;
 }
 
 type Pt = readonly [number, number];
@@ -1024,8 +1030,16 @@ export function islandSvg(input: IslandInput): string {
     if (extra.lvl >= 3) items.push({ y: 378, svg: bloomRing(241, 376, 40, 6, extra.tint, 41) });
   }
   items.push(keimi(ANCHORS.keimi[0], ANCHORS.keimi[1], season), campfire());
+  // Besucher: walkers and swimmers in depth order, flyers above everything.
+  const flyers: string[] = [];
+  for (const v of input.visitors ?? []) {
+    const drawn = visitorOnIsland(v.id, v.arrive === true);
+    if (drawn.air) flyers.push(drawn.svg);
+    else items.push({ y: drawn.y, svg: drawn.svg });
+  }
   items.sort((a, b) => a.y - b.y);
   s += items.map((it) => it.svg).join('');
+  s += flyers.join('');
 
   // Fireflies (night only).
   const flies: ReadonlyArray<readonly [number, number]> = [[210, 290], [380, 330], [520, 210], [160, 220], [420, 280], [90, 250], [258, 160]];

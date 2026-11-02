@@ -54,6 +54,11 @@ import type { OlHeatmap, ToggleDayDetail } from '../components/ol-heatmap.js';
 import { particles } from '../components/ol-particles.js';
 import { playSound } from '../services/sound.js';
 import { SEASON_DAY_LINE, seasonOf, showRainbow } from '../services/season.js';
+import {
+  islandVisitors, newlyArrived, VISITOR_COMES, VISITOR_NAME, visitorInfos, type VisitorId, type VisitorInfo,
+} from '../services/visitors.js';
+import { gardenData$, type GardenData } from '../repo/visitors.js';
+import { openGardenSheet } from './sheets/garden.js';
 import type { OlPlant } from '../components/ol-plant.js';
 import { onModalChange, topModal, type OlSheet } from '../components/ol-sheet.js';
 import { showToast } from '../components/ol-toast.js';
@@ -138,6 +143,8 @@ let keimiAskedOn: Day | null = null;
 /** Keimi's milestone sentence stays this long; the new object's fade-in class this long (Teil 3). */
 const CELEBRATE_MS = 12_000;
 const ARRIVE_MS = 3_400;
+/** Besucher: Keimi mentions a visitor that came this long after it arrived. */
+const VISIT_NOTE_MS = 4_000;
 const RING_R = 11.5;
 const RING_C = 2 * Math.PI * RING_R;
 const EASE_ENTER = 'cubic-bezier(0,0,0,1)';
@@ -445,7 +452,10 @@ class HeuteScreen {
   private journalLoaded = false;
   private thanked = false;
   /** A milestone just earned: Keimi's sentence (cleared after CELEBRATE_MS) and the fade-in ids (after ARRIVE_MS). */
-  private celebration: { text: string } | null = null;
+  private celebration: { text: string; visitor?: boolean } | null = null;
+  /** Besucher (Teil 2): the album as of the last emission (null before the first) and the visitor arriving now. */
+  private visitorInfos: VisitorInfo[] | null = null;
+  private visitorArrive: VisitorId | null = null;
   private arriving: ReadonlySet<string> | null = null;
 
   constructor(view: HTMLElement, day: Day) {
@@ -538,6 +548,8 @@ class HeuteScreen {
       this.milestones = list;
       this.renderIsland();
     });
+    // Besucher (Teil 2): who is found, live; a visitor found today after a change made here arrives with a moment.
+    this.watch(gardenData$(), (data) => this.onGardenData(data));
     this.watch(events$(day, day), (data) => {
       this.events = data;
       this.renderEvents();
@@ -816,7 +828,10 @@ class HeuteScreen {
               <span class="ol-hero__bar" aria-hidden="true"><span class="ol-hero__bar-fill"></span></span>
               <span class="ol-hero__progress-text"><strong class="ol-hero__progress-count ol-num"></strong> ${t.heroProgressText}</span>
             </div>
-            <button type="button" class="ol-hero__review">${icon('bar-chart-3', 20)}<span>${t.reviewEntry}</span></button>
+            <div class="ol-hero__entries">
+              <button type="button" class="ol-hero__review">${icon('bar-chart-3', 20)}<span>${t.reviewEntry}</span></button>
+              <button type="button" class="ol-hero__garden">${icon('flower-2', 20)}<span>${t.gardenEntry}</span></button>
+            </div>
           </div>
           ${islandMarkup()}
           </div>
@@ -1051,6 +1066,10 @@ class HeuteScreen {
       if (event.currentTarget instanceof Element) this.navigate(event.currentTarget, '/heute/rueckblick');
     };
     req<HTMLElement>(this.view, '.ol-hero__review').addEventListener('click', openReview);
+    req<HTMLElement>(this.view, '.ol-hero__garden').addEventListener('click', () => {
+      this.rememberOpener();
+      openGardenSheet();
+    });
     req<HTMLElement>(this.view, '.ol-heute__review-open').addEventListener('click', openReview);
     req<HTMLElement>(this.view, '.ol-heute__review-dismiss').addEventListener('click', () => {
       this.els.focusHeading.focus({ preventScroll: true });
@@ -1780,6 +1799,10 @@ class HeuteScreen {
     // Lebendige Insel: the real season, and a rainbow by day once everything of today is watered.
     art.season = seasonOf(day);
     art.rainbow = showRainbow({ scheduled: shown.length, pending, daytime: phase === 'morning' || phase === 'day' });
+    const guests = this.visitorInfos ? islandVisitors(this.visitorInfos, day, art.season) : [];
+    if (this.visitorArrive && !guests.some((g) => g.id === this.visitorArrive)) guests.unshift({ id: this.visitorArrive, isNew: true });
+    art.visitors = guests.map((g) => (g.id === this.visitorArrive ? { id: g.id, arrive: true } : { id: g.id }));
+    if (guests.length > 0) summary.push(fmt(t.islandVisitors, { names: guests.map((g) => VISITOR_NAME[g.id]).join(', ') }));
     const focusOpen = this.focus.tasks.filter((task) => !this.focusDone(task)).length;
     const due = suggestions(this.contacts.filter((c) => c.archived === 0), this.contactLogs, day, PEOPLE_MAX)
       .find((st) => !this.contactedNow.has(st.contact.id));
@@ -1821,6 +1844,50 @@ class HeuteScreen {
     const habit = this.habits?.find((hb) => hb.id === m.habitId);
     const areaId = habit ? habit.areaId : m.areaId;
     return areaId && this.areas.has(areaId) ? areaId : NO_AREA_GROUP;
+  }
+
+  /**
+   * Besucher: keeps the album; a visitor whose reason first holds now (found today, not found in the previous
+   * emission) arrives: it hops or flies in at once with a soft sound, and after VISIT_NOTE_MS Keimi says so (after
+   * a milestone's sentence has had its time; the evening thanks return afterwards). The first emission only fills
+   * the album.
+   */
+  private onGardenData(data: GardenData): void {
+    const infos = visitorInfos(data.history, this.day);
+    const before = this.visitorInfos;
+    this.visitorInfos = infos;
+    const arrived = before && this.day === today() ? newlyArrived(before, infos, this.day) : [];
+    const id = arrived[0];
+    if (id && !this.destroyed) {
+      this.visitorArrive = id;
+      playSound('milestone');
+      this.later(() => {
+        if (this.visitorArrive !== id) return;
+        this.visitorArrive = null;
+        this.renderIsland();
+      }, ARRIVE_MS);
+      this.later(() => this.sayVisitor(id), VISIT_NOTE_MS);
+    }
+    this.renderIsland();
+  }
+
+  /** Keimi's sentence for a visitor that came; waits while a milestone's sentence is still showing. */
+  private sayVisitor(id: VisitorId): void {
+    if (this.destroyed) return;
+    if (this.celebration && !this.celebration.visitor) {
+      this.later(() => this.sayVisitor(id), VISIT_NOTE_MS);
+      return;
+    }
+    const text = VISITOR_COMES[id];
+    const celebration = { text, visitor: true };
+    this.celebration = celebration;
+    this.island.announce(text);
+    this.later(() => {
+      if (this.celebration !== celebration) return;
+      this.celebration = null;
+      this.renderIsland();
+    }, CELEBRATE_MS);
+    this.renderIsland();
   }
 
   /** The place a routine shows at (as of the last island render), if any. */

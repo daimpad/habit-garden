@@ -661,12 +661,16 @@
 .ol-isl__svg .i-fx-petals { transform-box: fill-box; transform-origin: 50% 50%; animation: ol-fx-swirl 3.2s cubic-bezier(.3, .6, .3, 1) forwards; }
 @keyframes ol-fx-out { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes ol-fx-light { from { opacity: .45; } to { opacity: 1; } }
+/* Besucher (Teil 2): a visitor that just came hops in from above (fliers drift in). */
+:root[data-theme="dark"] .ol-isl__svg .i-visitor, .ol-hero[data-phase="night"] .ol-isl__svg .i-visitor { filter: brightness(.82) saturate(.9); }
+.ol-isl__svg .i-visit-new { animation: ol-visit-in 1.1s cubic-bezier(.25, .8, .35, 1.1) both; }
+@keyframes ol-visit-in { 0% { opacity: 0; transform: translate(-18px, -26px); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
 @keyframes ol-fx-swirl { from { transform: rotate(-90deg) scale(.6); } to { transform: rotate(40deg) scale(1.15); } }
 @media (prefers-reduced-motion: reduce) {
-  .ol-isl__svg :is(.i-fall, .i-flake, .i-rainbow, .i-fx-light, .i-fx-petals) { animation: none !important; }
+  .ol-isl__svg :is(.i-fall, .i-flake, .i-rainbow, .i-fx-light, .i-fx-petals, .i-visit-new) { animation: none !important; }
   .ol-isl__svg .i-fx-petals { display: none; }
 }
-:root[data-motion="reduced"] .ol-isl__svg :is(.i-fall, .i-flake, .i-rainbow, .i-fx-light, .i-fx-petals) { animation: none !important; }
+:root[data-motion="reduced"] .ol-isl__svg :is(.i-fall, .i-flake, .i-rainbow, .i-fx-light, .i-fx-petals, .i-visit-new) { animation: none !important; }
 :root[data-motion="reduced"] .ol-isl__svg .i-fx-petals { display: none; }
 
 /* SVG strokes; k-* elements have no fill (filled and stroked shapes re-declare it) */
@@ -1911,7 +1915,7 @@
 
 /* === review === */
 /* Rückblick (H9): entry in the hero, Sunday card "Deine Woche" in HEUTE, screen /heute/rueckblick. */
-.ol-hero__review {
+.ol-hero__review, .ol-hero__garden {
   justify-self: start; display: inline-flex; align-items: center; gap: var(--space-2);
   min-height: 44px; margin-top: var(--space-1); padding: 0 var(--space-4) 0 var(--space-3);
   border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent); border-radius: var(--radius-full);
@@ -1919,8 +1923,12 @@
   font: inherit; font-size: .875rem; font-weight: 600; cursor: pointer; touch-action: manipulation;
   transition: background-color var(--duration-fast) linear;
 }
-@media (hover: hover) { .ol-hero__review:hover { background-color: var(--color-surface); } }
-.ol-hero__review:active { background-color: var(--color-primary-soft); }
+@media (hover: hover) { :is(.ol-hero__review, .ol-hero__garden):hover { background-color: var(--color-surface); } }
+:is(.ol-hero__review, .ol-hero__garden):active { background-color: var(--color-primary-soft); }
+
+/* Gamification Teil 2: "Dein Garten" beside "Rückblick" (same pill), both in one row that wraps when narrow. */
+.ol-hero__entries { justify-self: start; display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-1); }
+.ol-hero__entries > :is(.ol-hero__review, .ol-hero__garden) { margin-top: 0; }
 
 .ol-heute > .ol-heute__review { max-width: 720px; }
 .ol-heute__review {
@@ -2281,3 +2289,54 @@
 :root[data-motion="reduced"] :is(.ol-tour__spot, .ol-tour__bubble, .ol-tour__dot) { transition: none; }
 :root[data-motion="reduced"] .ol-tour__spot::after, :root[data-motion="reduced"] .ol-keimi .kg-wave { animation: none; }
 /* === /tour === */
+
+/* === garden sheet (Gamification Teil 2: Besucher und Herbarium) === */
+.ol-garden-sheet { display: grid; gap: var(--space-4); padding-bottom: var(--space-6); }
+.ol-garden-sheet__tabs { max-width: 28rem; }
+.ol-garden-sheet__panel { display: grid; gap: var(--space-4); }
+.ol-garden-sheet__head { display: grid; gap: var(--space-2); }
+.ol-garden-sheet__count { margin: 0; font-weight: 600; }
+.ol-garden-sheet__bar { height: 6px; border-radius: var(--radius-full); background: var(--color-surface-2); overflow: hidden; }
+.ol-garden-sheet__fill { display: block; height: 100%; width: calc(var(--p, 0) * 100%); border-radius: inherit; background: var(--color-primary); }
+.ol-garden-sheet__hint { margin: 0; color: var(--color-text-2); font-size: .875rem; line-height: 1.35; }
+.ol-visitor-grid, .ol-herb-grid { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.ol-visitor-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 104px), 1fr)); }
+.ol-herb-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 148px), 1fr)); gap: var(--space-3); }
+.ol-visitor-card {
+  position: relative; display: grid; align-content: start; gap: 2px; min-width: 0; padding: var(--space-2) var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface);
+}
+.ol-visitor-card__art { display: grid; place-items: center; height: 56px; }
+.ol-visitor-card__name { font-weight: 600; font-size: .875rem; overflow-wrap: anywhere; }
+.ol-visitor-card__text, .ol-visitor-card__progress { color: var(--color-text-2); font-size: .75rem; line-height: 1.3; overflow-wrap: anywhere; }
+.ol-visitor-card__progress { color: var(--color-primary); font-weight: 600; }
+.ol-visitor-card--open { background: var(--color-surface-2); border-style: dashed; }
+.ol-visitor-card--open .ol-visitor-card__name { color: var(--color-text-2); font-weight: 500; }
+.ol-visitor-card__new {
+  position: absolute; top: var(--space-2); right: var(--space-2); padding: 1px 7px; border-radius: var(--radius-full);
+  background: var(--color-primary-soft); color: var(--color-primary); font-size: .6875rem; font-weight: 600;
+}
+.ol-visitor-glyph { display: block; overflow: visible; }
+.ol-visitor-glyph .v-sh { fill: var(--isl-shadow); opacity: .18; }
+.ol-visitor-glyph--open :is(path, circle, ellipse, rect) { fill: var(--color-text-3); stroke: var(--color-text-3); opacity: .3; }
+.ol-visitor-glyph--open .v-sh { opacity: .08; }
+.ol-herb-card { display: grid; align-content: start; gap: 2px; min-width: 0; padding: var(--space-2) var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-border); }
+.ol-herb-card__paper {
+  position: relative; display: grid; place-items: center; height: 116px; margin-bottom: var(--space-1); border-radius: var(--radius-sm);
+  background: radial-gradient(120% 90% at 30% 20%, #FFFBF0, #F3E7CF 70%, #EADBBD);
+  box-shadow: inset 0 0 0 1px rgba(150, 120, 80, .14);
+}
+.ol-herb-card__paper::after {
+  content: ''; position: absolute; top: 70%; left: 52%; width: 34px; height: 11px; translate: -50% 0; rotate: -8deg;
+  background: rgba(255, 250, 236, .72); box-shadow: 0 1px 2px rgba(120, 90, 60, .15);
+}
+.ol-pressed { display: block; filter: saturate(.82) sepia(.12); }
+.ol-herb-card--open .ol-herb-card__paper { background: var(--color-surface-2); box-shadow: none; }
+.ol-herb-card--open .ol-herb-card__paper::after { display: none; }
+.ol-herb-card--open .ol-pressed { filter: grayscale(1); opacity: .32; }
+.ol-herb-card__name { font-weight: 600; font-size: .875rem; overflow-wrap: anywhere; }
+.ol-herb-card__area { display: flex; align-items: center; gap: 6px; color: var(--color-text-2); font-size: .75rem; overflow-wrap: anywhere; }
+.ol-herb-card__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--tint, var(--color-sage)); }
+.ol-herb-card__line { color: var(--color-text-2); font-size: .75rem; }
+:root[data-theme="dark"] .ol-herb-card__paper { background: radial-gradient(120% 90% at 30% 20%, #F2EAD6, #DCCCAA 70%, #CDBB95); }
+/* === /garden sheet === */

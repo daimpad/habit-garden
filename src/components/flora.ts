@@ -393,6 +393,17 @@ export function plant(stage: Stage, flowerId: FlowerId, tint: string, size = 120
     + '</svg>';
 }
 
+/**
+ * Herbarium (Gamification Teil 2): the full-bloom plant without pot or ground, as if pressed between paper
+ * (viewBox around stem, leaves and flower; the paper look is CSS). `width` in px.
+ */
+export function pressedFlower(flowerId: FlowerId, tint: string, width = 72): string {
+  const kind = isFlowerId(flowerId) ? flowerId : 'generic';
+  const w = width > 0 ? width : 72;
+  return `<svg class="ol-pressed" viewBox="30 4 100 140" width="${num(w)}" height="${num((w * 140) / 100)}" aria-hidden="true" focusable="false">`
+    + `<g transform="rotate(-6 80 141)">${plantBody(4, kind, safeTint(tint), w)}</g></svg>`;
+}
+
 /** Ray colour of each flower that is not white (S31). */
 const PETAL: Partial<Record<FlowerId, string>> = {
   calendula: '#E8963E', helianthus: SUN, centaurea: '#4C6FB3', passiflora: '#B89BD1', generic: SAGE,
