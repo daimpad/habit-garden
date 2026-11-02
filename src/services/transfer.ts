@@ -17,8 +17,10 @@ import {
   type HabitLog, type HabitSchedule, type ISO, type Milestone, type MoodLog, type Note, type PlanningState, type PlanningView,
   type Profile, type Project, type Recurrence,
   type Reminder, type Tag, type Task,
+  type GardenItemId, type GardenSlotId, type GardenState,
 } from '../model.js';
 import { defaultProfile, updateProfile, upgradeProfile } from '../repo/profile.js';
+import { isItemId, isSlotId } from './garden.js';
 import { ensureTags, normalizeTagPath, tagChain } from '../repo/tags.js';
 import { CONTACT_KINDS } from './contacts.js';
 import { MILESTONE_KINDS, mergeMilestones, milestoneId } from './milestones.js';
@@ -279,6 +281,12 @@ function validateProfile(value: unknown, path: string): Profile {
   setOpt(profile, 'eveningCardDismissedFor', optDay(r, 'eveningCardDismissedFor', path));
   setOpt(profile, 'reviewCardDismissedFor', optDay(r, 'reviewCardDismissedFor', path));
   if (present(r.planning)) profile.planning = validatePlanning(r.planning, `${path}.planning`);
+  if (present(r.garden)) profile.garden = validateGarden(r.garden, `${path}.garden`);
+  setOpt(profile, 'harvestDismissedFor', optDay(r, 'harvestDismissedFor', path));
+  if (present(r.keimi)) {
+    const k = asRecord(r.keimi, `${path}.keimi`);
+    profile.keimi = present(k.wear) ? { wear: oneOf(k, 'wear', ['none', 'hat', 'can', 'crown'] as const, `${path}.keimi`) } : {};
+  }
   if (present(r.firstStepsDismissed)) {
     const steps = strings(r.firstStepsDismissed, `${path}.firstStepsDismissed`);
     steps.forEach((step, i) => {
@@ -288,6 +296,36 @@ function validateProfile(value: unknown, path: string): Profile {
   }
   // Files with profile schema 1 carry landscape 0 as the old default (see upgradeProfile).
   return upgradeProfile(profile);
+}
+
+/**
+ * Gestalten (Gamification Teil 3): item → place, each place once, the Steg only at the pond, the side island's
+ * places only with the side island.
+ */
+function validateGarden(value: unknown, path: string): GardenState {
+  const r = asRecord(value, path);
+  const state: GardenState = {};
+  if (present(r.islet)) {
+    if (r.islet !== 1) fail(`${path}.islet`, 'expected 1');
+    state.islet = 1;
+  }
+  if (present(r.placed)) {
+    const placed = asRecord(r.placed, `${path}.placed`);
+    const out: Partial<Record<GardenItemId, GardenSlotId>> = {};
+    const used = new Set<string>();
+    for (const [item, slot] of Object.entries(placed)) {
+      const p = `${path}.placed.${item}`;
+      if (!isItemId(item)) fail(p, 'unknown item');
+      if (!isSlotId(slot)) fail(p, 'unknown place');
+      if ((item === 'jetty') !== (slot === 'pond')) fail(p, 'the jetty stands at the pond, nothing else does');
+      if (slot.startsWith('i') && state.islet !== 1) fail(p, 'place on the side island without it');
+      if (used.has(slot)) fail(p, 'place taken twice');
+      used.add(slot);
+      out[item] = slot;
+    }
+    state.placed = out;
+  }
+  return state;
 }
 
 /** PLANUNG tab state (Phase 3): optional area id and a view per area key ('all' or an area id). */

@@ -37,6 +37,7 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] Einstellungen › Kalender › „Aufgaben als Kalender (ICS)“ in einen eigenen Kalender „Habit Garden“ importieren; nach einer Änderung und erneutem Import ist die Aufgabe aktualisiert, nicht doppelt.
 
 ## Darstellung
+- [ ] Größte Systemschrift: HEUTE scrollt nicht seitlich; „Kontaktiert“ steht bei Bedarf in einer eigenen Zeile.
 - [ ] Gerät auf dunkel stellen: die App zeigt den Nachtgarten, auch direkt nach dem Neuladen (kein heller Blitz).
 - [ ] Die Adressleiste des Browsers hat die Farbe des Hintergrunds.
 - [ ] Kalender (Tipp auf das Datum) passt ohne seitliches Scrollen auf den Bildschirm.
@@ -52,6 +53,20 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] Erstes Abendfeuer: Ein Igel hüpft auf die Insel, kurz darauf sagt Keimi „Ein Igel ist zu Besuch.“
 - [ ] „Dein Garten“ öffnet das Album; gefundene Tiere farbig, offene als Silhouette mit Hinweis.
 - [ ] Reiter Herbarium: gepresste Blüten der voll erblühten Routinen, wachsende mit „noch n Tage“.
+
+## Gestalten und Aufträge
+- [ ] „Dein Garten › Gestalten“: „Setzen“ zeigt Ringe auf der Insel; ein Tipp zeigt die Vorschau, „Hier setzen“ stellt es hin.
+- [ ] „Zurückgeben“ bringt die Samen zurück; „Rückgängig“ stellt es wieder hin.
+- [ ] Keimis Aufträge in HEUTE: ein erfüllter Auftrag zeigt den Hinweis „Auftrag erfüllt …“.
+
+## Keimi und Tagesernte
+- [ ] „Dein Garten › Keimi“: erreichte Stufen farbig, offene blass mit Fortschritt; „Keimi trägt“ ändert Keimi auf der Insel sofort.
+- [ ] Ab dem Abend steht oben in HEUTE die Tagesernte; „Schließen“ blendet sie für den Tag aus, auch nach dem Neuladen.
+
+## Schneller Zugriff und Einsichten
+- [ ] Installierte App: langer Druck auf das Symbol zeigt vier Kurzbefehle; „Neue Aufgabe“ öffnet das Erfassen-Blatt, „Heute gießen“ springt zu den Routinen.
+- [ ] Android: aus dem Browser „Teilen › Habit Garden“: das Erfassen-Blatt ist mit Titel und Link vorausgefüllt.
+- [ ] Rückblick: „Was dir guttut“ nennt bei wenigen Stimmungseinträgen, wie viele noch fehlen; der Jahresgarten zeigt zwölf Beete, „Als Bild speichern“ legt ein PNG ab.
 
 ## Klänge
 - [ ] Erster Tipp nach dem Öffnen: Gießen einer Routine tropft hörbar, leise genug, um niemanden zu stören.

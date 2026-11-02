@@ -21,6 +21,11 @@
 //   arriving object also gets the reward moment (spotlight and petals, .i-fx).
 // - Besucher (Gamification Teil 2): `visitors` places the animals of components/island-visitors.ts at their spots
 //   (flyers above everything); one that just came carries .i-visit-new.
+// - Gestalten (Gamification Teil 3): `garden` draws the placed things (components/island-garden.ts) in depth order,
+//   the side island with its rope bridge, a translucent preview while a place is chosen and the reward moment for
+//   a thing just placed.
+// - Keimi wächst mit (Gamification Teil 4): `keimi` gives Keimi four leaves from Spross on and what it wears
+//   (components/keimi-wear.ts: straw hat, watering can, blossom crown).
 import { flowerBody, plantBud, plantStem, plantTop, safeTint, type PlantPaint } from './flora.js';
 import { t, fmt } from '../i18n/de.js';
 import type { FlowerId, Stage } from '../model.js';
@@ -29,6 +34,10 @@ import type { TraceTier } from '../services/milestones.js';
 import type { Season } from '../services/season.js';
 import type { VisitorId } from '../services/visitors.js';
 import { visitorOnIsland } from './island-visitors.js';
+import { gardenItem, islet, SLOT_AT as GARDEN_SLOT_AT } from './island-garden.js';
+import { CAN, CROWN, LEAF_TOP, LEAVES_BACK, STRAW_HAT } from './keimi-wear.js';
+import type { KeimiLook } from '../services/keimi.js';
+import type { GardenItemId, GardenSlotId } from '../model.js';
 import {
   arriveFx, BIG_TREE_CROWN, bushCrown, crownBlossoms, crownSnow, crownTint, fallingLeaves, frozenPond, leafPile, rainbow,
   SCARF, SEASON_DEFS, SNOW, snowDrifts, snowfall, SUMMER_FLIES, type Blob,
@@ -72,6 +81,18 @@ export interface IslandInput {
   rainbow?: boolean;
   /** Besucher (Teil 2): who is on the island today; `arrive` for one that just came (comes in, CSS). */
   visitors?: ReadonlyArray<{ id: VisitorId; arrive?: boolean }>;
+  /**
+   * Gestalten (Teil 3): what stands where, the side island, the preview while choosing a place (`ghost`) and the
+   * thing that was just placed (`arrive`: reward moment).
+   */
+  garden?: {
+    placed: ReadonlyArray<{ item: GardenItemId; slot: GardenSlotId }>;
+    islet?: boolean;
+    ghost?: { item: GardenItemId; slot: GardenSlotId };
+    arrive?: GardenItemId;
+  };
+  /** Keimi wächst mit (Teil 4): four leaves from Spross on and what Keimi wears. */
+  keimi?: KeimiLook;
 }
 
 type Pt = readonly [number, number];
@@ -662,7 +683,7 @@ function bush(x: number, y: number, r: number, flowers: boolean, season: Season)
 
 const KEIMI_BODY = 'M0 -41C13.5 -41 19.5 -29 19.5 -18.5C19.5 -7 11 -3 0 -3C-11 -3 -19.5 -7 -19.5 -18.5C-19.5 -29 -13.5 -41 0 -41Z';
 
-function keimi(x: number, y: number, season: Season): Drawable {
+function keimi(x: number, y: number, season: Season, look: KeimiLook | undefined): Drawable {
   let s = `<g class="i-keimi-root" transform="translate(${x} ${y}) scale(1.3)">`;
   s += `<ellipse rx="16" ry="4.4" fill="${ref('g-sh')}"/>`;
   s += '<ellipse class="i-keimi-lo" cx="-6.5" cy="-2.5" rx="5.4" ry="3.4"/><ellipse class="i-keimi-lo" cx="6.5" cy="-2.5" rx="5.4" ry="3.4"/>';
@@ -670,6 +691,7 @@ function keimi(x: number, y: number, season: Season): Drawable {
   s += '<ellipse class="i-keimi k-keimi i-wave" cx="22" cy="-31" rx="3.6" ry="7.5" transform="rotate(34 22 -31)" stroke-width="1.2"/>';
   s += `<path fill="${ref('g-keimi')}" d="${KEIMI_BODY}"/><path class="k-keimi" stroke-width="1.3" d="${KEIMI_BODY}"/>`;
   s += '<ellipse class="i-keimi-hi" cy="-12" rx="10" ry="6.5" opacity=".7"/>';
+  if (look?.leaves === 'four') s += LEAVES_BACK;
   s += '<path class="k-stem" d="M0 -40C0 -44 1 -46 0 -49" stroke-width="2" stroke-linecap="round"/>';
   s += '<path class="i-leaf k-keimi" stroke-width="1" d="M0 -47C-4 -55 -12 -58 -18 -53.5C-13 -48 -6 -46 0 -47Z"/><path class="i-leaf k-keimi" stroke-width="1" d="M0 -48C3 -58 12 -62 19 -58C15 -50.5 7 -47.5 0 -48Z"/>';
   s += '<path class="k-leafvein" d="M-1 -47.5Q-9 -51 -15 -53M1 -48.5Q9 -53 16 -57.5" stroke-width=".8"/>';
@@ -677,8 +699,27 @@ function keimi(x: number, y: number, season: Season): Drawable {
   s += '<path class="i-night" d="M-9.2 -24q2.7 2.4 5.4 0M3.8 -24q2.7 2.4 5.4 0" stroke="#2B3A2E" stroke-width="1.4" fill="none" stroke-linecap="round"/>';
   s += '<ellipse cx="-11.5" cy="-18.5" rx="3.2" ry="1.9" fill="#F2A39A" opacity=".75"/><ellipse cx="11.5" cy="-18.5" rx="3.2" ry="1.9" fill="#F2A39A" opacity=".75"/>';
   s += '<path d="M-3.2 -19.2q3.2 3.2 6.4 0" stroke="#2B3A2E" stroke-width="1.4" fill="none" stroke-linecap="round"/>';
+  if (look?.leaves === 'four') s += LEAF_TOP;
   if (season === 'winter') s += SCARF;
+  if (look?.wear === 'hat') s += STRAW_HAT;
+  else if (look?.wear === 'crown') s += CROWN;
+  else if (look?.wear === 'can') s += CAN;
   return { y, svg: `${s}</g>` };
+}
+
+/**
+ * Keimi wächst mit (Teil 4): the island Keimi alone with its leaves and what it wears, for the "Keimi" tab
+ * (awake in both themes; colours from the island classes). `size` = height in px.
+ */
+export function keimiFigure(look: KeimiLook, size = 72, prefix = 'kf-'): string {
+  const body = keimi(0, 0, 'summer', look).svg;
+  const defs = '<defs>'
+    + gradient('radialGradient', 'g-sh', '', [[0, 's-shadow', 0.3], [1, 's-shadow', 0]])
+    + gradient('radialGradient', 'g-keimi', 'cx=".38" cy=".3" r=".8"', [[0, 's-keimi-hi'], [0.6, 's-keimi'], [1, 's-keimi-lo']])
+    + '</defs>';
+  const w = Math.round((size * 72) / 90);
+  return `<svg class="ol-isl__svg ol-keimi-fig" viewBox="-34 -84 72 90" width="${w}" height="${size}" aria-hidden="true" focusable="false">${defs}${body}</svg>`
+    .split(ID_MARK).join(prefix);
 }
 
 /**
@@ -969,6 +1010,8 @@ function placePlants(key: PlaceKey | 'extra', area: IslandArea): Drawable[] {
   return out;
 }
 
+const gardenSlotAt = (slot: GardenSlotId): readonly [number, number] => GARDEN_SLOT_AT[slot];
+
 // ---------------------------------------------------------------------------
 // Lebendige Insel: what lies on the grass and what moves in the air per season.
 
@@ -1010,6 +1053,7 @@ export function islandSvg(input: IslandInput): string {
   if (input.rainbow) s += rainbow();
   s += cloud(70, 452, 1.1) + cloud(548, 418, 0.9, true) + floatRock(64, 404, 9) + floatRock(548, 458, 7) + floatRock(522, 482, 4);
   s += body();
+  if (input.garden?.islet) s += islet();
   if (input.decor === 'lush') s += vines();
   s += groundDecor(input.decor);
   s += seasonGround(season);
@@ -1029,7 +1073,18 @@ export function islandSvg(input: IslandInput): string {
     items.push(...placePlants('extra', extra), ...traces('extra', extra));
     if (extra.lvl >= 3) items.push({ y: 378, svg: bloomRing(241, 376, 40, 6, extra.tint, 41) });
   }
-  items.push(keimi(ANCHORS.keimi[0], ANCHORS.keimi[1], season), campfire());
+  items.push(keimi(ANCHORS.keimi[0], ANCHORS.keimi[1], season, input.keimi), campfire());
+  // Gestalten: placed things in depth order; the preview is drawn above everything else of its depth.
+  for (const p of input.garden?.placed ?? []) {
+    if (input.garden?.ghost?.item === p.item) continue;
+    const arrive = input.garden?.arrive === p.item;
+    items.push(gardenItem(p.item, p.slot, { arrive }));
+    if (arrive) {
+      const [ax, ay] = gardenSlotAt(p.slot);
+      items.push({ y: ay + 0.5, svg: arriveFx(ax, ay, ax * 7 + ay) });
+    }
+  }
+  if (input.garden?.ghost) items.push(gardenItem(input.garden.ghost.item, input.garden.ghost.slot, { ghost: true }));
   // Besucher: walkers and swimmers in depth order, flyers above everything.
   const flyers: string[] = [];
   for (const v of input.visitors ?? []) {

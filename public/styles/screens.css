@@ -486,15 +486,16 @@
 }
 
 /* Melde dich bei */
-.ol-heute__person { gap: var(--space-2); padding: var(--space-1) 0; }
+/* With large text "Kontaktiert" moves to its own line instead of pushing the row past the edge. */
+.ol-heute__person { flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) 0; }
 .ol-heute__person-glyph {
   flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
   background: color-mix(in srgb, var(--color-sage) 18%, var(--color-surface));
 }
-.ol-heute__person-text { flex: 1 1 auto; min-width: 0; display: grid; }
+.ol-heute__person-text { flex: 1 1 8em; min-width: 0; display: grid; }
 .ol-heute__person .ol-heute__title { min-height: 0; padding: var(--space-1) var(--space-2) 0; font-weight: 600; }
 .ol-heute__person .ol-heute__meta { max-width: none; padding: 0 var(--space-2) var(--space-1); text-align: left; }
-.ol-heute__contacted { flex: none; }
+.ol-heute__contacted { flex: none; max-width: 100%; margin-left: auto; }
 .ol-heute__people-empty { display: grid; justify-items: start; gap: var(--space-3); padding: var(--space-3) var(--space-2); }
 
 /* Continuous garden motion stops with reduced motion (system or in-app); the island's own motion: section "island". */
@@ -524,8 +525,8 @@
    text; ≥ 900 px: right of the greeting. Pill and figure sizes follow the stage width (cqw). */
 /* The island lies above the hero text (its sky overlaps the text's last row); only its controls take pointers. */
 .ol-isl { position: relative; z-index: 2; margin: -44px calc(var(--space-4) * -1) -6px; pointer-events: none; }
-.ol-isl__place, .ol-isl__fig, .ol-isl__bubble, .ol-isl__pill, .ol-isl__more-people, .ol-isl__mode, .ol-isl__fire { pointer-events: auto; }
-.ol-isl__stage { position: relative; aspect-ratio: 600 / 560; container-type: inline-size; }
+.ol-isl__place, .ol-isl__fig, .ol-isl__bubble, .ol-isl__pill, .ol-isl__more-people, .ol-isl__mode, .ol-isl__fire, .ol-isl__slot { pointer-events: auto; }
+.ol-isl__stage { position: relative; aspect-ratio: 600 / 560; container-type: inline-size; overflow-x: clip; }
 .ol-isl__art { position: absolute; inset: 0; }
 .ol-isl__svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--font-sans); }
 @media (min-width: 600px) and (max-width: 899px) {
@@ -574,6 +575,7 @@
 .ol-isl__svg .i-wood { fill: var(--isl-wood); }
 .ol-isl__svg .i-wood-hi { fill: color-mix(in oklab, var(--isl-wood) 60%, var(--isl-light)); }
 .ol-isl__svg .i-wood-lo { fill: color-mix(in oklab, var(--isl-wood) 70%, var(--isl-shadow)); }
+.ol-isl__svg .i-roof { fill: var(--isl-roof); }
 .ol-isl__svg .i-roof-lo { fill: color-mix(in oklab, var(--isl-roof) 75%, var(--isl-shadow)); }
 .ol-isl__svg .i-wall { fill: var(--isl-wall); }
 .ol-isl__svg .i-wall-lo { fill: color-mix(in oklab, var(--isl-wall) 80%, var(--isl-shadow)); }
@@ -2340,3 +2342,123 @@
 .ol-herb-card__line { color: var(--color-text-2); font-size: .75rem; }
 :root[data-theme="dark"] .ol-herb-card__paper { background: radial-gradient(120% 90% at 30% 20%, #F2EAD6, #DCCCAA 70%, #CDBB95); }
 /* === /garden sheet === */
+
+/* === Gestalten und Aufträge (Gamification Teil 3) === */
+/* Choosing a place: rings over the free places (above everything on the island), the preview translucent. */
+.ol-isl__slots { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
+.ol-isl__slots[hidden] { display: none; }
+.ol-isl[data-placing] :is(.ol-isl__places, .ol-isl__people, .ol-isl__bubble, .ol-isl__fire, .ol-isl__labels) { visibility: hidden; }
+.ol-isl__slot {
+  position: absolute; left: calc(var(--x, 0) * 100%); top: calc(var(--y, 0) * 100%); translate: -50% -50%;
+  width: max(44px, 8.6cqw); aspect-ratio: 2.6 / 1; margin: 0; padding: 0; border-radius: 50%;
+  border: 2px dashed var(--color-primary); background: color-mix(in srgb, var(--isl-light) 55%, transparent);
+  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.ol-isl__slot::before { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
+.ol-isl__slot::after {
+  content: '+'; position: absolute; left: 50%; top: 50%; translate: -50% -60%; display: grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 50%; background: var(--color-surface); color: var(--color-primary); font-weight: 700; line-height: 1;
+}
+/* The side island's three places lie close: smaller rings whose tap areas do not overlap (still at least 24 px). */
+.ol-isl__slot:is([data-slot="i1"], [data-slot="i2"], [data-slot="i3"]) { width: max(26px, 6.2cqw); }
+.ol-isl__slot:is([data-slot="i1"], [data-slot="i2"], [data-slot="i3"])::before { width: 100%; height: max(100%, 26px); }
+.ol-isl__slot:is([data-slot="i1"], [data-slot="i2"], [data-slot="i3"])::after { width: 16px; height: 16px; font-size: .75rem; }
+.ol-isl__slot[aria-pressed="true"] { border-style: solid; border-width: 2.5px; background: color-mix(in srgb, var(--isl-light) 30%, transparent); }
+.ol-isl__slot[aria-pressed="true"]::after { content: none; }
+.ol-isl__slot:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
+.ol-isl__svg .i-ghost { opacity: .55; }
+.ol-isl__svg .i-blades { transform-box: fill-box; transform-origin: 50% 50%; animation: ol-blades 6s linear infinite; }
+@keyframes ol-blades { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ol-isl__svg .i-blades { animation: none; } }
+:root[data-motion="reduced"] .ol-isl__svg .i-blades { animation: none; }
+.ol-place-bar {
+  position: fixed; z-index: 30; left: 50%; translate: -50% 0; bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-3));
+  display: grid; gap: var(--space-3); width: min(100% - 2 * var(--space-4), 560px); padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: 0 8px 28px -8px color-mix(in srgb, var(--isl-shadow) 45%, transparent);
+  border: 1px solid var(--color-border);
+}
+.ol-place-bar[hidden] { display: none; }
+.ol-place-bar__item { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.ol-place-bar__art { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--radius-md); background: var(--color-surface-2); }
+.ol-place-bar__text { display: grid; min-width: 0; font-size: .875rem; overflow-wrap: anywhere; }
+.ol-place-bar__text span { color: var(--color-text-2); }
+.ol-place-bar__actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: var(--space-2); }
+.ol-place-bar__actions ol-button { width: 100%; }
+/* Shop */
+.ol-seed { display: inline-block; vertical-align: -1px; }
+.ol-seeds { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-sun) 16%, var(--color-surface)); }
+.ol-seeds__icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--color-surface); }
+.ol-seeds__icon .ol-seed { width: 22px; height: 18px; }
+.ol-seeds__count { margin: 0 0 2px; font-weight: 700; font-size: 1.125rem; }
+.ol-item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 136px), 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.ol-item-card { display: grid; align-content: start; justify-items: start; gap: 4px; min-width: 0; padding: var(--space-2) var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.ol-item-card--placed { background: var(--color-primary-soft); }
+.ol-item-card__art { justify-self: stretch; display: grid; place-items: center; height: 64px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--isl-grass) 22%, var(--color-surface)); }
+.ol-isl__svg.ol-item-glyph { display: block; width: auto; height: 52px; overflow: visible; }
+.ol-place-bar__art .ol-isl__svg.ol-item-glyph { height: 36px; }
+.ol-islet-card__art .ol-isl__svg.ol-item-glyph { height: 48px; }
+.ol-item-card__name { font-weight: 600; font-size: .875rem; margin: 0; overflow-wrap: anywhere; }
+.ol-item-card__price { display: inline-flex; align-items: center; gap: 4px; margin: 0; color: var(--color-text-2); font-size: .75rem; }
+.ol-item-card__state { color: var(--color-text-2); font-size: .75rem; }
+.ol-item-card__actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.ol-islet-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1.5px dashed var(--color-border); border-radius: var(--radius-md); }
+.ol-islet-card > ol-button { grid-column: 1 / -1; justify-self: start; }
+.ol-islet-card--done { border-style: solid; background: var(--color-primary-soft); }
+.ol-islet-card__text { display: grid; gap: 4px; min-width: 0; }
+/* Keimis Aufträge in HEUTE */
+.ol-quests { display: grid; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+.ol-quests__head { display: flex; align-items: center; gap: var(--space-3); }
+.ol-quests__keimi { flex: none; }
+.ol-quests__title { margin: 0; font-weight: 600; }
+.ol-quests__sub, .ol-quests__foot { margin: 0; color: var(--color-text-2); font-size: .8125rem; }
+.ol-quests__list { display: grid; margin: 0; padding: 0; list-style: none; }
+.ol-quest { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--color-border); }
+.ol-quest__mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--color-border); color: var(--color-on-primary); }
+.ol-quest--done .ol-quest__mark { border-color: var(--color-primary); background: var(--color-primary); }
+.ol-quest__mark .ol-icon { width: 16px; height: 16px; }
+.ol-quest__text { display: grid; min-width: 0; font-size: .9375rem; overflow-wrap: anywhere; }
+.ol-quest--done .ol-quest__text { color: var(--color-text-2); }
+.ol-quest__progress { color: var(--color-text-2); font-size: .75rem; }
+.ol-quest__reward { padding: 2px 8px; border-radius: var(--radius-full); background: color-mix(in srgb, var(--color-sun) 20%, var(--color-surface)); font-size: .75rem; font-weight: 600; white-space: nowrap; }
+/* === /Gestalten und Aufträge === */
+
+/* === Keimi wächst mit und Tagesernte (Gamification Teil 4) === */
+.ol-keimi-fig { display: block; overflow: visible; }
+.ol-isl__svg.ol-keimi-fig { width: auto; }
+:root .ol-isl__svg.ol-keimi-fig .i-night { display: none !important; }
+:root .ol-isl__svg.ol-keimi-fig .i-day { display: inline !important; }
+.ol-keimi-now { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: color-mix(in srgb, var(--isl-grass) 22%, var(--color-surface)); }
+.ol-keimi-now__fig { flex: none; }
+.ol-keimi-stages { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 96px), 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.ol-keimi-stage { display: grid; justify-items: center; align-content: start; gap: 2px; min-width: 0; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); text-align: center; }
+.ol-keimi-stage__fig { display: grid; place-items: end center; height: 70px; }
+.ol-keimi-stage--open { background: var(--color-surface-2); border-style: dashed; }
+.ol-keimi-stage--open .ol-keimi-stage__fig { opacity: .35; filter: grayscale(1); }
+.ol-keimi-stage__name { font-weight: 600; font-size: .8125rem; overflow-wrap: anywhere; }
+.ol-keimi-stage__text { color: var(--color-text-2); font-size: .75rem; line-height: 1.3; overflow-wrap: anywhere; }
+.ol-keimi-wear { display: grid; gap: var(--space-2); }
+.ol-keimi-wear__choice { max-width: 32rem; }
+/* Tagesernte: an evening card at the top of HEUTE (calm night colours in both themes). */
+.ol-harvest {
+  display: grid; gap: var(--space-3); margin-top: var(--space-5); padding: var(--space-4);
+  background: linear-gradient(160deg, #2A2B3D, #3A3046); color: #EEF0F5; border: 0;
+}
+.ol-harvest[hidden] { display: none; }
+.ol-harvest__body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; }
+.ol-harvest__eyebrow { margin: 0; color: #F2C98A; font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.ol-harvest__title { margin: 2px 0 var(--space-2); font-size: 1.25rem; }
+.ol-harvest__list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: .9375rem; }
+.ol-harvest__list li { display: flex; align-items: center; gap: var(--space-2); overflow-wrap: anywhere; }
+.ol-harvest__icon { flex: none; display: grid; place-items: center; width: 22px; color: #C9D8C2; }
+.ol-harvest__keimi { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: rgba(255, 255, 255, .08); }
+.ol-harvest__close { justify-self: stretch; }
+/* === /Keimi und Tagesernte === */
+
+/* Einsichten (02.11.2026): "Was dir guttut" and the Jahresgarten. */
+.ol-review__insights { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: var(--space-3); }
+.ol-review__insight { display: flex; align-items: baseline; gap: var(--space-2); }
+.ol-review__insight-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--color-sun); transform: translateY(1px); }
+.ol-review__insights-need { margin: 0 0 var(--space-2); }
+.ol-review__year-figure { margin: 0 auto var(--space-2); max-width: 420px; }
+.ol-review__year-figure .ol-year-svg { display: block; width: 100%; height: auto; }
+.ol-review__year-actions { display: flex; justify-content: flex-end; margin-top: var(--space-3); }

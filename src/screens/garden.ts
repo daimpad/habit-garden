@@ -31,14 +31,16 @@
 //   answer sheet; shown even when hidden for the day) and 'event' (a milestone or the thank-you, shown even when
 //   hidden). spark() lets a spark rise from the fire (not under reduced motion); announce() speaks through a
 //   polite live region.
+// - Gestalten (Gamification Teil 3): setSlots() lays ring buttons over the free places while a thing is placed.
 // - Lebendige Insel (Gamification Teil 1): the root carries data-season (CSS recolours the island); rain() lets
 //   a small cloud rain over a place after watering (1.8 s; under reduced motion the cloud only fades).
 import '../components/ol-segmented.js';
 import {
   ANCHORS, FIRE_BOX, HIT_BOXES, islandSvg, KEIMI_BOX, PEOPLE_SPOTS, SLOTS, sproutFigure, VIEW_H, VIEW_W, type IslandInput,
 } from '../components/island.js';
+import { SLOT_AT } from '../components/island-garden.js';
 import { fmt, stageName, t } from '../i18n/de.js';
-import type { Day, Habit, HabitLog, Id, Profile } from '../model.js';
+import type { Day, GardenSlotId, Habit, HabitLog, Id, Profile } from '../model.js';
 import { weekProgress, type NextStage } from '../services/growth.js';
 import {
   figureSlots, layoutLabels, showPeoplePills, type Box, type FireState, type LabelRequest, type PlaceKey,
@@ -246,6 +248,7 @@ export function islandMarkup(): SafeHtml {
         <p class="ol-isl__total"><span class="ol-isl__total-icon" aria-hidden="true">${icon('trending-up', 20)}</span><span class="ol-isl__total-text"></span><span class="ol-visually-hidden ol-isl__total-detail"></span></p>
       </div>
       <ul class="ol-isl__people" aria-label="${t.islandPeople}"></ul>
+      <div class="ol-isl__slots" role="group" aria-label="${t.placeTitle}" hidden></div>
       <button type="button" class="ol-isl__more-people" hidden></button>
     </div>
     <p class="ol-visually-hidden ol-isl__live" aria-live="polite"></p>
@@ -331,6 +334,7 @@ export class Island {
   private readonly stage: HTMLElement;
   private readonly art: HTMLElement;
   private readonly places: HTMLElement;
+  private slotPick: ((slot: GardenSlotId) => void) | null = null;
   private readonly people: HTMLElement;
   private readonly morePeople: HTMLButtonElement;
   private readonly summary: HTMLElement;
@@ -456,6 +460,34 @@ export class Island {
       this.stage.append(el);
       window.setTimeout(() => el.remove(), SPARK_MS);
     }
+  }
+
+  /**
+   * Gestalten (Teil 3): while a place is chosen, one ring button per free place (the chosen one pressed); `onPick`
+   * gets the place. An empty list hides them.
+   */
+  setSlots(slots: readonly GardenSlotId[], selected: GardenSlotId | null, onPick: (slot: GardenSlotId) => void): void {
+    const box = this.stage.querySelector<HTMLElement>('.ol-isl__slots');
+    if (!box) return;
+    box.hidden = slots.length === 0;
+    this.root.toggleAttribute('data-placing', slots.length > 0);
+    syncList(box, slots.map((slot, i) => ({ slot, i })), (x) => x.slot, () => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ol-isl__slot';
+      button.addEventListener('click', () => {
+        const slot = button.dataset['slot'];
+        if (slot) this.slotPick?.(slot as GardenSlotId);
+      });
+      return button;
+    }, (button, x) => {
+      const [sx, sy] = SLOT_AT[x.slot];
+      place(button, sx, sy);
+      button.dataset['slot'] = x.slot;
+      setAttr(button, 'aria-pressed', String(x.slot === selected));
+      setAttr(button, 'aria-label', x.slot === 'pond' ? t.placeSlotPond : fmt(t.placeSlotLabel, { n: x.i + 1 }));
+    });
+    this.slotPick = onPick;
   }
 
   /** After watering: a small cloud rains over the place's plants for a moment. */

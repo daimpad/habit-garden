@@ -18,6 +18,7 @@
 // - Saving a task parses again with the current day, areas and projects: title = parsed title (the raw
 //   text when nothing else is left), flags, project + its area / area / the default (a project given by
 //   the caller stays only while the area is its own), tags (ensureTags first), dueAt via isoAt.
+// - opts.text (Schneller Zugriff, 02.11.2026): text shared from another app pre-fills the field.
 // - opts.dueDay (Phase 5, day view "Aufgabe für diesen Tag") pre-fills the due day of a task: it shows as
 //   the date chip and is saved unless the text names its own date.
 import '../../components/ol-button.js';
@@ -45,7 +46,7 @@ import { openHabitEditor } from './habit.js';
 import { failed } from './task.js';
 
 export type CaptureType = 'task' | 'habit' | 'note';
-export interface CaptureOptions { type?: CaptureType; areaId?: Id; projectId?: Id | null; dueDay?: Day }
+export interface CaptureOptions { type?: CaptureType; areaId?: Id; projectId?: Id | null; dueDay?: Day; text?: string }
 
 const TYPES: ReadonlyArray<{ type: CaptureType; label: string; icon: string }> = [
   { type: 'task', label: t.captureTypeTask, icon: 'circle-check' },
@@ -142,6 +143,8 @@ export function openCapture(opts: CaptureOptions = {}): OlSheet {
     parsed.hidden = items.length === 0;
     summary.textContent = items.length ? fmt(t.captureQuickSummary, { items: items.map((item) => item.spoken).join(', ') }) : '';
   };
+  // Schneller Zugriff: text shared from another app (services/launch) stands in the field already.
+  if (opts.text) input.value = opts.text;
   void Promise.all([listAreas(), listProjects()]).then(([areaList, projectList]) => {
     areas = areaList;
     projects = projectList;
