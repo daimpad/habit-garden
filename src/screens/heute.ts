@@ -53,6 +53,7 @@ import type { HabitToggleChange } from '../components/ol-habit-toggle.js';
 import type { OlHeatmap, ToggleDayDetail } from '../components/ol-heatmap.js';
 import { particles } from '../components/ol-particles.js';
 import { playSound } from '../services/sound.js';
+import { SEASON_DAY_LINE, seasonOf, showRainbow } from '../services/season.js';
 import type { OlPlant } from '../components/ol-plant.js';
 import { onModalChange, topModal, type OlSheet } from '../components/ol-sheet.js';
 import { showToast } from '../components/ol-toast.js';
@@ -136,7 +137,7 @@ let keimiAskedOn: Day | null = null;
 
 /** Keimi's milestone sentence stays this long; the new object's fade-in class this long (Teil 3). */
 const CELEBRATE_MS = 12_000;
-const ARRIVE_MS = 1_200;
+const ARRIVE_MS = 3_400;
 const RING_R = 11.5;
 const RING_C = 2 * Math.PI * RING_R;
 const EASE_ENTER = 'cubic-bezier(0,0,0,1)';
@@ -1592,7 +1593,8 @@ class HeuteScreen {
     const phase = this.els.greeting.dataset['phase'];
     const allDone = this.els.hero.hasAttribute('data-all-watered');
     const line = allDone ? t.heroAllWatered
-      : phase === 'morning' || phase === 'day' || phase === 'evening' || phase === 'night' ? greetingLine(phase) : '';
+      : phase === 'day' ? SEASON_DAY_LINE[seasonOf(this.day)]
+        : phase === 'morning' || phase === 'evening' || phase === 'night' ? greetingLine(phase) : '';
     setText(this.els.greetLine, line);
   }
 
@@ -1775,6 +1777,9 @@ class HeuteScreen {
     const phase = this.phase();
     const shown = active.filter((hb) => isScheduledOn(hb, day));
     const pending = shown.filter((hb) => !this.habitDoneToday(hb, this.logs?.get(hb.id) ?? [])).length;
+    // Lebendige Insel: the real season, and a rainbow by day once everything of today is watered.
+    art.season = seasonOf(day);
+    art.rainbow = showRainbow({ scheduled: shown.length, pending, daytime: phase === 'morning' || phase === 'day' });
     const focusOpen = this.focus.tasks.filter((task) => !this.focusDone(task)).length;
     const due = suggestions(this.contacts.filter((c) => c.archived === 0), this.contactLogs, day, PEOPLE_MAX)
       .find((st) => !this.contactedNow.has(st.contact.id));
@@ -1816,6 +1821,12 @@ class HeuteScreen {
     const habit = this.habits?.find((hb) => hb.id === m.habitId);
     const areaId = habit ? habit.areaId : m.areaId;
     return areaId && this.areas.has(areaId) ? areaId : NO_AREA_GROUP;
+  }
+
+  /** The place a routine shows at (as of the last island render), if any. */
+  private spotOfHabit(habit: Habit): IslandSpot | null {
+    for (const [spot, list] of this.spots) if (list.some((c) => c.habits.some((hb) => hb.id === habit.id))) return spot;
+    return null;
   }
 
   /** The place a milestone shows at (as of the last island render), if any. */
@@ -2137,6 +2148,8 @@ class HeuteScreen {
     if (plant.stage !== after) plant.setAttribute('stage', String(after));
     const grown = after > before;
     playSound(grown ? (after === 4 ? 'bloom' : 'grow') : 'water');
+    const spot = this.spotOfHabit(habit);
+    if (spot) this.island.rain(spot);
     const reduced = motionReduced();
     const points = plant.anchorPoints();
     let confirm = false;

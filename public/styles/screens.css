@@ -613,6 +613,62 @@
 .ol-isl__svg .i-arrive { transform-box: fill-box; transform-origin: 50% 100%; animation: ol-arrive .6s cubic-bezier(.2, .9, .3, 1.1) both; }
 @keyframes ol-arrive { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
 
+/* Lebendige Insel (Gamification Teil 1, 02.11.2026): the season recolours the island (data-season on .ol-isl,
+   real calendar season); Keimi keeps its green. Snow, ice, falling leaves and snow, the rainbow and the reward
+   moment (spotlight and petals around a new object). Motion stops under reduced motion. */
+.ol-isl[data-season="spring"] { --isl-grass: #AAD486; --isl-foliage: #86BF6E; --isl-leaf: #5E9A50; }
+.ol-isl[data-season="autumn"] { --isl-grass: #BCC27F; --isl-foliage: #D49A48; --isl-leaf: #7F9A4C; --isl-path: #F1DCB4; }
+.ol-isl[data-season="winter"] { --isl-grass: #D9E6E1; --isl-foliage: #7D9C8B; --isl-leaf: #6C9272; --isl-path: #EEE8DD; --isl-water: #A3CCDA; --isl-earth: #B98F72; }
+:root[data-theme="dark"] .ol-isl[data-season="spring"] { --isl-grass: #4F7A55; --isl-foliage: #447A50; --isl-leaf: #4E8A52; }
+:root[data-theme="dark"] .ol-isl[data-season="autumn"] { --isl-grass: #66693F; --isl-foliage: #8A5E2E; --isl-leaf: #5E6E3A; --isl-path: #948A72; }
+:root[data-theme="dark"] .ol-isl[data-season="winter"] { --isl-grass: #5C6B6E; --isl-foliage: #46605A; --isl-leaf: #4E6A55; --isl-path: #8E8A82; --isl-water: #3E6A84; }
+.ol-isl[data-season] .i-keimi-root { --isl-leaf: #5E9150; }
+:root[data-theme="dark"] .ol-isl[data-season] .i-keimi-root { --isl-leaf: #4E8452; }
+.ol-isl__svg .i-snow { fill: var(--isl-snow); }
+.ol-isl__svg .i-snow-lo { fill: var(--isl-snow-lo); }
+.ol-isl__svg .s-snow { stop-color: var(--isl-snow); }
+.ol-isl__svg .k-snow { stroke: var(--isl-snow); }
+.ol-isl__svg .i-ice { fill: var(--isl-ice); }
+.ol-isl__svg .i-ice-lo { fill: color-mix(in oklab, var(--isl-ice) 70%, var(--isl-water)); }
+.ol-isl__svg .k-ice { stroke: color-mix(in oklab, var(--isl-ice) 55%, var(--isl-water)); }
+.ol-isl__svg .k-spot { stroke: var(--isl-spot); }
+.ol-isl__svg .i-fall { animation: ol-leaf-fall 9s ease-in-out infinite; }
+.ol-isl__svg .i-fall:nth-child(3n + 1) { animation-duration: 11s; animation-delay: -3s; }
+.ol-isl__svg .i-fall:nth-child(3n + 2) { animation-duration: 13s; animation-delay: -7s; }
+@keyframes ol-leaf-fall {
+  0% { opacity: 0; transform: translate(0, -14px); }
+  15% { opacity: 1; }
+  40% { transform: translate(8px, 6px); }
+  70% { transform: translate(-6px, 24px); }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translate(4px, 44px); }
+}
+.ol-isl__svg .i-flake { animation: ol-snow-fall 14s linear infinite; }
+.ol-isl__svg .i-flake:nth-child(4n + 1) { animation-duration: 18s; animation-delay: -5s; }
+.ol-isl__svg .i-flake:nth-child(4n + 2) { animation-duration: 16s; animation-delay: -11s; }
+.ol-isl__svg .i-flake:nth-child(4n + 3) { animation-duration: 20s; animation-delay: -2s; }
+@keyframes ol-snow-fall {
+  0% { opacity: 0; transform: translate(0, -20px); }
+  10% { opacity: 1; }
+  50% { transform: translate(6px, 18px); }
+  90% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-4px, 60px); }
+}
+.ol-isl__svg .i-rainbow { animation: ol-rainbow 2.4s ease-out both; }
+@keyframes ol-rainbow { from { opacity: 0; } to { opacity: 1; } }
+.ol-isl__svg .i-fx { pointer-events: none; animation: ol-fx-out 3.2s ease-in forwards; }
+.ol-isl__svg .i-fx-light { animation: ol-fx-light 1.6s ease-in-out 2 alternate; }
+.ol-isl__svg .i-fx-petals { transform-box: fill-box; transform-origin: 50% 50%; animation: ol-fx-swirl 3.2s cubic-bezier(.3, .6, .3, 1) forwards; }
+@keyframes ol-fx-out { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes ol-fx-light { from { opacity: .45; } to { opacity: 1; } }
+@keyframes ol-fx-swirl { from { transform: rotate(-90deg) scale(.6); } to { transform: rotate(40deg) scale(1.15); } }
+@media (prefers-reduced-motion: reduce) {
+  .ol-isl__svg :is(.i-fall, .i-flake, .i-rainbow, .i-fx-light, .i-fx-petals) { animation: none !important; }
+  .ol-isl__svg .i-fx-petals { display: none; }
+}
+:root[data-motion="reduced"] .ol-isl__svg :is(.i-fall, .i-flake, .i-rainbow, .i-fx-light, .i-fx-petals) { animation: none !important; }
+:root[data-motion="reduced"] .ol-isl__svg .i-fx-petals { display: none; }
+
 /* SVG strokes; k-* elements have no fill (filled and stroked shapes re-declare it) */
 .ol-isl__svg :is([class^="k-"], [class*=" k-"]) { fill: none; }
 .ol-isl__svg .k-path { stroke: var(--isl-path); }
@@ -803,6 +859,22 @@
   box-shadow: 0 0 10px 2px color-mix(in srgb, var(--isl-spark) 55%, transparent);
   translate: -50% -50%; opacity: 0; animation: ol-spark-rise 1.2s cubic-bezier(.25, .6, .35, 1) forwards;
 }
+/* Lebendige Insel: a small cloud rains over the watered place (its first plant at the cloud's foot). */
+.ol-isl__rain {
+  position: absolute; z-index: 6; left: calc(var(--x, 0) * 100%); top: calc(var(--y, 0) * 100%);
+  width: max(48px, 13cqw); aspect-ratio: 52 / 62; translate: -50% -94%; pointer-events: none;
+  animation: ol-rain-cloud 1.9s ease-in-out forwards;
+}
+.ol-isl__rain-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.ol-isl__rain .r-cloud { fill: var(--isl-cloud); }
+.ol-isl__rain .r-shade { fill: color-mix(in oklab, var(--isl-cloud-shade) 70%, var(--isl-water)); }
+.ol-isl__rain .r-drop { fill: color-mix(in oklab, var(--isl-water) 85%, var(--isl-shadow)); opacity: 0; animation: ol-rain-drop .55s ease-in .25s 3; }
+.ol-isl__rain .r-drop--1 { animation-delay: .4s; }
+.ol-isl__rain .r-drop--2 { animation-delay: .55s; }
+@keyframes ol-rain-cloud { 0% { opacity: 0; transform: translateY(6px) scale(.92); } 18%, 78% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-4px); } }
+@keyframes ol-rain-drop { 0% { opacity: 0; transform: translateY(-4px); } 30% { opacity: .95; } 100% { opacity: 0; transform: translateY(10px); } }
+@media (prefers-reduced-motion: reduce) { .ol-isl__rain .r-drop { animation: none; opacity: .8; } }
+:root[data-motion="reduced"] .ol-isl__rain .r-drop { animation: none; opacity: .8; }
 .ol-isl__spark--b { width: max(6px, 1.5cqw); animation-delay: .12s; animation-name: ol-spark-rise-b; }
 @keyframes ol-spark-rise {
   0% { opacity: 0; transform: translate(0, 0) scale(.6); }

@@ -42,6 +42,12 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] Kalender (Tipp auf das Datum) passt ohne seitliches Scrollen auf den Bildschirm.
 - [ ] Text bei großer Schrift (Systemeinstellung) bleibt lesbar und abgeschnitten wird nichts.
 
+## Lebendige Insel
+- [ ] Im November zeigt die Insel Herbstlaub; fallende Blätter bewegen sich ruhig und ruckeln nicht.
+- [ ] Gießen einer Routine: Über ihrem Ort regnet kurz eine kleine Wolke.
+- [ ] Alles gegossen (am Tag): Ein Regenbogen erscheint hinter der Insel.
+- [ ] Animationen auf „Reduziert“: Blätter und Schnee stehen still, der Belohnungsmoment zeigt nur den Lichtkegel.
+
 ## Klänge
 - [ ] Erster Tipp nach dem Öffnen: Gießen einer Routine tropft hörbar, leise genug, um niemanden zu stören.
 - [ ] iPhone: Lautlos-Schalter an, Musik im Hintergrund: die App bleibt still und unterbricht die Musik nicht.
