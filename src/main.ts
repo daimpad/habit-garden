@@ -45,6 +45,7 @@ import { backfillMilestones } from './repo/milestones.js';
 import { createEmptyNote } from './repo/notes.js';
 import { getProfile, profile$ } from './repo/profile.js';
 import { initSound, setSoundLevel } from './services/sound.js';
+import { parseLaunch, stripLaunch, type Launch } from './services/launch.js';
 import {
   TABS, back, baseRoute, current, lastPathOf, navigate, onRoute, parseRoute, refresh, routeHref, startRouter,
   type Route, type RouteChange, type RouteName,
@@ -578,6 +579,57 @@ function isVersionError(err: unknown): boolean {
   return e.name === 'VersionError' || e.inner?.name === 'VersionError';
 }
 
+function readLaunch(): Launch {
+  const launch = parseLaunch(location.search);
+  if (launch) {
+    try {
+      history.replaceState(history.state, '', `${location.pathname}${stripLaunch(location.search)}${location.hash}`);
+    } catch {
+      // A sandboxed frame may refuse; the router reads the path anyway.
+    }
+  }
+  return launch;
+}
+
+/** Waits (up to 3 s) for an element of the screen that is being mounted. */
+function whenThere(selector: string, then: (el: HTMLElement) => void): void {
+  const start = performance.now();
+  const look = (): void => {
+    const el = document.querySelector<HTMLElement>(selector);
+    if (el) then(el);
+    else if (performance.now() - start < 3000) requestAnimationFrame(look);
+  };
+  look();
+}
+
+function runLaunch(launch: NonNullable<Launch>): void {
+  if ('share' in launch) {
+    openCapture({ type: 'task', text: launch.share });
+    return;
+  }
+  if (launch.action === 'task') {
+    openCapture({ type: 'task' });
+    return;
+  }
+  if (launch.action === 'note') {
+    void createEmptyNote([]).then((note) => navigate(`/wissen/n/${encodeURIComponent(note.id)}`), () => showToast(t.toastError));
+    return;
+  }
+  navigate('/heute');
+  // Wait for HEUTE's data (a routine section or its empty state is shown), then go to the section once the
+  // router has settled its own scroll position.
+  const ready = launch.action === 'water'
+    ? '.ol-heute__routine:not([hidden]), .ol-heute__routine-empty:not([hidden])'
+    : '.ol-heute__mood-section ol-card';
+  whenThere(ready, (el) => {
+    window.setTimeout(() => {
+      const section = launch.action === 'water' ? el : el.closest<HTMLElement>('section') ?? el;
+      section.scrollIntoView({ block: 'start' });
+      section.querySelector<HTMLElement>('ol-habit-toggle, [role="radio"], button, [tabindex="0"]')?.focus({ preventScroll: true });
+    }, 300);
+  });
+}
+
 async function boot(): Promise<void> {
   const app = document.getElementById('app');
   if (!app) return;
@@ -618,8 +670,11 @@ async function boot(): Promise<void> {
   // Spuren im Garten (Teil 3): add the milestones the history already earned, silently (idempotent).
   void backfillMilestones().catch((err: unknown) => console.error(err));
   onRoute(onRouteChange);
+  // Schneller Zugriff: a shortcut or something shared arrives as a query; read it once and take it off the address.
+  const launch = readLaunch();
   await startRouter(guard, { settle: historySettled });
   if (profile.onboardingDone === 1) startRemindersOnce();
+  if (launch && profile.onboardingDone === 1) runLaunch(launch);
   onDayChange(() => refresh());
   // Installable app and offline use (19.10.2026): service worker, install prompt, "Neu laden".
   startPwa();
