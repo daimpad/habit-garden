@@ -1,13 +1,25 @@
-// "Dein Garten" (Gamification Teil 2, decision of 02.11.2026): a sheet opened from the button beside "Rückblick" in
-// HEUTE, with the tabs Besucher and Herbarium (Gestalten follows in Teil 3).
+// "Dein Garten" (Gamification Teil 2 and 3, decision of 02.11.2026): a sheet opened from the button beside "Rückblick"
+// in HEUTE, with the tabs Besucher, Herbarium and Gestalten.
 // - Besucher: "6 von 12 entdeckt" with a progress bar, then one card per visitor in album order: found ones in
 //   colour with name and why they came, open ones as a soft silhouette with the hint (and "4 von 10" for counted
 //   reasons). A visitor found within the last three days carries "Neu".
 // - Herbarium: one pressed flower per routine that reached full bloom (routine, area colour and name, date), then
 //   the routines still growing as pale cards ("noch 3 Tage").
+// - Gestalten: the seeds ("34 Samen", where they come from), then one card per thing with its price: Setzen (closes
+//   the sheet; HEUTE lets the person choose a place, onPlace), or for a placed thing Umsetzen and Zurückgeben (seeds
+//   back, toast with Rückgängig); a thing without enough seeds says how many are missing. Last the side island
+//   ("Insel erweitern", progress towards 60).
 // - Data is live (repo/visitors gardenData$, areas$) while the sheet is open; each emission re-renders the open tab
 //   (the sheet holds no inputs, so nothing is lost). The tab choice is kept for the session.
 import '../../components/ol-segmented.js';
+import '../../components/ol-button.js';
+import { isletGlyph, itemGlyph } from '../../components/island-garden.js';
+import { showToast } from '../../components/ol-toast.js';
+import {
+  freeSlots, ISLET_PRICE, ITEMS, seedsText, type ItemId,
+} from '../../services/garden.js';
+import { buyIslet, returnItem, restoreGarden } from '../../repo/visitors.js';
+import { playSound } from '../../services/sound.js';
 import { visitorGlyph } from '../../components/island-visitors.js';
 import { pressedFlower } from '../../components/flora.js';
 import { createSheet, type OlSheet } from '../../components/ol-sheet.js';
@@ -21,15 +33,25 @@ import { NEW_DAYS, VISITOR_NAME, visitorInfos } from '../../services/visitors.js
 import { addDays, onDayChange, today } from '../../util/date.js';
 import { h, raw, render, setVar } from '../../util/dom.js';
 
-export type GardenTab = 'visitors' | 'herbarium';
+/** A small seed (Samen) for counters and prices. */
+export const SEED_GLYPH = '<svg class="ol-seed" viewBox="-6 -5 12 10" width="14" height="12" aria-hidden="true" focusable="false">'
+  + '<g transform="rotate(-28)"><ellipse rx="4.6" ry="3" fill="#A57B52"/><ellipse cx="1.2" cy=".9" rx="3.2" ry="1.6" fill="#8A6440" opacity=".7"/>'
+  + '<ellipse cx="-1.6" cy="-1" rx="1.6" ry=".8" fill="#D9B98E"/></g></svg>';
+
+export type GardenTab = 'visitors' | 'herbarium' | 'shape';
+
+export interface GardenSheetOptions {
+  /** Gestalten: the person wants to place (or move) a thing; the sheet closes first. */
+  onPlace?: (item: ItemId) => void;
+}
 
 interface Sub { unsubscribe(): void }
 
 let lastTab: GardenTab = 'visitors';
 
-export function openGardenSheet(tab: GardenTab = lastTab): OlSheet {
+export function openGardenSheet(tab: GardenTab = lastTab, opts: GardenSheetOptions = {}): OlSheet {
   const sheet = createSheet({ title: t.gardenTitle, history: 'push', detent: 'full', id: 'garden' });
-  new GardenSheet(sheet, tab).start();
+  new GardenSheet(sheet, tab, opts).start();
   return sheet;
 }
 
@@ -40,20 +62,22 @@ class GardenSheet {
   private stopDay: (() => void) | null = null;
   private panel!: HTMLElement;
 
-  constructor(private readonly sheet: OlSheet, private tab: GardenTab) {}
+  constructor(private readonly sheet: OlSheet, private tab: GardenTab, private readonly opts: GardenSheetOptions) {}
 
   start(): void {
     render(this.sheet.bodyEl, h`<div class="ol-garden-sheet">
       <ol-segmented class="ol-garden-sheet__tabs" label="${t.gardenTabsAria}" value="${this.tab}">
         <button type="button" data-value="visitors">${t.gardenTabVisitors}</button>
         <button type="button" data-value="herbarium">${t.gardenTabHerbarium}</button>
+        <button type="button" data-value="shape">${t.gardenTabShape}</button>
       </ol-segmented>
       <div class="ol-garden-sheet__panel" aria-live="off"></div>
     </div>`);
     this.panel = this.sheet.bodyEl.querySelector<HTMLElement>('.ol-garden-sheet__panel') ?? this.sheet.bodyEl;
+    this.panel.addEventListener('click', (event) => this.onShapeClick(event));
     this.sheet.bodyEl.querySelector('.ol-garden-sheet__tabs')?.addEventListener('ol-change', (event) => {
       const value = (event as CustomEvent<SegmentedChange>).detail.value;
-      if (value !== 'visitors' && value !== 'herbarium') return;
+      if (value !== 'visitors' && value !== 'herbarium' && value !== 'shape') return;
       this.tab = value;
       lastTab = value;
       this.renderPanel();
@@ -76,7 +100,8 @@ class GardenSheet {
   private renderPanel(): void {
     if (!this.data) return;
     if (this.tab === 'visitors') this.renderVisitors(this.data);
-    else this.renderHerbarium(this.data);
+    else if (this.tab === 'herbarium') this.renderHerbarium(this.data);
+    else this.renderShape(this.data);
   }
 
   private renderVisitors(data: GardenData): void {
@@ -125,5 +150,83 @@ class GardenSheet {
           <span class="ol-herb-card__line">${c.line}${c.archived ? h` · ${t.herbariumArchived}` : ''}</span>
         </li>`)}</ul>`);
     for (const dot of this.panel.querySelectorAll<HTMLElement>('.ol-herb-card__dot')) setVar(dot, '--tint', dot.dataset['tint'] ?? '');
+  }
+
+  private renderShape(data: GardenData): void {
+    const { balance } = data.seeds;
+    const garden = data.garden;
+    const islet = garden.islet === 1;
+    render(this.panel, h`<div class="ol-seeds">
+        <span class="ol-seeds__icon" aria-hidden="true">${raw(SEED_GLYPH)}</span>
+        <div><p class="ol-seeds__count">${seedsText(balance)}</p><p class="ol-garden-sheet__hint">${t.seedsHint}</p></div>
+      </div>
+      <ul class="ol-item-grid">${ITEMS.map((item) => {
+        const placed = garden.placed?.[item.id];
+        const slots = freeSlots(item.id, garden);
+        const missing = item.price - balance;
+        const action = placed
+          ? h`<span class="ol-item-card__state">${t.itemPlaced}</span>
+             <div class="ol-item-card__actions">
+               ${slots.length > 0 ? h`<ol-button size="sm" variant="tonal" data-act="move" data-item="${item.id}" label="${t.itemMove}"></ol-button>` : ''}
+               <ol-button size="sm" variant="ghost" data-act="return" data-item="${item.id}" label="${t.itemReturn}"></ol-button>
+             </div>`
+          : slots.length === 0 ? h`<span class="ol-item-card__state">${t.itemNoSlot}</span>`
+            : missing > 0 ? h`<span class="ol-item-card__state">${fmt(t.seedsMissing, { n: missing })}</span>`
+              : h`<div class="ol-item-card__actions"><ol-button size="sm" variant="filled" data-act="place" data-item="${item.id}" label="${t.itemPlace}"></ol-button></div>`;
+        return h`<li class="ol-item-card${placed ? ' ol-item-card--placed' : ''}">
+          <span class="ol-item-card__art">${raw(itemGlyph(item.id))}</span>
+          <span class="ol-item-card__name">${item.name}</span>
+          <span class="ol-item-card__price"><span aria-hidden="true">${raw(SEED_GLYPH)}</span>${seedsText(item.price)}</span>
+          ${action}
+        </li>`;
+      })}</ul>
+      <div class="ol-islet-card${islet ? ' ol-islet-card--done' : ''}">
+        <span class="ol-islet-card__art">${raw(isletGlyph(52))}</span>
+        <div class="ol-islet-card__text">
+          <p class="ol-item-card__name">${t.itemIslet}</p>
+          <p class="ol-garden-sheet__hint">${islet ? t.itemIsletDone : t.itemIsletHint}</p>
+          ${islet ? '' : h`<div class="ol-garden-sheet__bar" aria-hidden="true"><span class="ol-garden-sheet__fill ol-islet-card__fill"></span></div>
+            <p class="ol-item-card__price">${fmt(t.visitorProgress, { n: Math.min(balance, ISLET_PRICE), of: ISLET_PRICE })}</p>`}
+        </div>
+        ${!islet && balance >= ISLET_PRICE ? h`<ol-button size="sm" variant="filled" data-act="islet" label="${t.itemBuyIslet}"></ol-button>` : ''}
+      </div>`);
+    const fill = this.panel.querySelector<HTMLElement>('.ol-islet-card__fill');
+    if (fill) setVar(fill, '--p', Math.min(1, balance / ISLET_PRICE).toFixed(3));
+  }
+
+  private onShapeClick(event: Event): void {
+    const button = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-act]') : null;
+    if (!button || !this.data) return;
+    const act = button.dataset['act'];
+    const item = button.dataset['item'] as ItemId | undefined;
+    if ((act === 'place' || act === 'move') && item) {
+      const onPlace = this.opts.onPlace;
+      this.sheet.close('action');
+      if (onPlace) void this.sheet.closed.then(() => onPlace(item));
+      return;
+    }
+    if (act === 'return' && item) {
+      const before = structuredClone(this.data.garden);
+      const name = ITEMS.find((i) => i.id === item)?.name ?? '';
+      const price = ITEMS.find((i) => i.id === item)?.price ?? 0;
+      returnItem(item).then(() => {
+        showToast(fmt(t.placeReturnToast, { name, seeds: seedsText(price) }), {
+          action: { label: t.actionUndo, onAction: () => void restoreGarden(before).catch((err: unknown) => console.error(err)) },
+        });
+      }, (err: unknown) => {
+        console.error(err);
+        showToast(t.toastError);
+      });
+      return;
+    }
+    if (act === 'islet') {
+      buyIslet().then(() => {
+        playSound('milestone');
+        showToast(t.isletToast);
+      }, (err: unknown) => {
+        console.error(err);
+        showToast(t.toastError);
+      });
+    }
   }
 }

@@ -21,6 +21,9 @@
 //   arriving object also gets the reward moment (spotlight and petals, .i-fx).
 // - Besucher (Gamification Teil 2): `visitors` places the animals of components/island-visitors.ts at their spots
 //   (flyers above everything); one that just came carries .i-visit-new.
+// - Gestalten (Gamification Teil 3): `garden` draws the placed things (components/island-garden.ts) in depth order,
+//   the side island with its rope bridge, a translucent preview while a place is chosen and the reward moment for
+//   a thing just placed.
 import { flowerBody, plantBud, plantStem, plantTop, safeTint, type PlantPaint } from './flora.js';
 import { t, fmt } from '../i18n/de.js';
 import type { FlowerId, Stage } from '../model.js';
@@ -29,6 +32,8 @@ import type { TraceTier } from '../services/milestones.js';
 import type { Season } from '../services/season.js';
 import type { VisitorId } from '../services/visitors.js';
 import { visitorOnIsland } from './island-visitors.js';
+import { gardenItem, islet, SLOT_AT as GARDEN_SLOT_AT } from './island-garden.js';
+import type { GardenItemId, GardenSlotId } from '../model.js';
 import {
   arriveFx, BIG_TREE_CROWN, bushCrown, crownBlossoms, crownSnow, crownTint, fallingLeaves, frozenPond, leafPile, rainbow,
   SCARF, SEASON_DEFS, SNOW, snowDrifts, snowfall, SUMMER_FLIES, type Blob,
@@ -72,6 +77,16 @@ export interface IslandInput {
   rainbow?: boolean;
   /** Besucher (Teil 2): who is on the island today; `arrive` for one that just came (comes in, CSS). */
   visitors?: ReadonlyArray<{ id: VisitorId; arrive?: boolean }>;
+  /**
+   * Gestalten (Teil 3): what stands where, the side island, the preview while choosing a place (`ghost`) and the
+   * thing that was just placed (`arrive`: reward moment).
+   */
+  garden?: {
+    placed: ReadonlyArray<{ item: GardenItemId; slot: GardenSlotId }>;
+    islet?: boolean;
+    ghost?: { item: GardenItemId; slot: GardenSlotId };
+    arrive?: GardenItemId;
+  };
 }
 
 type Pt = readonly [number, number];
@@ -969,6 +984,8 @@ function placePlants(key: PlaceKey | 'extra', area: IslandArea): Drawable[] {
   return out;
 }
 
+const gardenSlotAt = (slot: GardenSlotId): readonly [number, number] => GARDEN_SLOT_AT[slot];
+
 // ---------------------------------------------------------------------------
 // Lebendige Insel: what lies on the grass and what moves in the air per season.
 
@@ -1010,6 +1027,7 @@ export function islandSvg(input: IslandInput): string {
   if (input.rainbow) s += rainbow();
   s += cloud(70, 452, 1.1) + cloud(548, 418, 0.9, true) + floatRock(64, 404, 9) + floatRock(548, 458, 7) + floatRock(522, 482, 4);
   s += body();
+  if (input.garden?.islet) s += islet();
   if (input.decor === 'lush') s += vines();
   s += groundDecor(input.decor);
   s += seasonGround(season);
@@ -1030,6 +1048,17 @@ export function islandSvg(input: IslandInput): string {
     if (extra.lvl >= 3) items.push({ y: 378, svg: bloomRing(241, 376, 40, 6, extra.tint, 41) });
   }
   items.push(keimi(ANCHORS.keimi[0], ANCHORS.keimi[1], season), campfire());
+  // Gestalten: placed things in depth order; the preview is drawn above everything else of its depth.
+  for (const p of input.garden?.placed ?? []) {
+    if (input.garden?.ghost?.item === p.item) continue;
+    const arrive = input.garden?.arrive === p.item;
+    items.push(gardenItem(p.item, p.slot, { arrive }));
+    if (arrive) {
+      const [ax, ay] = gardenSlotAt(p.slot);
+      items.push({ y: ay + 0.5, svg: arriveFx(ax, ay, ax * 7 + ay) });
+    }
+  }
+  if (input.garden?.ghost) items.push(gardenItem(input.garden.ghost.item, input.garden.ghost.slot, { ghost: true }));
   // Besucher: walkers and swimmers in depth order, flyers above everything.
   const flyers: string[] = [];
   for (const v of input.visitors ?? []) {

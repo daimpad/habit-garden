@@ -16,7 +16,12 @@ export interface Profile {
   reviewCardDismissedFor?: Day;
   /** Phase 3 (P1/P2): PLANUNG tab state — selected area (absent = "Alle") and the view per area key. */
   planning?: PlanningState;
+  /** Gamification Teil 3 (02.11.2026): what stands where on the island and whether the side island was bought. */
+  garden?: GardenState;
 }
+export type GardenItemId = 'lantern'|'flowerbed'|'birdhouse'|'bench'|'windmill'|'jetty';
+export type GardenSlotId = 'a'|'b'|'c'|'d'|'e'|'f'|'pond'|'i1'|'i2'|'i3';
+export interface GardenState { placed?: Partial<Record<GardenItemId, GardenSlotId>>; islet?: 1; }
 export type PlanningView = 'projects'|'list'|'kanban'|'matrix';
 export interface PlanningState { areaId?: Id; views?: Record<string, PlanningView>; }
 export type FirstStepId = 'focus'|'habit'|'note';

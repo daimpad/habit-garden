@@ -47,7 +47,8 @@
 //   a day when the evening question appears.
 import { liveQuery, type Observable, type Subscription } from 'dexie';
 import { flower, petalColor } from '../components/flora.js';
-import { sproutFigure, type IslandArea } from '../components/island.js';
+import { keimiGlyph, sproutFigure, type IslandArea } from '../components/island.js';
+import { itemGlyph } from '../components/island-garden.js';
 import type { CheckboxChange } from '../components/ol-checkbox.js';
 import type { HabitToggleChange } from '../components/ol-habit-toggle.js';
 import type { OlHeatmap, ToggleDayDetail } from '../components/ol-heatmap.js';
@@ -57,8 +58,10 @@ import { SEASON_DAY_LINE, seasonOf, showRainbow } from '../services/season.js';
 import {
   islandVisitors, newlyArrived, VISITOR_COMES, VISITOR_NAME, visitorInfos, type VisitorId, type VisitorInfo,
 } from '../services/visitors.js';
-import { gardenData$, type GardenData } from '../repo/visitors.js';
+import { GardenError, gardenData$, placeItem, type GardenData } from '../repo/visitors.js';
 import { openGardenSheet } from './sheets/garden.js';
+import { freeSlots, itemDef, seedsText, SEEDS, weekQuests, type ItemId, type Quest } from '../services/garden.js';
+import type { GardenSlotId } from '../model.js';
 import type { OlPlant } from '../components/ol-plant.js';
 import { onModalChange, topModal, type OlSheet } from '../components/ol-sheet.js';
 import { showToast } from '../components/ol-toast.js';
@@ -92,7 +95,7 @@ import { backupCardState } from '../services/storage-hints.js';
 import { percent, showWeekCard, weekSummary } from '../services/review.js';
 import { takeRevealDue } from '../services/reminders.js';
 import {
-  addDays, currentHour, formatDayFull, formatDayLong, formatDayShort, formatTime, formatWeekdayLong, now, nowIso, today,
+  addDays, currentHour, diffDays, formatDayFull, formatDayLong, formatDayShort, formatTime, formatWeekdayLong, now, nowIso, startOfWeek, today,
 } from '../util/date.js';
 import { emit, h, HAPTIC, icon, motionReduced, raw, render, setVar, vibrate, type SafeHtml } from '../util/dom.js';
 import { attachLongPress } from '../util/long-press.js';
@@ -456,6 +459,13 @@ class HeuteScreen {
   /** Besucher (Teil 2): the album as of the last emission (null before the first) and the visitor arriving now. */
   private visitorInfos: VisitorInfo[] | null = null;
   private visitorArrive: VisitorId | null = null;
+  /** Gestalten (Teil 3): the last garden data, the thing being placed (and the chosen place), the one just placed. */
+  private gardenData: GardenData | null = null;
+  private placing: { item: ItemId; slot: GardenSlotId | null } | null = null;
+  private placeBar: HTMLElement | null = null;
+  private itemArrive: ItemId | null = null;
+  /** Keimis Aufträge done this week as of the last emission (null before the first: no toast on load). */
+  private questsDoneIds: Set<string> | null = null;
   private arriving: ReadonlySet<string> | null = null;
 
   constructor(view: HTMLElement, day: Day) {
@@ -594,6 +604,8 @@ class HeuteScreen {
     for (const entry of this.expectLog.values()) window.clearTimeout(entry.timer);
     for (const off of this.detach) off();
     this.detach.length = 0;
+    this.placeBar?.remove();
+    this.placeBar = null;
   }
 
   // --- Plumbing ---
@@ -867,6 +879,10 @@ class HeuteScreen {
             <ol-button class="ol-heute__review-open" variant="tonal" label="${t.reviewWeekOpen}"></ol-button>
           </div>
         </ol-card>
+        <section class="ol-section ol-heute__quests" aria-labelledby="heute-quests" hidden>
+          <div class="ol-section__head"><h2 class="ol-label" id="heute-quests">${t.sectionQuests}</h2></div>
+          <ol-card class="ol-heute__card ol-quests"></ol-card>
+        </section>
         <div class="ol-heute__routines">
           <section class="ol-section ol-heute__routine-empty" aria-labelledby="heute-r-empty" hidden>
             <div class="ol-section__head"><h2 class="ol-label" id="heute-r-empty" tabindex="-1">${t.sectionRoutines}</h2></div>
@@ -1068,7 +1084,7 @@ class HeuteScreen {
     req<HTMLElement>(this.view, '.ol-hero__review').addEventListener('click', openReview);
     req<HTMLElement>(this.view, '.ol-hero__garden').addEventListener('click', () => {
       this.rememberOpener();
-      openGardenSheet();
+      openGardenSheet(undefined, { onPlace: (item) => this.startPlacing(item) });
     });
     req<HTMLElement>(this.view, '.ol-heute__review-open').addEventListener('click', openReview);
     req<HTMLElement>(this.view, '.ol-heute__review-dismiss').addEventListener('click', () => {
@@ -1802,6 +1818,13 @@ class HeuteScreen {
     const guests = this.visitorInfos ? islandVisitors(this.visitorInfos, day, art.season) : [];
     if (this.visitorArrive && !guests.some((g) => g.id === this.visitorArrive)) guests.unshift({ id: this.visitorArrive, isNew: true });
     art.visitors = guests.map((g) => (g.id === this.visitorArrive ? { id: g.id, arrive: true } : { id: g.id }));
+    const garden = this.gardenData?.garden;
+    if (garden) {
+      const placed = Object.entries(garden.placed ?? {}).filter((e): e is [ItemId, GardenSlotId] => typeof e[1] === 'string')
+        .map(([item, slot]) => ({ item, slot }));
+      const ghost = this.placing?.slot ? { item: this.placing.item, slot: this.placing.slot } : undefined;
+      art.garden = { placed, ...(garden.islet === 1 ? { islet: true } : {}), ...(ghost ? { ghost } : {}), ...(this.itemArrive ? { arrive: this.itemArrive } : {}) };
+    }
     if (guests.length > 0) summary.push(fmt(t.islandVisitors, { names: guests.map((g) => VISITOR_NAME[g.id]).join(', ') }));
     const focusOpen = this.focus.tasks.filter((task) => !this.focusDone(task)).length;
     const due = suggestions(this.contacts.filter((c) => c.archived === 0), this.contactLogs, day, PEOPLE_MAX)
@@ -1846,6 +1869,136 @@ class HeuteScreen {
     return areaId && this.areas.has(areaId) ? areaId : NO_AREA_GROUP;
   }
 
+  // --- Gestalten (Gamification Teil 3) ---
+
+  /** Starts choosing a place for `item` (from the garden sheet): rings on the free places, a bar at the bottom. */
+  private startPlacing(item: ItemId): void {
+    if (this.destroyed || !this.gardenData) return;
+    const slots = freeSlots(item, this.gardenData.garden);
+    if (slots.length === 0) return;
+    this.placing = { item, slot: null };
+    if (!this.placeBar) {
+      const bar = document.createElement('div');
+      bar.className = 'ol-place-bar';
+      bar.setAttribute('role', 'region');
+      bar.setAttribute('aria-label', t.placeTitle);
+      bar.addEventListener('click', (event) => {
+        const act = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-act]')?.dataset['act'] : undefined;
+        if (act === 'cancel') this.stopPlacing();
+        if (act === 'confirm') void this.confirmPlacing();
+      });
+      bar.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') this.stopPlacing();
+      });
+      this.view.append(bar);
+      this.placeBar = bar;
+    }
+    this.renderPlaceBar();
+    this.island.setSlots(slots, null, (slot) => {
+      if (this.placing) this.placing = { ...this.placing, slot };
+      this.afterPick(slots);
+    });
+    this.island.root.scrollIntoView({ block: 'center', behavior: motionReduced() ? 'auto' : 'smooth' });
+    this.later(() => this.island.root.querySelector<HTMLElement>('.ol-isl__slot')?.focus({ preventScroll: true }), 350);
+  }
+
+  /** After a place was chosen: preview on the island, the bar's button enabled. */
+  private afterPick(slots: readonly GardenSlotId[]): void {
+    if (!this.placing) return;
+    const selected = this.placing.slot;
+    this.island.setSlots(slots, selected, (slot) => {
+      if (this.placing) this.placing = { ...this.placing, slot };
+      this.afterPick(slots);
+    });
+    this.renderPlaceBar();
+    this.renderIsland();
+  }
+
+  private renderPlaceBar(): void {
+    const bar = this.placeBar;
+    const placing = this.placing;
+    if (!bar) return;
+    bar.hidden = !placing;
+    if (!placing) return;
+    const def = itemDef(placing.item);
+    const moving = Boolean(this.gardenData?.garden.placed?.[placing.item]);
+    render(bar, h`<div class="ol-place-bar__item">
+        <span class="ol-place-bar__art">${raw(itemGlyph(placing.item, 40))}</span>
+        <div class="ol-place-bar__text"><strong>${def.name}</strong><span>${placing.slot ? (moving ? t.itemMove : seedsText(def.price)) : t.placeHint}</span></div>
+      </div>
+      <div class="ol-place-bar__actions">
+        <ol-button variant="tonal" data-act="cancel" label="${t.placeCancel}"></ol-button>
+        <ol-button variant="filled" data-act="confirm" label="${t.placeConfirm}" ${placing.slot ? '' : 'disabled'}></ol-button>
+      </div>`);
+  }
+
+  private stopPlacing(): void {
+    this.placing = null;
+    this.island.setSlots([], null, () => undefined);
+    this.renderPlaceBar();
+    this.renderIsland();
+  }
+
+  private async confirmPlacing(): Promise<void> {
+    const placing = this.placing;
+    if (!placing?.slot) return;
+    const { item, slot } = placing;
+    try {
+      await placeItem(item, slot);
+    } catch (err) {
+      if (!(err instanceof GardenError)) console.error(err);
+      showToast(t.toastError);
+      return;
+    }
+    if (this.destroyed) return;
+    this.stopPlacing();
+    this.itemArrive = item;
+    playSound('milestone');
+    showToast(fmt(t.placeDoneToast, { name: itemDef(item).name }));
+    this.later(() => {
+      if (this.itemArrive !== item) return;
+      this.itemArrive = null;
+      this.renderIsland();
+    }, ARRIVE_MS);
+    this.renderIsland();
+  }
+
+  /** Keimis Aufträge: the week's three tasks with progress; a task fulfilled now gets a toast. */
+  private renderQuests(): void {
+    const data = this.gardenData;
+    const section = this.view.querySelector<HTMLElement>('.ol-heute__quests');
+    const card = section?.querySelector<HTMLElement>('.ol-quests');
+    if (!data || !section || !card) return;
+    const day = this.day;
+    const monday = startOfWeek(day);
+    const quests = weekQuests(data.quests, monday, day);
+    section.hidden = quests.length === 0 || day !== today();
+    const done = new Set(quests.filter((q) => q.done).map((q) => `${monday}:${q.id}`));
+    if (this.questsDoneIds) {
+      const fresh = quests.find((q) => q.done && !this.questsDoneIds?.has(`${monday}:${q.id}`));
+      if (fresh) showToast(fmt(t.questDoneToast, { text: fresh.text, n: SEEDS.quest }));
+    }
+    this.questsDoneIds = done;
+    const left = diffDays(addDays(monday, 6), day);
+    const row = (q: Quest): SafeHtml => h`<li class="ol-quest${q.done ? ' ol-quest--done' : ''}">
+        <span class="ol-quest__mark" aria-hidden="true">${q.done ? icon('check', 20) : ''}</span>
+        <span class="ol-quest__text">${q.text}
+          <span class="ol-quest__progress">${q.done ? t.questDone : fmt(t.questProgress, { n: q.progress, of: q.target })}</span>
+        </span>
+        <span class="ol-quest__reward">${fmt(t.questReward, { n: SEEDS.quest })}</span>
+      </li>`;
+    const key = JSON.stringify([quests, left, data.seeds.balance]);
+    if (card.dataset['key'] === key) return;
+    card.dataset['key'] = key;
+    render(card, h`<div class="ol-quests__head">
+        <span class="ol-quests__keimi">${raw(keimiGlyph(40))}</span>
+        <div><p class="ol-quests__title">${t.questTitle}</p>
+          <p class="ol-quests__sub">${left <= 0 ? t.questLeftOne : fmt(t.questLeft, { n: left + 1 })} · ${seedsText(data.seeds.balance)}</p></div>
+      </div>
+      <ul class="ol-quests__list">${quests.map(row)}</ul>
+      <p class="ol-quests__foot">${t.questFoot}</p>`);
+  }
+
   /**
    * Besucher: keeps the album; a visitor whose reason first holds now (found today, not found in the previous
    * emission) arrives: it hops or flies in at once with a soft sound, and after VISIT_NOTE_MS Keimi says so (after
@@ -1853,6 +2006,8 @@ class HeuteScreen {
    * the album.
    */
   private onGardenData(data: GardenData): void {
+    this.gardenData = data;
+    this.renderQuests();
     const infos = visitorInfos(data.history, this.day);
     const before = this.visitorInfos;
     this.visitorInfos = infos;

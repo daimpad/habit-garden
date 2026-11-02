@@ -53,6 +53,11 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] „Dein Garten“ öffnet das Album; gefundene Tiere farbig, offene als Silhouette mit Hinweis.
 - [ ] Reiter Herbarium: gepresste Blüten der voll erblühten Routinen, wachsende mit „noch n Tage“.
 
+## Gestalten und Aufträge
+- [ ] „Dein Garten › Gestalten“: „Setzen“ zeigt Ringe auf der Insel; ein Tipp zeigt die Vorschau, „Hier setzen“ stellt es hin.
+- [ ] „Zurückgeben“ bringt die Samen zurück; „Rückgängig“ stellt es wieder hin.
+- [ ] Keimis Aufträge in HEUTE: ein erfüllter Auftrag zeigt den Hinweis „Auftrag erfüllt …“.
+
 ## Klänge
 - [ ] Erster Tipp nach dem Öffnen: Gießen einer Routine tropft hörbar, leise genug, um niemanden zu stören.
 - [ ] iPhone: Lautlos-Schalter an, Musik im Hintergrund: die App bleibt still und unterbricht die Musik nicht.

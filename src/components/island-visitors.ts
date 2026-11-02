@@ -163,7 +163,7 @@ export const VISITOR_AT: Readonly<Record<VisitorId, { x: number; y: number; air?
   frog: { x: 84, y: 291 },
   tit: { x: 236, y: 186 },
   ladybug: { x: 262, y: 404 },
-  duck: { x: 128, y: 286 },
+  duck: { x: 118, y: 295 },
   squirrel: { x: 510, y: 228, flip: true },
   // On a branch in front of the big tree's crown (depth after the tree, base y 228).
   owl: { x: 446, y: 192, z: 229 },
