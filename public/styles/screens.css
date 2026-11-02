@@ -2420,3 +2420,35 @@
 .ol-quest__progress { color: var(--color-text-2); font-size: .75rem; }
 .ol-quest__reward { padding: 2px 8px; border-radius: var(--radius-full); background: color-mix(in srgb, var(--color-sun) 20%, var(--color-surface)); font-size: .75rem; font-weight: 600; white-space: nowrap; }
 /* === /Gestalten und Aufträge === */
+
+/* === Keimi wächst mit und Tagesernte (Gamification Teil 4) === */
+.ol-keimi-fig { display: block; overflow: visible; }
+.ol-isl__svg.ol-keimi-fig { width: auto; }
+:root .ol-isl__svg.ol-keimi-fig .i-night { display: none !important; }
+:root .ol-isl__svg.ol-keimi-fig .i-day { display: inline !important; }
+.ol-keimi-now { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: color-mix(in srgb, var(--isl-grass) 22%, var(--color-surface)); }
+.ol-keimi-now__fig { flex: none; }
+.ol-keimi-stages { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 96px), 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.ol-keimi-stage { display: grid; justify-items: center; align-content: start; gap: 2px; min-width: 0; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); text-align: center; }
+.ol-keimi-stage__fig { display: grid; place-items: end center; height: 70px; }
+.ol-keimi-stage--open { background: var(--color-surface-2); border-style: dashed; }
+.ol-keimi-stage--open .ol-keimi-stage__fig { opacity: .35; filter: grayscale(1); }
+.ol-keimi-stage__name { font-weight: 600; font-size: .8125rem; overflow-wrap: anywhere; }
+.ol-keimi-stage__text { color: var(--color-text-2); font-size: .75rem; line-height: 1.3; overflow-wrap: anywhere; }
+.ol-keimi-wear { display: grid; gap: var(--space-2); }
+.ol-keimi-wear__choice { max-width: 32rem; }
+/* Tagesernte: an evening card at the top of HEUTE (calm night colours in both themes). */
+.ol-harvest {
+  display: grid; gap: var(--space-3); margin-top: var(--space-5); padding: var(--space-4);
+  background: linear-gradient(160deg, #2A2B3D, #3A3046); color: #EEF0F5; border: 0;
+}
+.ol-harvest[hidden] { display: none; }
+.ol-harvest__body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; }
+.ol-harvest__eyebrow { margin: 0; color: #F2C98A; font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.ol-harvest__title { margin: 2px 0 var(--space-2); font-size: 1.25rem; }
+.ol-harvest__list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: .9375rem; }
+.ol-harvest__list li { display: flex; align-items: center; gap: var(--space-2); overflow-wrap: anywhere; }
+.ol-harvest__icon { flex: none; display: grid; place-items: center; width: 22px; color: #C9D8C2; }
+.ol-harvest__keimi { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: rgba(255, 255, 255, .08); }
+.ol-harvest__close { justify-self: stretch; }
+/* === /Keimi und Tagesernte === */

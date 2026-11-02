@@ -9,6 +9,9 @@
 //   the sheet; HEUTE lets the person choose a place, onPlace), or for a placed thing Umsetzen and Zurückgeben (seeds
 //   back, toast with Rückgängig); a thing without enough seeds says how many are missing. Last the side island
 //   ("Insel erweitern", progress towards 60).
+// - Keimi (Teil 4): the five stages with Keimi as it looks then (reached ones in colour, "seit …"; open ones pale
+//   with the hint and how far), and "Keimi trägt" (Nichts · Strohhut · Gießkanne · Blütenkranz; things not yet
+//   reached are disabled), saved at once.
 // - Data is live (repo/visitors gardenData$, areas$) while the sheet is open; each emission re-renders the open tab
 //   (the sheet holds no inputs, so nothing is lost). The tab choice is kept for the session.
 import '../../components/ol-segmented.js';
@@ -18,7 +21,10 @@ import { showToast } from '../../components/ol-toast.js';
 import {
   freeSlots, ISLET_PRICE, ITEMS, seedsText, type ItemId,
 } from '../../services/garden.js';
-import { buyIslet, returnItem, restoreGarden } from '../../repo/visitors.js';
+import { buyIslet, returnItem, restoreGarden, setKeimiWear } from '../../repo/visitors.js';
+import { keimiFigure } from '../../components/island.js';
+import { KEIMI_STAGES, keimiLook, keimiStage, STAGE_NAME, STAGE_NOW, type KeimiLook } from '../../services/keimi.js';
+import type { KeimiWear } from '../../model.js';
 import { playSound } from '../../services/sound.js';
 import { visitorGlyph } from '../../components/island-visitors.js';
 import { pressedFlower } from '../../components/flora.js';
@@ -31,14 +37,14 @@ import { gardenData$, type GardenData } from '../../repo/visitors.js';
 import { herbariumCards } from '../../services/herbarium.js';
 import { NEW_DAYS, VISITOR_NAME, visitorInfos } from '../../services/visitors.js';
 import { addDays, onDayChange, today } from '../../util/date.js';
-import { h, raw, render, setVar } from '../../util/dom.js';
+import { h, raw, render, setVar, type SafeHtml } from '../../util/dom.js';
 
 /** A small seed (Samen) for counters and prices. */
 export const SEED_GLYPH = '<svg class="ol-seed" viewBox="-6 -5 12 10" width="14" height="12" aria-hidden="true" focusable="false">'
   + '<g transform="rotate(-28)"><ellipse rx="4.6" ry="3" fill="#A57B52"/><ellipse cx="1.2" cy=".9" rx="3.2" ry="1.6" fill="#8A6440" opacity=".7"/>'
   + '<ellipse cx="-1.6" cy="-1" rx="1.6" ry=".8" fill="#D9B98E"/></g></svg>';
 
-export type GardenTab = 'visitors' | 'herbarium' | 'shape';
+export type GardenTab = 'visitors' | 'herbarium' | 'shape' | 'keimi';
 
 export interface GardenSheetOptions {
   /** Gestalten: the person wants to place (or move) a thing; the sheet closes first. */
@@ -61,6 +67,7 @@ class GardenSheet {
   private subs: Sub[] = [];
   private stopDay: (() => void) | null = null;
   private panel!: HTMLElement;
+  private keimiKey: string | null = null;
 
   constructor(private readonly sheet: OlSheet, private tab: GardenTab, private readonly opts: GardenSheetOptions) {}
 
@@ -70,6 +77,7 @@ class GardenSheet {
         <button type="button" data-value="visitors">${t.gardenTabVisitors}</button>
         <button type="button" data-value="herbarium">${t.gardenTabHerbarium}</button>
         <button type="button" data-value="shape">${t.gardenTabShape}</button>
+        <button type="button" data-value="keimi">${t.gardenTabKeimi}</button>
       </ol-segmented>
       <div class="ol-garden-sheet__panel" aria-live="off"></div>
     </div>`);
@@ -77,7 +85,7 @@ class GardenSheet {
     this.panel.addEventListener('click', (event) => this.onShapeClick(event));
     this.sheet.bodyEl.querySelector('.ol-garden-sheet__tabs')?.addEventListener('ol-change', (event) => {
       const value = (event as CustomEvent<SegmentedChange>).detail.value;
-      if (value !== 'visitors' && value !== 'herbarium' && value !== 'shape') return;
+      if (value !== 'visitors' && value !== 'herbarium' && value !== 'shape' && value !== 'keimi') return;
       this.tab = value;
       lastTab = value;
       this.renderPanel();
@@ -99,9 +107,11 @@ class GardenSheet {
 
   private renderPanel(): void {
     if (!this.data) return;
+    if (this.tab !== 'keimi') this.keimiKey = null;
     if (this.tab === 'visitors') this.renderVisitors(this.data);
     else if (this.tab === 'herbarium') this.renderHerbarium(this.data);
-    else this.renderShape(this.data);
+    else if (this.tab === 'shape') this.renderShape(this.data);
+    else this.renderKeimi(this.data);
   }
 
   private renderVisitors(data: GardenData): void {
@@ -228,5 +238,53 @@ class GardenSheet {
         showToast(t.toastError);
       });
     }
+  }
+
+  private renderKeimi(data: GardenData): void {
+    const { stages, wear } = data.keimi;
+    const look = keimiLook(stages, wear);
+    const now = keimiStage(stages);
+    const reached = (stage: string): boolean => stages.some((x) => x.stage === stage && x.day !== null);
+    const lookOf = (stage: (typeof KEIMI_STAGES)[number]): KeimiLook => ({
+      leaves: stage === 'seedling' ? 'two' : 'four',
+      wear: stage === 'hat' || stage === 'can' || stage === 'crown' ? stage : null,
+    });
+    const current = look.wear ?? 'none';
+    // Only the outfit changed (a choice here): keep the panel, so focus stays on the switch.
+    const key = JSON.stringify(stages);
+    const choice = this.panel.querySelector<HTMLElement>('.ol-keimi-wear__choice');
+    if (choice && this.keimiKey === key) {
+      if (choice.getAttribute('value') !== current) choice.setAttribute('value', current);
+      const fig = this.panel.querySelector('.ol-keimi-now__fig');
+      if (fig) render(fig, raw(keimiFigure(look, 96, 'kfn-')));
+      return;
+    }
+    this.keimiKey = key;
+    const option = (value: KeimiWear, label: string): SafeHtml => h`<button type="button" data-value="${value}" ${value !== 'none' && !reached(value) ? 'disabled' : ''}>${label}</button>`;
+    render(this.panel, h`<div class="ol-keimi-now">
+        <span class="ol-keimi-now__fig">${raw(keimiFigure(look, 96, 'kfn-'))}</span>
+        <div><p class="ol-garden-sheet__count">${STAGE_NOW[now]}</p>
+          <p class="ol-garden-sheet__hint">${t.keimiKeeps}</p></div>
+      </div>
+      <ul class="ol-keimi-stages">${stages.map((x, i) => h`<li class="ol-keimi-stage${x.day ? '' : ' ol-keimi-stage--open'}">
+          <span class="ol-keimi-stage__fig">${raw(keimiFigure(lookOf(x.stage), 64, `kfs${i}-`))}</span>
+          <span class="ol-keimi-stage__name">${STAGE_NAME[x.stage]}</span>
+          <span class="ol-keimi-stage__text">${x.text}</span>
+          ${!x.day && x.progress ? h`<span class="ol-visitor-card__progress">${fmt(t.visitorProgress, { n: x.progress.n, of: x.progress.of })}</span>` : ''}
+        </li>`)}</ul>
+      <div class="ol-keimi-wear">
+        <span class="ol-settings__label" id="garden-keimi-wear">${t.keimiWearLabel}</span>
+        <ol-segmented class="ol-keimi-wear__choice" aria-labelledby="garden-keimi-wear" value="${current}">
+          ${option('none', t.keimiWearNone)}${option('hat', t.keimiWearHat)}${option('can', t.keimiWearCan)}${option('crown', t.keimiWearCrown)}
+        </ol-segmented>
+      </div>`);
+    this.panel.querySelector('.ol-keimi-wear__choice')?.addEventListener('ol-change', (event) => {
+      const value = (event as CustomEvent<SegmentedChange>).detail.value;
+      if (value !== 'none' && value !== 'hat' && value !== 'can' && value !== 'crown') return;
+      setKeimiWear(value).catch((err: unknown) => {
+        console.error(err);
+        showToast(t.toastError);
+      });
+    });
   }
 }

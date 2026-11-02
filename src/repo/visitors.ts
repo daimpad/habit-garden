@@ -4,11 +4,14 @@
 // (Profile.garden), written by placeItem / returnItem / buyIslet.
 import { liveQuery, type Observable } from 'dexie';
 import { db } from '../db.js';
-import type { Day, GardenItemId, GardenSlotId, GardenState, Habit, HabitLog, Milestone } from '../model.js';
+import type { Day, GardenItemId, GardenSlotId, GardenState, Habit, HabitLog, KeimiWear, Milestone } from '../model.js';
+import { stageFor } from '../services/growth.js';
+import { keimiStages, type HarvestInput, type KeimiStageInfo } from '../services/keimi.js';
+import { VISITOR_NAME, visitorInfos } from '../services/visitors.js';
 import { freeSlots, ISLET_PRICE, itemDef, questsDone, seedCount, type QuestHistory, type SeedCount } from '../services/garden.js';
 import { hasJoyEntry } from '../services/island.js';
 import { allDoneDays, type VisitorHistory } from '../services/visitors.js';
-import { dayOfIso, today } from '../util/date.js';
+import { addDays, dayOfIso, today } from '../util/date.js';
 import { updateProfile } from './profile.js';
 
 export interface GardenData {
@@ -19,6 +22,10 @@ export interface GardenData {
   milestones: Milestone[];
   garden: GardenState;
   seeds: SeedCount;
+  /** Teil 4: Keimi's stages, the chosen outfit, today's harvest and whether its card was closed today. */
+  keimi: { stages: KeimiStageInfo[]; wear?: KeimiWear };
+  harvest: HarvestInput;
+  harvestDismissedFor?: Day;
 }
 
 const minDay = (days: ReadonlyArray<Day | undefined>): Day | null => days.filter((d): d is Day => !!d).sort()[0] ?? null;
@@ -75,7 +82,31 @@ export function gardenData$(): Observable<GardenData> {
       waterings: history.doneLogDays.filter((d) => d <= now).length, tasks: history.taskDays.length, joys: history.joyDays.length,
       traces: milestones.length, quests: questsDone(quests, now),
     }, garden);
-    return { history, quests, habits, logs, milestones, garden, seeds };
+    // Teil 4: Keimi's stages from the waterings (start: the profile's creation), today's harvest.
+    const stages = keimiStages(history.doneLogDays, profile ? dayOfIso(profile.createdAt) : null, now);
+    const todayLogs = logs.filter((l) => l.status === 'done' && l.day === now);
+    const byHabit = new Map<string, HabitLog[]>();
+    for (const l of logs) byHabit.set(l.habitId, [...(byHabit.get(l.habitId) ?? []), l]);
+    const grown = habits.filter((h) => h.archived === 0 && todayLogs.some((l) => l.habitId === h.id)).filter((h) => {
+      const all = byHabit.get(h.id) ?? [];
+      return stageFor(h, all, now) > stageFor(h, all.filter((l) => l.day !== now), now);
+    }).map((h) => h.name);
+    const yesterday = addDays(now, -1);
+    const questsToday = questsDone(quests, now) - questsDone(quests, yesterday);
+    const tasksToday = history.taskDays.filter((d) => d === now).length;
+    const harvest: HarvestInput = {
+      watered: new Set(todayLogs.map((l) => l.habitId)).size,
+      grown,
+      visitors: visitorInfos(history, now).filter((v) => v.day === now).map((v) => VISITOR_NAME[v.id]),
+      tasks: tasksToday,
+      seeds: todayLogs.length + tasksToday + 2 * history.joyDays.filter((d) => d === now).length
+        + 5 * milestones.filter((m) => m.earnedOn === now).length + 10 * Math.max(0, questsToday),
+    };
+    const keimi = profile?.keimi?.wear ? { stages, wear: profile.keimi.wear } : { stages };
+    return {
+      history, quests, habits, logs, milestones, garden, seeds, keimi, harvest,
+      ...(profile?.harvestDismissedFor ? { harvestDismissedFor: profile.harvestDismissedFor } : {}),
+    };
   });
 }
 
@@ -123,4 +154,14 @@ export async function buyIslet(): Promise<void> {
   if (garden.islet === 1) return;
   if (balance < ISLET_PRICE) throw new GardenError('seeds');
   await updateProfile({ garden: { ...garden, islet: 1 } });
+}
+
+/** Teil 4: what Keimi wears ('none' for nothing). */
+export function setKeimiWear(wear: KeimiWear): Promise<void> {
+  return updateProfile({ keimi: { wear } });
+}
+
+/** Teil 4: closes the harvest card for `day`. */
+export function dismissHarvest(day: Day): Promise<void> {
+  return updateProfile({ harvestDismissedFor: day });
 }

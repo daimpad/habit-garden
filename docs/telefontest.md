@@ -58,6 +58,10 @@ Kurze Checkliste für einen Durchgang auf einem echten Telefon (iPhone mit Safar
 - [ ] „Zurückgeben“ bringt die Samen zurück; „Rückgängig“ stellt es wieder hin.
 - [ ] Keimis Aufträge in HEUTE: ein erfüllter Auftrag zeigt den Hinweis „Auftrag erfüllt …“.
 
+## Keimi und Tagesernte
+- [ ] „Dein Garten › Keimi“: erreichte Stufen farbig, offene blass mit Fortschritt; „Keimi trägt“ ändert Keimi auf der Insel sofort.
+- [ ] Ab dem Abend steht oben in HEUTE die Tagesernte; „Schließen“ blendet sie für den Tag aus, auch nach dem Neuladen.
+
 ## Klänge
 - [ ] Erster Tipp nach dem Öffnen: Gießen einer Routine tropft hörbar, leise genug, um niemanden zu stören.
 - [ ] iPhone: Lautlos-Schalter an, Musik im Hintergrund: die App bleibt still und unterbricht die Musik nicht.

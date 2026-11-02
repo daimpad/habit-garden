@@ -58,8 +58,10 @@ import { SEASON_DAY_LINE, seasonOf, showRainbow } from '../services/season.js';
 import {
   islandVisitors, newlyArrived, VISITOR_COMES, VISITOR_NAME, visitorInfos, type VisitorId, type VisitorInfo,
 } from '../services/visitors.js';
-import { GardenError, gardenData$, placeItem, type GardenData } from '../repo/visitors.js';
-import { openGardenSheet } from './sheets/garden.js';
+import { dismissHarvest, GardenError, gardenData$, placeItem, type GardenData } from '../repo/visitors.js';
+import { openGardenSheet, SEED_GLYPH } from './sheets/garden.js';
+import { harvest, KEIMI_STAGES, keimiLook, keimiStage, STAGE_NOW } from '../services/keimi.js';
+import { BASKET_SVG } from '../components/keimi-wear.js';
 import { freeSlots, itemDef, seedsText, SEEDS, weekQuests, type ItemId, type Quest } from '../services/garden.js';
 import type { GardenSlotId } from '../model.js';
 import type { OlPlant } from '../components/ol-plant.js';
@@ -848,6 +850,7 @@ class HeuteScreen {
           ${islandMarkup()}
           </div>
         </header>
+        <ol-card class="ol-harvest" hidden></ol-card>
         <section class="ol-section ol-heute__first" aria-labelledby="heute-first" hidden>
           <div class="ol-section__head"><h2 class="ol-label" id="heute-first">${t.sectionFirstSteps}</h2></div>
           <ul class="ol-heute__steps"></ul>
@@ -1622,6 +1625,7 @@ class HeuteScreen {
     }
     this.renderGreetingLine();
     this.renderIsland();
+    this.renderHarvest();
   }
 
   private renderGreetingLine(): void {
@@ -1825,6 +1829,7 @@ class HeuteScreen {
       const ghost = this.placing?.slot ? { item: this.placing.item, slot: this.placing.slot } : undefined;
       art.garden = { placed, ...(garden.islet === 1 ? { islet: true } : {}), ...(ghost ? { ghost } : {}), ...(this.itemArrive ? { arrive: this.itemArrive } : {}) };
     }
+    if (this.gardenData) art.keimi = keimiLook(this.gardenData.keimi.stages, this.gardenData.keimi.wear);
     if (guests.length > 0) summary.push(fmt(t.islandVisitors, { names: guests.map((g) => VISITOR_NAME[g.id]).join(', ') }));
     const focusOpen = this.focus.tasks.filter((task) => !this.focusDone(task)).length;
     const due = suggestions(this.contacts.filter((c) => c.archived === 0), this.contactLogs, day, PEOPLE_MAX)
@@ -1963,6 +1968,40 @@ class HeuteScreen {
     this.renderIsland();
   }
 
+  /**
+   * Tagesernte (Teil 4): from the evening on, today's harvest with Keimi's sentence; "Schließen" hides it for the
+   * day. Not shown for another day or without any routine.
+   */
+  private renderHarvest(): void {
+    const card = this.view.querySelector<HTMLElement>('.ol-harvest');
+    const data = this.gardenData;
+    if (!card || !data) return;
+    const phase = this.phase();
+    const show = (phase === 'evening' || phase === 'night') && this.day === today()
+      && data.harvestDismissedFor !== this.day && data.habits.some((hb) => hb.archived === 0);
+    card.hidden = !show;
+    if (!show) return;
+    const result = harvest(data.harvest);
+    const key = JSON.stringify(result);
+    if (card.dataset['key'] === key) return;
+    card.dataset['key'] = key;
+    const ICONS: Record<string, string> = { water: 'droplets', grow: 'sprout', visit: 'heart-handshake', task: 'circle-check', seed: '' };
+    render(card, h`<div class="ol-harvest__body">
+        <div class="ol-harvest__text">
+          <p class="ol-harvest__eyebrow">${t.sectionEvening}</p>
+          <h2 class="ol-harvest__title">${t.harvestTitle}</h2>
+          <ul class="ol-harvest__list">${result.lines.map((l) => h`<li><span class="ol-harvest__icon" aria-hidden="true">${l.kind === 'seed' ? raw(SEED_GLYPH) : icon(ICONS[l.kind] ?? 'sprout', 20)}</span>${l.text}</li>`)}</ul>
+        </div>
+        <span class="ol-harvest__basket" aria-hidden="true">${raw(BASKET_SVG)}</span>
+      </div>
+      <p class="ol-harvest__keimi"><span aria-hidden="true">${raw(keimiGlyph(32))}</span>${result.keimi}</p>
+      <ol-button class="ol-harvest__close" variant="tonal" label="${t.harvestClose}"></ol-button>`);
+    card.querySelector('.ol-harvest__close')?.addEventListener('click', () => {
+      card.hidden = true;
+      dismissHarvest(this.day).catch((err: unknown) => console.error(err));
+    });
+  }
+
   /** Keimis Aufträge: the week's three tasks with progress; a task fulfilled now gets a toast. */
   private renderQuests(): void {
     const data = this.gardenData;
@@ -2006,12 +2045,23 @@ class HeuteScreen {
    * the album.
    */
   private onGardenData(data: GardenData): void {
+    const before = this.gardenData;
     this.gardenData = data;
     this.renderQuests();
+    this.renderHarvest();
+    // Keimi wächst mit: a stage reached now (not on load) gets a sentence and a soft sound.
+    if (before && this.day === today()) {
+      const was = keimiStage(before.keimi.stages);
+      const is = keimiStage(data.keimi.stages);
+      if (KEIMI_STAGES.indexOf(is) > KEIMI_STAGES.indexOf(was)) {
+        playSound('keimi');
+        this.later(() => this.sayNote(STAGE_NOW[is]), VISIT_NOTE_MS);
+      }
+    }
     const infos = visitorInfos(data.history, this.day);
-    const before = this.visitorInfos;
+    const prevInfos = this.visitorInfos;
     this.visitorInfos = infos;
-    const arrived = before && this.day === today() ? newlyArrived(before, infos, this.day) : [];
+    const arrived = prevInfos && this.day === today() ? newlyArrived(prevInfos, infos, this.day) : [];
     const id = arrived[0];
     if (id && !this.destroyed) {
       this.visitorArrive = id;
@@ -2028,12 +2078,16 @@ class HeuteScreen {
 
   /** Keimi's sentence for a visitor that came; waits while a milestone's sentence is still showing. */
   private sayVisitor(id: VisitorId): void {
+    this.sayNote(VISITOR_COMES[id]);
+  }
+
+  /** A later sentence of Keimi (visitors, Keimi grew); waits while a milestone's sentence is still showing. */
+  private sayNote(text: string): void {
     if (this.destroyed) return;
     if (this.celebration && !this.celebration.visitor) {
-      this.later(() => this.sayVisitor(id), VISIT_NOTE_MS);
+      this.later(() => this.sayNote(text), VISIT_NOTE_MS);
       return;
     }
-    const text = VISITOR_COMES[id];
     const celebration = { text, visitor: true };
     this.celebration = celebration;
     this.island.announce(text);

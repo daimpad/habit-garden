@@ -282,6 +282,11 @@ function validateProfile(value: unknown, path: string): Profile {
   setOpt(profile, 'reviewCardDismissedFor', optDay(r, 'reviewCardDismissedFor', path));
   if (present(r.planning)) profile.planning = validatePlanning(r.planning, `${path}.planning`);
   if (present(r.garden)) profile.garden = validateGarden(r.garden, `${path}.garden`);
+  setOpt(profile, 'harvestDismissedFor', optDay(r, 'harvestDismissedFor', path));
+  if (present(r.keimi)) {
+    const k = asRecord(r.keimi, `${path}.keimi`);
+    profile.keimi = present(k.wear) ? { wear: oneOf(k, 'wear', ['none', 'hat', 'can', 'crown'] as const, `${path}.keimi`) } : {};
+  }
   if (present(r.firstStepsDismissed)) {
     const steps = strings(r.firstStepsDismissed, `${path}.firstStepsDismissed`);
     steps.forEach((step, i) => {
